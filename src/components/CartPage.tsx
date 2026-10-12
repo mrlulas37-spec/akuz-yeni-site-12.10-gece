@@ -13,7 +13,7 @@ import {
   CreditCard,
   Sparkles,
 } from 'lucide-react';
-import { CartItem, Product, Review } from '../types';
+import { CartItem, Product, Review, SiteSettings } from '../types';
 import { StickerGraphic } from './StickerGraphic';
 import { ProductCard } from './ProductCard';
 import { calculateItemUnitPrice } from '../utils/pricingHelper';
@@ -31,6 +31,7 @@ interface CartPageProps {
   onToggleFavorite: (product: Product) => void;
   onSelectProduct: (product: Product) => void;
   reviews?: Review[];
+  siteSettings?: SiteSettings;
 }
 
 export const CartPage: React.FC<CartPageProps> = ({
@@ -46,6 +47,7 @@ export const CartPage: React.FC<CartPageProps> = ({
   onToggleFavorite,
   onSelectProduct,
   reviews = [],
+  siteSettings,
 }) => {
   const [promoCode, setPromoCode] = useState<string>('');
   const [appliedDiscount, setAppliedDiscount] = useState<number>(0);
@@ -62,9 +64,10 @@ export const CartPage: React.FC<CartPageProps> = ({
     0
   );
 
-  const freeShippingThreshold = 150;
+  const freeShippingThreshold = siteSettings?.freeShippingThreshold ?? 150;
+  const standardShippingFee = siteSettings?.shippingFee ?? 39.9;
   const remainingForFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
-  const shippingFee = subtotal >= freeShippingThreshold || subtotal === 0 ? 0 : 39.9;
+  const shippingFee = (subtotal >= freeShippingThreshold || subtotal === 0 || standardShippingFee === 0) ? 0 : standardShippingFee;
   const discountAmount = (subtotal * appliedDiscount) / 100;
   const grandTotal = Math.max(0, subtotal - discountAmount + shippingFee);
 

@@ -17,6 +17,7 @@ interface LoginPageProps {
   onForgotPassword?: (email: string) => void;
   initialEmail?: string;
   currentUser?: UserProfile | null;
+  returnPath?: string;
 }
 
 type AuthStep = 'email' | 'existing_password' | 'google_account_confirm' | 'new_register';
@@ -27,6 +28,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onForgotPassword,
   initialEmail = '',
   currentUser,
+  returnPath = '/',
 }) => {
   const [step, setStep] = useState<AuthStep>('email');
 
@@ -56,15 +58,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   // Last Google account
   const [lastGoogle, setLastGoogle] = useState<{ email: string; name: string } | null>(null);
   const googleBtnRef = React.useRef<HTMLDivElement>(null);
+  const googleConfirmBtnRef = React.useRef<HTMLDivElement>(null);
+
+  // Başarılı giriş state'i
+  const [successUser, setSuccessUser] = useState<UserProfile | null>(null);
+
+  // Başarılı girişte doğrudan "Giriş Başarılı" ekranını gösterir ve kullanıcıya soru sormadan ana sayfaya yönlendirir
+  const triggerSuccessfulLogin = (user: UserProfile) => {
+    setIsLoading(false);
+    setErrorMessage(null);
+    setSuccessUser(user);
+    // Kısa süre (700ms) "GİRİŞ BAŞARILI" mesajını gösterip soru sormadan ana sayfaya git
+    setTimeout(() => {
+      onLoginSuccess(user);
+      onGoHome();
+    }, 700);
+  };
 
   // Google Resmi Butonunu (GIS - Google Identity Services) Doğrudan Başlat
   useEffect(() => {
     if (step !== 'email' && step !== 'google_account_confirm') return;
 
-    let isMounted = true;
     const renderGsiBtn = () => {
       const g = (window as any).google;
-      if (!g?.accounts?.id || !googleBtnRef.current) return;
+      if (!g?.accounts?.id) return;
 
       let clientId = '660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com';
       try {
@@ -78,9 +95,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       try {
         g.accounts.id.initialize({
           client_id: clientId,
-          use_fedcm_for_prompt: false,
           callback: async (resp: any) => {
-            if (!isMounted || !resp?.credential) return;
+            if (!resp?.credential) return;
             try {
               const base64Url = resp.credential.split('.')[1];
               const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -97,24 +113,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   payload.email,
                   payload.name || payload.given_name || payload.email.split('@')[0]
                 );
-                setIsLoading(false);
-                setSuccessMessage(`Google ile başarıyla giriş yapıldı! Hoş geldiniz, ${loginRes.user.name}`);
-                setTimeout(() => {
-                  onLoginSuccess(loginRes.user);
-                }, 350);
+                triggerSuccessfulLogin(loginRes.user);
               }
             } catch (err: any) {
               console.warn('[GSI PARSE ERROR]', err);
+              setIsLoading(false);
             }
           },
         });
 
-        if (googleBtnRef.current) {
-          googleBtnRef.current.innerHTML = '';
-          g.accounts.id.renderButton(googleBtnRef.current, {
+        const activeRef = step === 'email' ? googleBtnRef.current : googleConfirmBtnRef.current;
+        if (activeRef) {
+          activeRef.innerHTML = '';
+          const btnWidth = Math.min(380, Math.max(280, (window.innerWidth || 360) - 60));
+          g.accounts.id.renderButton(activeRef, {
             theme: 'outline',
             size: 'large',
-            width: 380,
+            width: btnWidth,
             text: 'continue_with',
             shape: 'rectangular',
             logo_alignment: 'left',
@@ -126,35 +141,55 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     };
 
     renderGsiBtn();
-    const timer = setTimeout(renderGsiBtn, 400);
+    const timer = setTimeout(renderGsiBtn, 300);
     return () => {
-      isMounted = false;
       clearTimeout(timer);
     };
   }, [step]);
+
   // Doğrudan gerçek Google açılır penceresini ve hesap seçicisini başlatır
   const handleLaunchGooglePicker = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsLoading(true);
 
+    // 25 saniye sonra kullanıcı popup'ı kapatmışsa buton yükleme durumunu güvenle sıfırla
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 25000);
+
     try {
       await triggerGoogleAccountPicker(
         (user) => {
-          setIsLoading(false);
-          setSuccessMessage(`Google ile başarıyla giriş yapıldı! Hoş geldiniz, ${user.name}`);
-          setTimeout(() => {
-            onLoginSuccess(user);
-          }, 350);
+          clearTimeout(safetyTimer);
+          triggerSuccessfulLogin(user);
         },
         (errorMsg) => {
+          clearTimeout(safetyTimer);
           setIsLoading(false);
           setErrorMessage(errorMsg);
         }
       );
     } catch (err: any) {
+      clearTimeout(safetyTimer);
       setIsLoading(false);
       setErrorMessage(err?.message || 'Google oturum açma penceresi açılamadı.');
+    }
+  };
+
+  // Google hesabı sitemizde zaten tanımlı olan kullanıcı için tek tıkla doğrudan siteye giriş
+  const handleDirectGoogleConfirm = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsLoading(true);
+
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const loginRes = await loginWithGoogleAccount(cleanEmail, accountName || cleanEmail.split('@')[0]);
+      triggerSuccessfulLogin(loginRes.user);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorMessage(err?.message || 'Giriş yapılırken bir hata oluştu.');
     }
   };
 
@@ -209,10 +244,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     if (!res.success || !res.user) {
       setErrorMessage(res.error || 'Giriş yapılamadı.');
     } else {
-      setSuccessMessage('Başarıyla giriş yapıldı! Bilgileriniz yükleniyor...');
-      setTimeout(() => {
-        onLoginSuccess(res.user!);
-      }, 500);
+      triggerSuccessfulLogin(res.user);
     }
   };
 
@@ -244,10 +276,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     if (!res.success || !res.user) {
       setErrorMessage(res.error || 'Kayıt işlemi başarısız.');
     } else {
-      setSuccessMessage('Hesabınız başarıyla oluşturuldu! Yönlendiriliyorsunuz...');
-      setTimeout(() => {
-        onLoginSuccess(res.user!);
-      }, 600);
+      triggerSuccessfulLogin(res.user);
     }
   };
 
@@ -256,6 +285,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
   };
+
+  // Giriş Başarılı Ekranı (Kullanıcıya soru sormadan veya mağazaya dönmeyi beklemeden doğrudan ana sayfaya yönlendirir)
+  if (successUser) {
+    return (
+      <div className="min-h-[75vh] flex items-center justify-center py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#fcfbf9] to-slate-100">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 sm:p-10 border border-slate-200/80 text-center animate-fadeIn">
+          <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-5 shadow-sm ring-8 ring-emerald-50">
+            <CheckCircle2 size={44} className="text-emerald-600" />
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 uppercase font-display tracking-tight mb-2">
+            GİRİŞ BAŞARILI!
+          </h2>
+          <p className="text-sm font-semibold text-slate-700 mb-1">
+            Hoş geldiniz, <span className="font-bold text-slate-900">{successUser.name || successUser.email}</span>
+          </p>
+          <p className="text-xs text-slate-500 mb-6">
+            Oturumunuz açıldı. Ana sayfaya yönlendiriliyorsunuz...
+          </p>
+          <div className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-sm">
+            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <span>Ana sayfaya gidiliyor...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[75vh] flex items-center justify-center py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#fcfbf9] to-slate-100">
@@ -313,8 +368,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         )}
 
         {successMessage && (
-          <div className="mb-5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-start gap-2.5 animate-fadeIn">
-            <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+          <div className="mb-5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-bold flex items-center justify-center gap-2.5 animate-fadeIn">
+            <CheckCircle2 size={20} className="text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
@@ -389,13 +444,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Google ile Aç / Giriş Yap</span>
+                <span>{isLoading ? 'Google ile Bağlanılıyor...' : 'Google ile Aç / Giriş Yap'}</span>
               </button>
 
               {lastGoogle && (
-                <p className="text-[11px] text-center text-slate-400 mt-1">
-                  Son kullanılan: <span className="font-semibold text-slate-600">{lastGoogle.email}</span>
-                </p>
+                <div className="pt-1 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail(lastGoogle.email);
+                      setStep('google_account_confirm');
+                    }}
+                    className="text-[11px] text-slate-500 hover:text-[#ff0055] transition-colors"
+                  >
+                    Son kullanılan: <span className="font-semibold text-slate-700 underline">{lastGoogle.email}</span>
+                  </button>
+                </div>
               )}
             </div>
           </>
@@ -416,11 +480,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </p>
             </div>
 
+            {/* Resmi Google Butonu */}
+            <div ref={googleConfirmBtnRef} className="w-full flex justify-center min-h-[44px] overflow-hidden" />
+
+            {/* Tek Tıkla Giriş Yap */}
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={handleDirectGoogleConfirm}
+              className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-70 text-white font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98"
+            >
+              <span>{isLoading ? 'Giriş Yapılıyor...' : 'Hesabımla Giriş Yap'}</span>
+            </button>
+
             <button
               type="button"
               disabled={isLoading}
               onClick={handleLaunchGooglePicker}
-              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-70 text-white font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98"
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-xs hover:shadow-sm cursor-pointer active:scale-98 disabled:opacity-70"
             >
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                 <path
@@ -440,7 +517,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{isLoading ? 'Giriş Yapılıyor...' : 'Google ile Doğrula ve Giriş Yap'}</span>
+              <span>{isLoading ? 'Google ile Bağlanılıyor...' : 'Google Hesap Seçici ile Aç'}</span>
             </button>
 
             <div className="text-center pt-2">

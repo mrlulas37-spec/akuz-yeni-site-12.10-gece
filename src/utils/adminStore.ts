@@ -112,6 +112,8 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
     enabled: true,
     testMode: true, // PayTR mağaza onayı için ilk 24 saatte test ödemesi gereklidir
   },
+  shippingFee: 39.9,
+  freeShippingThreshold: 150,
 };
 
 // Global varsayılan renk paleti (Stokta var/yok & desteklenen folyo seçenekleri ile)

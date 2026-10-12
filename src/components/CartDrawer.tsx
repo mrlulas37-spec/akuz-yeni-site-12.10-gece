@@ -10,7 +10,7 @@ import {
   Truck,
   ExternalLink,
 } from 'lucide-react';
-import { CartItem } from '../types';
+import { CartItem, SiteSettings } from '../types';
 import { StickerGraphic } from './StickerGraphic';
 import { calculateItemUnitPrice } from '../utils/pricingHelper';
 
@@ -22,6 +22,7 @@ interface CartDrawerProps {
   onRemoveItem: (index: number) => void;
   onClearCart: () => void;
   onGoToCartPage: () => void;
+  siteSettings?: SiteSettings;
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({
@@ -32,6 +33,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   onRemoveItem,
   onClearCart,
   onGoToCartPage,
+  siteSettings,
 }) => {
   const [isRendered, setIsRendered] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -86,9 +88,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     0
   );
 
-  const freeShippingThreshold = 150;
+  const freeShippingThreshold = siteSettings?.freeShippingThreshold ?? 150;
+  const standardShippingFee = siteSettings?.shippingFee ?? 39.9;
   const remainingForFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
-  const shippingFee = subtotal >= freeShippingThreshold || subtotal === 0 ? 0 : 39.9;
+  const shippingFee = (subtotal >= freeShippingThreshold || subtotal === 0 || standardShippingFee === 0) ? 0 : standardShippingFee;
   const grandTotal = subtotal + shippingFee;
 
   return (
@@ -295,7 +298,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <div className="flex items-baseline justify-between">
               <div>
                 <span className="text-xs text-slate-500 font-medium">Ara Toplam:</span>
-                <p className="text-[11px] text-slate-400 font-medium">Kargo: {shippingFee === 0 ? 'Ücretsiz' : '₺39,90'}</p>
+                <p className="text-[11px] text-slate-400 font-medium">
+                  Kargo: {shippingFee === 0 ? 'Ücretsiz' : `₺${shippingFee.toFixed(2).replace('.', ',')}`}
+                </p>
               </div>
               <span className="font-price text-xl font-extrabold text-[#ff0055]">
                 ₺{grandTotal.toFixed(2).replace('.', ',')}

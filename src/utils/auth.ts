@@ -626,13 +626,49 @@ export const triggerGoogleAccountPicker = async (
 
   const g = await getGoogleObj();
 
-  // 1. Google'ın Resmi OAuth 2.0 Politikalarına Uygun Modern Token Client
-  // Google'ın yasakladığı eski "response_type=token" yerine resmi Google Identity Services (GIS) kullanılır
+  // 1. Google Identity Services ID Credential dinleyicisini de hazırla (One Tap veya resmi buton yanıtları için)
+  if (g?.accounts?.id?.initialize) {
+    try {
+      g.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (resp: any) => {
+          if (resp && resp.credential) {
+            try {
+              const base64Url = resp.credential.split('.')[1];
+              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+              const jsonPayload = decodeURIComponent(
+                atob(base64)
+                  .split('')
+                  .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                  .join('')
+              );
+              const payload = JSON.parse(jsonPayload);
+              if (payload && payload.email) {
+                const loginRes = await loginWithGoogleAccount(
+                  payload.email,
+                  payload.name || payload.given_name || payload.email.split('@')[0]
+                );
+                onSuccess(loginRes.user);
+                return;
+              }
+            } catch (e) {
+              console.warn('[JWT PARSE ERROR]', e);
+            }
+          }
+        },
+        auto_select: false,
+      });
+    } catch (err) {
+      console.warn('[GSI ID INIT FAILED]', err);
+    }
+  }
+
+  // 2. Kullanıcı butona bastığında doğrudan Google OAuth 2.0 Token Client (Popup Hesap Seçici) aç
   if (g?.accounts?.oauth2?.initTokenClient) {
     try {
       const tokenClient = g.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'email profile openid',
+        scope: 'email profile',
         prompt: 'select_account',
         callback: (resp: any) => {
           if (resp && resp.access_token) {
@@ -651,10 +687,10 @@ export const triggerGoogleAccountPicker = async (
           const errStr = typeof err === 'object' ? JSON.stringify(err) : String(err);
           if (errStr.includes('origin_mismatch') || err?.type === 'origin_mismatch') {
             onError(
-              `Google Yetki Uyarısı (origin_mismatch): Bu adres (${currentOrigin}) Google Cloud Konsolu Client ID ayarlarındaki "Yetkili JavaScript Kaynakları" listesinde kayıtlı olmalıdır. Google Cloud Konsolunda bu adresi ekleyebilir veya e-posta ile giriş yapabilirsiniz.`
+              `Google Yetki Uyarısı (origin_mismatch): Bu adres (${currentOrigin}) Google Cloud Konsolu Client ID ayarlarındaki "Yetkili JavaScript Kaynakları" listesinde kayıtlı olmalıdır.`
             );
           } else {
-            tryGISPrompt();
+            onError('Google hesap seçici açılamadı. Lütfen e-posta ile giriş yapın.');
           }
         },
       });
@@ -662,64 +698,20 @@ export const triggerGoogleAccountPicker = async (
       return;
     } catch (err: any) {
       console.warn('[GOOGLE TOKEN CLIENT FAILED]', err);
-      const errStr = String(err?.message || err);
-      if (errStr.includes('origin_mismatch')) {
-        onError(
-          `Google Yetki Uyarısı (origin_mismatch): Bu adres (${currentOrigin}) Google Cloud Konsolu Client ID ayarlarındaki "Yetkili JavaScript Kaynakları" listesinde kayıtlı olmalıdır.`
-        );
-        return;
-      }
     }
   }
 
-  // 2. Google Identity Services ID Credential / OneTap
-  function tryGISPrompt() {
-    if (g?.accounts?.id?.initialize) {
-      try {
-        g.accounts.id.initialize({
-          client_id: clientId,
-          use_fedcm_for_prompt: false,
-          callback: async (resp: any) => {
-            if (resp && resp.credential) {
-              try {
-                const base64Url = resp.credential.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(
-                  atob(base64)
-                    .split('')
-                    .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-                    .join('')
-                );
-                const payload = JSON.parse(jsonPayload);
-                if (payload && payload.email) {
-                  const loginRes = await loginWithGoogleAccount(
-                    payload.email,
-                    payload.name || payload.email.split('@')[0]
-                  );
-                  onSuccess(loginRes.user);
-                  return;
-                }
-              } catch (e) {
-                console.warn('[JWT PARSE ERROR]', e);
-              }
-            }
-          },
-          auto_select: false,
-        });
-        g.accounts.id.prompt((notification: any) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            onError('Google hesap seçici açılamadı. Lütfen e-posta adresinizi girerek devam ediniz.');
-          }
-        });
-        return;
-      } catch (err) {
-        console.warn('[GSI ID FAILED]', err);
-      }
+  // 3. Token client yoksa One Tap prompt dene
+  if (g?.accounts?.id?.prompt) {
+    try {
+      g.accounts.id.prompt();
+      return;
+    } catch (e) {
+      console.warn('[PROMPT FAILED]', e);
     }
-    onError('Google oturum açma kütüphanesi yüklenemedi. Lütfen sayfayı yenileyip tekrar deneyin.');
   }
 
-  tryGISPrompt();
+  onError('Google oturum açma kütüphanesi yüklenemedi. Lütfen sayfayı yenileyip tekrar deneyin.');
 };
 
 export const updateUserProfileData = (updated: UserProfile): void => {

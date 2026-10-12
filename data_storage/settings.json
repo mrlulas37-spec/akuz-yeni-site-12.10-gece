@@ -105,5 +105,7 @@
     "enabled": true,
     "testMode": true
   },
-  "googleClientId": "660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com"
+  "googleClientId": "660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com",
+  "shippingFee": 39.9,
+  "freeShippingThreshold": 150
 }

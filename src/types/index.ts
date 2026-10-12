@@ -117,6 +117,9 @@ export interface SiteSettings {
   paytrSettings?: PaytrConfig;
   // Google OAuth İsteğe Bağlı İstemci Kimliği (Özel alan adı için)
   googleClientId?: string;
+  // Müşterinin Ödeyeceği Kargo Ücreti ve Ücretsiz Kargo Sepet Tutarı Barajı
+  shippingFee?: number;
+  freeShippingThreshold?: number;
 }
 
 export interface Review {

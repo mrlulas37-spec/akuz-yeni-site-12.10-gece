@@ -17,7 +17,7 @@ import {
   Sparkles,
   UserCheck,
 } from 'lucide-react';
-import { CartItem, UserProfile, Order } from '../types';
+import { CartItem, UserProfile, Order, SiteSettings } from '../types';
 import { StickerGraphic } from './StickerGraphic';
 import { sendOrderPreparingEmail } from '../utils/emailService';
 import { createKargonomiShipment } from '../utils/kargonomiService';
@@ -33,6 +33,7 @@ interface CheckoutPageProps {
   onViewOrders?: () => void;
   onPlaceOrder?: (newOrder: Order) => void;
   onOpenAuth?: () => void;
+  siteSettings?: SiteSettings;
 }
 
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({
@@ -43,6 +44,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   onViewOrders,
   onPlaceOrder,
   onOpenAuth,
+  siteSettings: propSiteSettings,
 }) => {
   // Sipariş başarıyla verildi durumu
   const [orderPlaced, setOrderPlaced] = useState<Order | null>(null);
@@ -54,8 +56,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   // Üye olmadan devam et seçimi
   const [continueAsGuest, setContinueAsGuest] = useState(false);
 
-  // PayTR Sanal POS State'leri
-  const siteSettings = getStoredSiteSettings();
+  // PayTR Sanal POS State'leri ve Canlı Site Ayarları
+  const siteSettings = propSiteSettings ?? getStoredSiteSettings();
   const [isPaytrModalOpen, setIsPaytrModalOpen] = useState(false);
   const [paytrIframeUrl, setPaytrIframeUrl] = useState<string | null>(null);
   const [paytrError, setPaytrError] = useState<string | null>(null);
@@ -196,8 +198,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     (sum, item) => sum + getItemPrice(item) * item.quantity,
     0
   );
-  const freeShippingThreshold = 150;
-  const shippingFee = subtotal >= freeShippingThreshold || subtotal === 0 ? 0 : 39.9;
+  const freeShippingThreshold = siteSettings?.freeShippingThreshold ?? 150;
+  const standardShippingFee = siteSettings?.shippingFee ?? 39.9;
+  const shippingFee = (subtotal >= freeShippingThreshold || subtotal === 0 || standardShippingFee === 0) ? 0 : standardShippingFee;
   const grandTotal = subtotal + shippingFee;
 
   // PayTR Başarılı/Başarısız Dönüş Takibi

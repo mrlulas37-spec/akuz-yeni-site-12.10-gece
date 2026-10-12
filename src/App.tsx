@@ -65,6 +65,14 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
     ...INITIAL_SITE_SETTINGS,
     ...current,
     ...incoming,
+    shippingFee:
+      incoming.shippingFee !== undefined && !isNaN(Number(incoming.shippingFee))
+        ? Number(incoming.shippingFee)
+        : (current.shippingFee !== undefined ? current.shippingFee : 39.9),
+    freeShippingThreshold:
+      incoming.freeShippingThreshold !== undefined && !isNaN(Number(incoming.freeShippingThreshold))
+        ? Number(incoming.freeShippingThreshold)
+        : (current.freeShippingThreshold !== undefined ? current.freeShippingThreshold : 150),
     categories,
     whyAkuzCards,
     aboutParagraphs,
@@ -323,7 +331,31 @@ export default function App() {
     };
   }, [currentPath, currentUser?.email]);
 
+  // Giriş yapıldıktan sonra dönülecek sayfa (varsayılan '/')
+  const [returnPath, setReturnPath] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('akuz_auth_return_url') || '/';
+    } catch {
+      return '/';
+    }
+  });
+
   const navigateTo = (path: string) => {
+    // Kullanıcı giriş veya şifre sayfasına giderken geldiği sayfayı kaydet
+    if (path === '/giris' || path === '/login') {
+      if (
+        currentPath !== '/giris' &&
+        currentPath !== '/login' &&
+        currentPath !== '/hesap' &&
+        currentPath !== '/sifre-yenile' &&
+        currentPath !== '/sifremi-unuttum'
+      ) {
+        setReturnPath(currentPath);
+        try {
+          sessionStorage.setItem('akuz_auth_return_url', currentPath);
+        } catch {}
+      }
+    }
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
     }
@@ -523,7 +555,12 @@ export default function App() {
       })
       .catch((e) => console.warn('Could not fetch user orders on login', e));
 
-    navigateTo('/hesap');
+    try {
+      sessionStorage.removeItem('akuz_auth_return_url');
+    } catch {}
+
+    setReturnPath('/');
+    navigateTo('/');
   };
 
   // Hesaptan çıkış: 2 saniyelik bildirim, verileri güvenle kaydet ve çıkış yap
@@ -919,6 +956,7 @@ export default function App() {
             onToggleFavorite={handleToggleFavorite}
             onSelectProduct={handleSelectProduct}
             reviews={reviews}
+            siteSettings={siteSettings}
           />
         </main>
       ) : currentPath === '/odeme' || currentPath === '/kargo' || currentPath === '/teslimat' ? (
@@ -926,6 +964,7 @@ export default function App() {
           <CheckoutPage
             cartItems={cartItems}
             currentUser={currentUser}
+            siteSettings={siteSettings}
             onGoBackToCart={() => navigateTo('/sepet')}
             onGoHome={() => navigateTo('/')}
             onViewOrders={() => navigateTo(currentUser ? '/hesap' : '/giris')}
@@ -961,6 +1000,8 @@ export default function App() {
       ) : currentPath === '/giris' || currentPath === '/login' ? (
         <main className="flex-1">
           <LoginPage
+            currentUser={currentUser}
+            returnPath={returnPath}
             initialEmail={authPrefillEmail}
             onLoginSuccess={handleUserLoggedIn}
             onGoHome={() => navigateTo('/')}
@@ -1170,6 +1211,7 @@ export default function App() {
         onUpdateQuantity={handleUpdateCartQty}
         onRemoveItem={handleRemoveCartItem}
         onClearCart={handleClearCart}
+        siteSettings={siteSettings}
         onGoToCartPage={() => {
           setIsCartDrawerOpen(false);
           navigateTo('/sepet');

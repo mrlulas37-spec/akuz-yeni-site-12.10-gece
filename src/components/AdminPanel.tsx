@@ -1077,6 +1077,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [kargonomiSenderDistrict, setKargonomiSenderDistrict] = useState(defaultKargonomi.senderDistrict || 'Nilüfer');
   const [kargonomiCarrier, setKargonomiCarrier] = useState(defaultKargonomi.defaultCarrier || 'mng');
 
+  // Müşteri Kargo Ücreti ve Ücretsiz Kargo Sepet Tutarı Barajı
+  const [shippingFee, setShippingFee] = useState<number>(() => {
+    return siteSettings.shippingFee !== undefined ? siteSettings.shippingFee : 39.9;
+  });
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState<number>(() => {
+    return siteSettings.freeShippingThreshold !== undefined ? siteSettings.freeShippingThreshold : 150;
+  });
+
+  useEffect(() => {
+    if (siteSettings.shippingFee !== undefined) {
+      setShippingFee(siteSettings.shippingFee);
+    }
+    if (siteSettings.freeShippingThreshold !== undefined) {
+      setFreeShippingThreshold(siteSettings.freeShippingThreshold);
+    }
+  }, [siteSettings.shippingFee, siteSettings.freeShippingThreshold]);
+
   const [isTestingKargonomi, setIsTestingKargonomi] = useState(false);
   const [kargonomiTestResult, setKargonomiTestResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [creatingShipmentOrderId, setCreatingShipmentOrderId] = useState<string | null>(null);
@@ -1239,7 +1256,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleSaveShippingFee = () => {
+    const fee = Math.max(0, isNaN(Number(shippingFee)) ? 0 : Number(shippingFee));
+    const threshold = Math.max(0, isNaN(Number(freeShippingThreshold)) ? 0 : Number(freeShippingThreshold));
+
+    onUpdateSiteSettings({
+      ...siteSettings,
+      shippingFee: fee,
+      freeShippingThreshold: threshold,
+    });
+    showNotification(
+      `Müşteri kargo ücreti ayarları kaydedildi! (Standart Kargo: ${fee === 0 ? 'Ücretsiz' : `₺${fee.toFixed(2).replace('.', ',')}`}, Ücretsiz Kargo Limiti: ₺${threshold.toFixed(2).replace('.', ',')})`
+    );
+  };
+
   const handleSaveKargonomi = () => {
+    const fee = Math.max(0, isNaN(Number(shippingFee)) ? 0 : Number(shippingFee));
+    const threshold = Math.max(0, isNaN(Number(freeShippingThreshold)) ? 0 : Number(freeShippingThreshold));
+
     const updatedKargonomi: KargonomiConfig = {
       apiToken: kargonomiToken.trim(),
       apiUrl: kargonomiUrl.trim() || 'https://app.kargonomi.com.tr/api/v1',
@@ -1255,9 +1289,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     onUpdateSiteSettings({
       ...siteSettings,
+      shippingFee: fee,
+      freeShippingThreshold: threshold,
       kargonomiSettings: updatedKargonomi,
     });
-    showNotification('Kargonomi entegrasyon ayarları başarıyla kaydedildi.');
+    showNotification('Kargo ücreti ve Kargonomi entegrasyon ayarları başarıyla kaydedildi.');
   };
 
   const handleTestKargonomiToken = async () => {
@@ -1405,7 +1441,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {activeTab === 'categories' && 'Kategori Yuvarlakları'}
               {activeTab === 'orders' && 'Siparişler'}
               {activeTab === 'paytr' && 'PayTR Sanal POS'}
-              {activeTab === 'kargonomi' && 'Kargonomi Kargo'}
+              {activeTab === 'kargonomi' && 'Kargo & Kargonomi'}
               {activeTab === 'email-smtp' && 'E-posta & SMTP'}
               {activeTab === 'users' && 'Kullanıcılar'}
               {activeTab === 'why-akuz' && 'Neden Akuz'}
@@ -1550,12 +1586,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <div className="flex items-center gap-2.5">
                 <Truck size={16} className={activeTab === 'kargonomi' ? 'text-white' : 'text-blue-600'} />
-                <span>Kargonomi Kargo</span>
+                <span>Kargo & Kargonomi</span>
               </div>
               <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
                 activeTab === 'kargonomi' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'
               }`}>
-                API
+                Ücret & API
               </span>
             </button>
 
@@ -3362,10 +3398,187 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* ========================================================= */}
-          {/* 10. KARGONOMİ KARGO ENTEGRASYONU */}
+          {/* 10. KARGO ÜCRETİ & KARGONOMİ ENTEGRASYONU */}
           {/* ========================================================= */}
           {activeTab === 'kargonomi' && (
             <div className="space-y-6">
+              {/* ========================================================= */}
+              {/* 1. MÜŞTERİNİN ÖDEYECEĞİ KARGO ÜCRETİ & ÜCRETSİZ KARGO LİMİTİ */}
+              {/* ========================================================= */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-2xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
+                        <Truck size={18} />
+                      </div>
+                      <h3 className="text-base font-black uppercase text-slate-900">
+                        Müşteri Kargo Ücreti ve Ücretsiz Kargo Limiti
+                      </h3>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Müşterilerin sepet ve ödeme adımında ödeyeceği standart kargo tutarını ve ücretsiz kargo barajını buradan belirleyin.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold rounded-xl flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Geçerli Kargo: {Number(shippingFee) === 0 ? 'Ücretsiz (0 ₺)' : `₺${Number(shippingFee).toFixed(2).replace('.', ',')}`}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Standart Kargo Ücreti */}
+                  <div className="space-y-3 bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
+                    <div>
+                      <label className="text-xs font-black uppercase text-slate-800 block mb-1">
+                        Standart Kargo Ücreti (₺)
+                      </label>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        Müşterinin siparişine eklenecek kargo bedeli. <strong className="text-slate-800">0</strong> yazarsanız tüm siparişler kargo bedava olur.
+                      </p>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={shippingFee}
+                        onChange={(e) => setShippingFee(parseFloat(e.target.value) || 0)}
+                        placeholder="39.90"
+                        className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                      />
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₺</span>
+                    </div>
+
+                    {/* Hızlı Seçim Butonları */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Hızlı Seçenekler:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: 'Ücretsiz (0 ₺)', val: 0 },
+                          { label: '29.90 ₺', val: 29.9 },
+                          { label: '39.90 ₺', val: 39.9 },
+                          { label: '49.90 ₺', val: 49.9 },
+                          { label: '59.90 ₺', val: 59.9 },
+                          { label: '79.90 ₺', val: 79.9 },
+                        ].map((btn) => (
+                          <button
+                            key={btn.label}
+                            type="button"
+                            onClick={() => setShippingFee(btn.val)}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                              Number(shippingFee) === btn.val
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {btn.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ücretsiz Kargo Sepet Barajı */}
+                  <div className="space-y-3 bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
+                    <div>
+                      <label className="text-xs font-black uppercase text-slate-800 block mb-1">
+                        Ücretsiz Kargo Sepet Barajı (₺)
+                      </label>
+                      <p className="text-[11px] text-slate-500 mb-2">
+                        Sepet tutarı bu tutara veya üzerine ulaştığında kargo ücreti 0 ₺ yapılır ve müşteriye <strong className="text-emerald-700">"Kargo Bedava"</strong> avantajı sunulur.
+                      </p>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={freeShippingThreshold}
+                        onChange={(e) => setFreeShippingThreshold(parseFloat(e.target.value) || 0)}
+                        placeholder="150"
+                        className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                      />
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">₺</span>
+                    </div>
+
+                    {/* Hızlı Seçim Butonları */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Hızlı Seçenekler:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: '100 ₺', val: 100 },
+                          { label: '150 ₺', val: 150 },
+                          { label: '200 ₺', val: 200 },
+                          { label: '250 ₺', val: 250 },
+                          { label: '500 ₺', val: 500 },
+                          { label: 'Limitsiz (Hep Ücretli)', val: 999999 },
+                        ].map((btn) => (
+                          <button
+                            key={btn.label}
+                            type="button"
+                            onClick={() => setFreeShippingThreshold(btn.val)}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                              Number(freeShippingThreshold) === btn.val
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {btn.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Canlı Kural Önizleme Kutusu */}
+                <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200 text-xs text-blue-900 flex items-start gap-2.5">
+                  <Truck size={18} className="text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-black uppercase tracking-wider text-[11px] block text-blue-950 mb-0.5">
+                      Canlı Müşteri Kuralı Önizlemesi:
+                    </span>
+                    <p className="font-medium leading-relaxed">
+                      {Number(shippingFee) === 0 ? (
+                        <span>Tüm sepet tutarlarında kargo <strong className="text-emerald-700 font-bold">TAMAMEN ÜCRETSİZ</strong> olarak müşteriye sunulur.</span>
+                      ) : Number(freeShippingThreshold) >= 999999 ? (
+                        <span>Müşteri sepet tutarından bağımsız olarak her siparişte <strong className="font-bold">₺{Number(shippingFee).toFixed(2).replace('.', ',')}</strong> kargo ücreti öder.</span>
+                      ) : (
+                        <span>
+                          Sepet tutarı <strong>₺{Number(freeShippingThreshold).toFixed(2).replace('.', ',')}</strong> altında olan siparişlerde kargo ücreti <strong className="font-bold">₺{Number(shippingFee).toFixed(2).replace('.', ',')}</strong> olarak sepete ve ödemeye yansıtılır. 
+                          <strong> ₺{Number(freeShippingThreshold).toFixed(2).replace('.', ',')} ve üzeri</strong> sepetlerde kargo müşteriye <strong className="text-emerald-700 font-bold">ÜCRETSİZ</strong> sunulur.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Kaydet Butonu */}
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveShippingFee}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black cursor-pointer shadow-xs transition-colors flex items-center gap-1.5 active:scale-98"
+                  >
+                    <Check size={16} />
+                    <span>Müşteri Kargo Ücreti Ayarlarını Kaydet</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ========================================================= */}
+              {/* 2. KARGONOMİ API KARGO ENTEGRASYONU */}
+              {/* ========================================================= */}
               <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-2xs space-y-6">
                 
                 {/* Header */}
