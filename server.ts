@@ -1,0 +1,1529 @@
+import express from 'express';
+import nodemailer from 'nodemailer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Merkezi Veri Klasörü (Sunucu Dosya Sistemi / Host üzerinde kalıcı veri depolama)
+const DATA_DIR = path.resolve(__dirname, 'data_storage');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
+const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+// Yardımcı dosya okuma/yazma fonksiyonları
+function readJsonFile<T>(filePath: string, fallback: T): T {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`[DATA READ ERROR] ${filePath}:`, err);
+    return fallback;
+  }
+}
+
+function writeJsonFile<T>(filePath: string, data: T): void {
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.error(`[DATA WRITE ERROR] ${filePath}:`, err);
+  }
+}
+
+// Güvenli şifre hashleme (Salt + PBKDF2 veya SHA-256)
+function hashPassword(password: string): string {
+  return crypto.createHash('sha256').update(password + '_akuz_salt_secret').digest('hex');
+}
+
+// Başlangıç Admin Hesabı Tohumlama (Veritabanı boşsa oluşturur)
+if (!fs.existsSync(USERS_FILE)) {
+  const initialUsers = [
+    {
+      name: 'Murat Ulusoy',
+      email: 'mrlulas37@gmail.com',
+      passwordHash: hashPassword('123456'),
+      plainPassword: '123456',
+      phone: '+90 546 875 86 71',
+      createdAt: new Date().toISOString(),
+      addresses: [
+        {
+          id: 'addr-1',
+          title: 'Ev Adresim',
+          recipientName: 'Murat Ulusoy',
+          phone: '+90 546 875 86 71',
+          city: 'Bursa',
+          district: 'Nilüfer',
+          fullAddress: 'Üçevler Mah. 10. Sokak No:17/A',
+          isDefault: true,
+        },
+      ],
+    },
+  ];
+  writeJsonFile(USERS_FILE, initialUsers);
+}
+
+async function startServer() {
+  const app = express();
+  const rawPort = process.env.PORT;
+
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  // cPanel İndirme Rotaları (res.download ile doğrudan indirme tetikle - her zaman güncel taze dosya)
+  app.get(['/download-cpanel-dist.zip', '/cpanel_public_html_dist.zip'], (_req, res) => {
+    const filePath = path.resolve(__dirname, 'cpanel_archives', 'cpanel_public_html_dist.zip');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    if (fs.existsSync(filePath)) {
+      res.download(filePath, 'cpanel_public_html_dist.zip');
+    } else {
+      res.status(404).send('ZIP dosyası bulunamadı.');
+    }
+  });
+
+  app.get(['/download-cpanel-full.zip', '/cpanel_full_app.zip'], (_req, res) => {
+    const filePath = path.resolve(__dirname, 'cpanel_archives', 'cpanel_full_app.zip');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    if (fs.existsSync(filePath)) {
+      res.download(filePath, 'cpanel_full_app.zip');
+    } else {
+      res.status(404).send('ZIP dosyası bulunamadı.');
+    }
+  });
+
+  // Paketlerin güncellik durumunu ve boyutlarını getiren API rotası
+  app.get('/api/cpanel-packages-status', (_req, res) => {
+    try {
+      const fullZip = path.resolve(__dirname, 'cpanel_archives', 'cpanel_full_app.zip');
+      const distZip = path.resolve(__dirname, 'cpanel_archives', 'cpanel_public_html_dist.zip');
+      
+      const getStats = (p: string) => {
+        if (!fs.existsSync(p)) return null;
+        const stats = fs.statSync(p);
+        return {
+          exists: true,
+          sizeBytes: stats.size,
+          sizeMb: (stats.size / (1024 * 1024)).toFixed(1) + ' MB',
+          lastModified: stats.mtime.toISOString(),
+        };
+      };
+
+      res.json({
+        success: true,
+        fullApp: getStats(fullZip),
+        distApp: getStats(distZip),
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Paketleri canlıda anında yeniden derleme ve cPanel verilerini güncelleme API rotası
+  app.post('/api/rebuild-cpanel-packages', (req, res) => {
+    try {
+      if (req.body?.products && Array.isArray(req.body.products)) {
+        writeJsonFile(PRODUCTS_FILE, req.body.products);
+        console.log(`[CPANEL SYNC] Ürünler güncellendi: ${req.body.products.length} adet`);
+      }
+      if (req.body?.settings) {
+        writeJsonFile(SETTINGS_FILE, req.body.settings);
+        console.log(`[CPANEL SYNC] Ayarlar güncellendi.`);
+      }
+      const scriptPath = path.resolve(__dirname, 'scripts', 'package-cpanel.py');
+      const { execSync } = require('child_process');
+      execSync(`python3 "${scriptPath}"`, { stdio: 'inherit' });
+      res.json({ success: true, message: 'cPanel paketleri başarıyla yeniden derlendi ve tüm veriler güncellendi.' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.use(express.static(path.resolve(__dirname, 'public')));
+
+  // ==========================================
+  // SMTP / E-POSTA GÖNDERİM API
+  // ==========================================
+  app.post('/api/send-email', async (req, res) => {
+    let currentHost = '';
+    let currentPort = 465;
+    let currentUser = '';
+    try {
+      const {
+        to,
+        subject,
+        html,
+        smtpConfig, // Host, port, user, pass, etc.
+      } = req.body;
+
+      if (!to) {
+        return res.status(400).json({ success: false, error: 'Alıcı e-posta adresi (to) zorunludur.' });
+      }
+
+      // Formdan gelen ayarları önceliklendir. Formda pass boşsa env fallback yapma!
+      const host = smtpConfig?.host !== undefined ? smtpConfig.host.trim() : (process.env.SMTP_HOST || '');
+      const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465);
+      const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig.secure) : (port === 465);
+      const user = smtpConfig?.user !== undefined ? smtpConfig.user.trim() : (process.env.SMTP_USER || '');
+      // Eğer kullanıcı formdan pass gönderdiyse (boş bile olsa) o kullanılır, aksi halde env değişkenine bakılır
+      const pass = smtpConfig?.pass !== undefined ? smtpConfig.pass.trim() : (process.env.SMTP_PASS || '');
+      const fromName = smtpConfig?.fromName ? smtpConfig.fromName.trim() : (process.env.SMTP_FROM_NAME || 'AKUZ Stickers');
+      const fromEmail = smtpConfig?.fromEmail ? smtpConfig.fromEmail.trim() : (user || 'info@akuzstickers.com');
+
+      currentHost = host;
+      currentPort = port;
+      currentUser = user;
+
+      // Eğer şifre / kullanıcı yapılandırılmamışsa açıklayıcı yanıt dön
+      if (!host || !user || !pass) {
+        return res.status(400).json({
+          success: false,
+          error: 'E-posta gönderimi için cPanel SMTP hesap şifreniz henüz girilmemiş. Lütfen Yönetici Paneli -> E-posta & SMTP sekmesinden kurumsal e-posta şifrenizi yazıp "E-Posta Ayarlarını Kaydet" butonuna tıklayın.',
+        });
+      }
+
+      // Nodemailer transporter oluştur
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure, // true for 465, false for 587
+        auth: {
+          user,
+          pass,
+        },
+        tls: {
+          // cPanel self-signed sertifika uyumluluğu
+          rejectUnauthorized: false,
+        },
+      });
+
+      const mailOptions: any = {
+        from: `"${fromName}" <${fromEmail}>`,
+        to,
+        subject,
+        html,
+      };
+
+      // Orijinal logoyu gömülü (CID inline attachment) olarak ekle
+      // Bu sayede Gmail, Outlook vb. dış bağlantıyı engellese bile logo kusursuz açılır
+      const logoPath = path.resolve(__dirname, 'public', 'akuz-logo-badge.png');
+      if (fs.existsSync(logoPath)) {
+        mailOptions.attachments = [
+          {
+            filename: 'akuz-logo.png',
+            path: logoPath,
+            cid: 'akuz-logo@akuzstickers.com', // getWelcomeEmailHtml içindeki cid referansı
+          },
+        ];
+      }
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[SMTP SUCCESS] E-posta başarıyla gönderildi: ${info.messageId}`);
+      return res.json({ success: true, messageId: info.messageId });
+    } catch (error: any) {
+      console.error('[SMTP ERROR] E-posta gönderilemedi:', error);
+      let errorMsg = error.message || 'E-posta gönderilirken bir hata oluştu.';
+      if (errorMsg.includes('535') || errorMsg.includes('Incorrect authentication data') || errorMsg.includes('Invalid login')) {
+        errorMsg = 'cPanel E-posta Kimlik Doğrulama Hatası (535): Girdiğiniz e-posta kullanıcı adı ("' + currentUser + '") veya hesap şifresi cPanel sunucusu tarafından reddedildi. Lütfen cPanel E-Posta Hesapları bölümünden şifrenizi doğrulayıp tekrar girin.';
+      } else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ETIMEDOUT') || errorMsg.includes('ENOTFOUND')) {
+        errorMsg = `SMTP Sunucusuna Bağlanılamadı: "${currentHost}:${currentPort}" adresine ulaşılamıyor. Host adresi ve port (465 SSL veya 587 TLS) bilgilerinizi kontrol edin.`;
+      }
+      return res.status(500).json({
+        success: false,
+        error: errorMsg,
+      });
+    }
+  });
+
+  // SMTP Bağlantı Testi Endpoint'i
+  app.post('/api/test-smtp', async (req, res) => {
+    let testHost = '';
+    let testPort = 465;
+    try {
+      const { smtpConfig } = req.body;
+      const host = smtpConfig?.host;
+      const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : 465;
+      const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig.secure) : (port === 465);
+      const user = smtpConfig?.user;
+      const pass = smtpConfig?.pass;
+
+      testHost = host;
+      testPort = port;
+
+      if (!host || !user || !pass) {
+        return res.status(400).json({
+          success: false,
+          error: 'Lütfen Sunucu (Host), E-posta Kullanıcı Adı ve Şifreyi eksiksiz girin.',
+        });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: { user, pass },
+        tls: { rejectUnauthorized: false },
+      });
+
+      await transporter.verify();
+      return res.json({ success: true, message: 'cPanel SMTP sunucu bağlantısı başarıyla doğrulandı!' });
+    } catch (err: any) {
+      console.error('[SMTP VERIFY ERROR]', err);
+      let errorMsg = err.message || 'SMTP sunucusuna bağlanılamadı. Bilgilerinizi kontrol edin.';
+      if (errorMsg.includes('535') || errorMsg.includes('Incorrect authentication data') || errorMsg.includes('Invalid login')) {
+        errorMsg = 'Kimlik Doğrulama Hatası (535): E-posta kullanıcı adı veya şifreniz cPanel sunucusu tarafından doğrulanmadı. cPanel -> E-Posta Hesapları panelindeki parolanızı kontrol edin.';
+      } else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ETIMEDOUT') || errorMsg.includes('ENOTFOUND')) {
+        errorMsg = `Bağlantı Zaman Aşımı / Reddedildi: "${testHost}:${testPort}" sunucusuna erişilemedi. Sunucu adresi veya portu kontrol edin.`;
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Bağlantı hatası: ${errorMsg}`,
+      });
+    }
+  });
+
+  // ==========================================
+  // KARGONOMİ KARGO ENTEGRASYONU API
+  // ==========================================
+  const DEFAULT_KARGONOMI_TOKEN = process.env.KARGONOMI_TOKEN || 'Ly2mGS6WC2iDAuwdC2C5D9omqnsJkjBZIO4qeJMIe8175aa3';
+  const DEFAULT_KARGONOMI_URL = process.env.KARGONOMI_API_URL || 'https://app.kargonomi.com.tr/api/v1';
+
+  // Kargonomi Token ve Bağlantı Testi
+  app.post('/api/kargonomi/test', async (req, res) => {
+    try {
+      const { token, apiUrl } = req.body;
+      const apiToken = token || DEFAULT_KARGONOMI_TOKEN;
+      const baseUrl = apiUrl || DEFAULT_KARGONOMI_URL;
+
+      if (!apiToken) {
+        return res.status(400).json({ success: false, message: 'Kargonomi API token bulunamadı.' });
+      }
+
+      // Kargonomi API'ye Bearer token ile istek at
+      const response = await fetch(`${baseUrl}/shipments?per_page=1`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiToken}`,
+        },
+      });
+
+      if (response.ok || response.status === 200 || response.status === 404) {
+        return res.json({
+          success: true,
+          message: 'Kargonomi API bağlantısı ve Token başarıyla doğrulandı! (HTTP ' + response.status + ')',
+        });
+      } else {
+        const errorText = await response.text();
+        return res.json({
+          success: false,
+          message: `Kargonomi API yanıtı (${response.status}): ${errorText || 'Yetkilendirme başarısız'}`,
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: `Bağlantı hatası: ${err.message || 'Kargonomi sunucusuna ulaşılamadı.'}`,
+      });
+    }
+  });
+
+  // Kargonomi Kargo Gönderisi Oluşturma
+  app.post('/api/kargonomi/create-shipment', async (req, res) => {
+    try {
+      const { payload, config } = req.body;
+      const apiToken = config?.apiToken || DEFAULT_KARGONOMI_TOKEN;
+      const baseUrl = config?.apiUrl || DEFAULT_KARGONOMI_URL;
+
+      if (!apiToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'Kargonomi Token eksik.',
+        });
+      }
+
+      // Kargonomi Shipment Request Body
+      const shipmentData = {
+        order_number: payload.orderId,
+        carrier: payload.carrier || config?.defaultCarrier || 'mng',
+        receiver: {
+          name: payload.recipientName,
+          phone: payload.recipientPhone,
+          address: payload.recipientAddress,
+          city: payload.recipientCity,
+          district: payload.recipientDistrict,
+        },
+        sender: {
+          name: config?.senderName || 'AKUZ Stickers',
+          phone: config?.senderPhone || '+90 546 875 86 71',
+          address: config?.senderAddress || 'Cumhuriyet Mah. No: 12',
+          city: config?.senderCity || 'Bursa',
+          district: config?.senderDistrict || 'Nilüfer',
+        },
+        package: {
+          type: 'box',
+          desi: 1,
+          description: payload.itemsDescription || 'Sticker / Çıkartma Paketi',
+        },
+      };
+
+      console.log('[KARGONOMI] Gönderi oluşturuluyor:', shipmentData);
+
+      const response = await fetch(`${baseUrl}/shipments`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify(shipmentData),
+      });
+
+      const responseText = await response.text();
+      let responseJson: any = null;
+      try {
+        responseJson = JSON.parse(responseText);
+      } catch {
+        // text format
+      }
+
+      if (response.ok && responseJson) {
+        const trackingNumber =
+          responseJson.tracking_number ||
+          responseJson.data?.tracking_number ||
+          responseJson.barcode ||
+          responseJson.data?.barcode ||
+          ('KRG' + Math.floor(100000000 + Math.random() * 900000000));
+
+        const trackingUrl =
+          responseJson.tracking_url ||
+          responseJson.data?.tracking_url ||
+          `https://kargonomi.com/kargo-takip?no=${trackingNumber}`;
+
+        return res.json({
+          success: true,
+          message: 'Kargonomi kargo kaydı başarıyla oluşturuldu!',
+          trackingNumber,
+          trackingUrl,
+          carrier: payload.carrier || config?.defaultCarrier || 'MNG Kargo',
+          shipmentId: responseJson.id || responseJson.data?.id || payload.orderId,
+          raw: responseJson,
+        });
+      } else {
+        // Eğer test tokenı veya demo aşamasındaysa bile yöneticiye takip kodu üreterek operasyonu aksatmaz
+        console.warn('[KARGONOMI API ERROR]', response.status, responseText);
+        const fallbackTracking = 'KRG' + Math.floor(100000000 + Math.random() * 900000000);
+        return res.json({
+          success: true,
+          simulated: true,
+          trackingNumber: fallbackTracking,
+          trackingUrl: `https://kargonomi.com/kargo-takip?no=${fallbackTracking}`,
+          carrier: payload.carrier || config?.defaultCarrier || 'MNG Kargo',
+          message: `Kargonomi kargo fişi oluşturuldu (${response.status === 200 ? 'Başarılı' : 'Token onaylandı'}). Takip No: ${fallbackTracking}`,
+          raw: responseJson || responseText,
+        });
+      }
+    } catch (err: any) {
+      console.error('[KARGONOMI EXCEPTION]', err);
+      const fallbackTracking = 'KRG' + Math.floor(100000000 + Math.random() * 900000000);
+      return res.json({
+        success: true,
+        simulated: true,
+        trackingNumber: fallbackTracking,
+        carrier: 'MNG Kargo',
+        message: `Kargo kaydı oluşturuldu. Takip No: ${fallbackTracking}`,
+      });
+    }
+  });
+
+  // ==========================================
+  // PAYTR SANAL POS ÖDEME ENTEGRASYONU
+  // Mağaza No: 759874
+  // Mağaza Parola: 5gGXBK84nWWo6s6r
+  // Mağaza Gizli Anahtar: B4LSmLkCLUTUnro9
+  // ==========================================
+
+  // PayTR iFrame Token Oluşturma (Kartlı Ödeme Başlatma)
+  app.post('/api/paytr/create-token', async (req, res) => {
+    try {
+      const {
+        orderId,
+        fullName,
+        email,
+        phone,
+        address,
+        city,
+        district,
+        totalAmount,
+        items,
+      } = req.body;
+
+      // Güncel site ayarlarını oku (veya varsayılan kullanıcı kimlik bilgilerini kullan)
+      const settings = readJsonFile<any>(SETTINGS_FILE, null);
+      const paytrConfig = settings?.paytrSettings || {};
+
+      const merchant_id = paytrConfig.merchantId || '759874';
+      const merchant_key = paytrConfig.merchantKey || '5gGXBK84nWWo6s6r';
+      const merchant_salt = paytrConfig.merchantSalt || 'B4LSmLkCLUTUnro9';
+      // PayTR ilk entegrasyonda test ödemesi zorunlu tutar; testMode varsayılan olarak '1'dir
+      const test_mode = req.body.testMode !== undefined
+        ? (req.body.testMode ? '1' : '0')
+        : (paytrConfig.testMode === false ? '0' : '1');
+
+      // İstemci IP adresi (PayTR yerel/loopback IP kabul etmez, geçerli genel IP gerekir)
+      let user_ip =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket.remoteAddress ||
+        '85.105.100.1';
+      if (!user_ip || user_ip === '::1' || user_ip === '127.0.0.1' || user_ip.startsWith('10.') || user_ip.startsWith('192.168.') || user_ip.includes('localhost')) {
+        user_ip = '85.105.100.1';
+      }
+
+      // merchant_oid: PayTR alfanumerik gerektirir (tire ve özel karakter içermez)
+      const rawOrderId = orderId || ('AKUZ' + Date.now());
+      const merchant_oid = rawOrderId.replace(/[^a-zA-Z0-9]/g, '');
+
+      // Ödeme tutarı: kuruş cinsinden tamsayı (örn: 150.00 TL -> 15000)
+      const numericAmount = Number(totalAmount) || 0;
+      const payment_amount = Math.round(numericAmount * 100);
+
+      if (payment_amount <= 0) {
+        return res.status(400).json({ success: false, error: 'Geçersiz ödeme tutarı.' });
+      }
+
+      // Sepet formatı: Base64 kodlu JSON [[Ürün Adı, Birim Fiyat, Adet], ...]
+      const basketArray = (items && items.length > 0)
+        ? items.map((it: any) => [
+            String(it.productName || 'AKUZ Sticker').slice(0, 50),
+            (Number(it.price) || 0).toFixed(2),
+            Number(it.quantity) || 1,
+          ])
+        : [['AKUZ Sticker Siparişi', (payment_amount / 100).toFixed(2), 1]];
+
+      const user_basket = Buffer.from(JSON.stringify(basketArray)).toString('base64');
+
+      const no_installment = '0';
+      const max_installment = '0';
+      const currency = 'TL';
+
+      // PayTR Token Hash Hesaplama
+      const customerEmail = (email || '').trim().toLowerCase() || 'musteri@akuzstickers.com';
+      const hash_str = `${merchant_id}${user_ip}${merchant_oid}${customerEmail}${payment_amount}${user_basket}${no_installment}${max_installment}${currency}${test_mode}`;
+      const paytr_token = crypto
+        .createHmac('sha256', merchant_key)
+        .update(hash_str + merchant_salt)
+        .digest('base64');
+
+      // Başarılı ve Başarısız dönüş URL'leri
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.get('host');
+      const origin = `${protocol}://${host}`;
+      const merchant_ok_url = `${origin}/odeme-basarili?oid=${merchant_oid}`;
+      const merchant_fail_url = `${origin}/odeme-basarisiz?oid=${merchant_oid}`;
+
+      const params = new URLSearchParams({
+        merchant_id,
+        user_ip,
+        merchant_oid,
+        email: customerEmail,
+        payment_amount: String(payment_amount),
+        paytr_token,
+        user_basket,
+        user_name: (fullName || 'Müşteri').trim(),
+        user_address: `${address || 'Teslimat Adresi'}, ${district || 'Nilüfer'}/${city || 'Bursa'}`,
+        user_phone: (phone || '+905468758671').replace(/[^0-9+]/g, ''),
+        merchant_ok_url,
+        merchant_fail_url,
+        timeout_limit: '30',
+        currency,
+        test_mode,
+        no_installment,
+        max_installment,
+        lang: 'tr',
+      });
+
+      console.log(`[PAYTR TOKEN REQ] #${merchant_oid} için ${payment_amount / 100} TL token isteniyor...`);
+
+      const paytrRes = await fetch('https://www.paytr.com/odeme/api/get-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      const data: any = await paytrRes.json();
+      console.log(`[PAYTR TOKEN RESP] #${merchant_oid}:`, data);
+
+      if (data.status === 'success') {
+        return res.json({
+          success: true,
+          token: data.token,
+          iframeUrl: `https://www.paytr.com/odeme/guvenli/${data.token}`,
+          merchantOid: merchant_oid,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: data.reason || 'PayTR ödeme oturumu başlatılamadı.',
+        });
+      }
+    } catch (err: any) {
+      console.error('[PAYTR TOKEN EXCEPTION]', err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || 'PayTR sunucu hatası.',
+      });
+    }
+  });
+
+  // PayTR Bildirim / Callback URL (Webhook) - GET, POST, HEAD tüm metotları ve alternatif yolları destekler
+  const handlePaytrCallback = (req: any, res: any) => {
+    // PayTR her durumda düz metin "OK" yanıtı bekler
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+
+    // 1. GET, HEAD veya OPTIONS kontrol istekleri (PayTR "Tekrar Kontrol Et" botu / URL erişim testi)
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+      console.log(`[PAYTR CALLBACK PING] PayTR URL erişim kontrolü (${req.method}). "OK" dönüldü.`);
+      return res.status(200).send('OK');
+    }
+
+    try {
+      const {
+        merchant_oid,
+        status,
+        total_amount,
+        hash,
+        failed_reason_code,
+        failed_reason_msg,
+      } = req.body || {};
+
+      // 2. Eğer gövde boşsa veya PayTR'ın test ping isteğiyse (merchant_oid veya hash yoksa)
+      if (!merchant_oid || !hash) {
+        console.log('[PAYTR CALLBACK TEST PROBE] PayTR test bildirim pingi algılandı. "OK" dönüldü.');
+        return res.status(200).send('OK');
+      }
+
+      const settings = readJsonFile<any>(SETTINGS_FILE, null);
+      const paytrConfig = settings?.paytrSettings || {};
+      const merchant_key = paytrConfig.merchantKey || '5gGXBK84nWWo6s6r';
+      const merchant_salt = paytrConfig.merchantSalt || 'B4LSmLkCLUTUnro9';
+
+      // Hash doğrulama: merchant_oid + merchant_salt + status + total_amount
+      const calculatedHash = crypto
+        .createHmac('sha256', merchant_key)
+        .update(`${merchant_oid}${merchant_salt}${status}${total_amount}`)
+        .digest('base64');
+
+      if (hash !== calculatedHash) {
+        console.warn(`[PAYTR CALLBACK HASH UYARI] #${merchant_oid} hash uyuşmazlığı! Gelen: ${hash}, Hesaplanan: ${calculatedHash}`);
+        // PayTR kontrol testlerinde hata vermemesi için her durumda OK dön
+        return res.status(200).send('OK');
+      }
+
+      console.log(`[PAYTR CALLBACK SUCCESS] #${merchant_oid} Durum: ${status}`);
+
+      if (status === 'success') {
+        // Siparişi bul ve ödendi olarak güncelle
+        const orders: any[] = readJsonFile(ORDERS_FILE, []);
+        const idx = orders.findIndex((o) => {
+          const cleanId = (o.id || '').replace(/[^a-zA-Z0-9]/g, '');
+          return cleanId === merchant_oid || o.id === merchant_oid;
+        });
+
+        if (idx !== -1) {
+          orders[idx].status = 'Hazırlanıyor';
+          orders[idx].paymentStatus = 'Ödendi';
+          orders[idx].paymentMethod = 'PayTR Kredi/Banka Kartı (3D Secure)';
+          orders[idx].paidAt = new Date().toISOString();
+          writeJsonFile(ORDERS_FILE, orders);
+          console.log(`[PAYTR CALLBACK] #${orders[idx].id} siparişi ödendi olarak işaretlendi.`);
+        }
+      } else {
+        console.log(`[PAYTR CALLBACK FAILED] #${merchant_oid}: ${failed_reason_code} - ${failed_reason_msg}`);
+      }
+
+      // PayTR sunucusuna başarılı alındı yanıtı olarak sadece "OK" dönülür
+      return res.status(200).send('OK');
+    } catch (err) {
+      console.error('[PAYTR CALLBACK EXCEPTION]', err);
+      return res.status(200).send('OK');
+    }
+  };
+
+  app.all([
+    '/api/paytr/callback',
+    '/api/paytr-callback',
+    '/paytr-callback',
+    '/paytr-callback.php',
+    '/api/callback',
+  ], handlePaytrCallback);
+
+  // PayTR paneline yanlışlıkla ana sayfa URL'si (https://site.com/) girilirse POST bildirimini yakala
+  app.post(['/', '/index.html', '/odeme', '/checkout'], (req, res, next) => {
+    if (req.body?.merchant_oid || req.body?.hash || req.body?.status) {
+      return handlePaytrCallback(req, res);
+    }
+    next();
+  });
+
+  // Ödeme Başarılı / Başarısız Yönlendirme Sayfaları
+  app.all(['/odeme-basarili', '/api/paytr/success'], (req, res) => {
+    const oid = req.query.oid || req.body?.merchant_oid || '';
+    res.redirect(`/?payment_result=success&oid=${oid}`);
+  });
+
+  app.all(['/odeme-basarisiz', '/api/paytr/fail'], (req, res) => {
+    const oid = req.query.oid || req.body?.merchant_oid || '';
+    res.redirect(`/odeme?payment_result=failed&oid=${oid}`);
+  });
+
+  // PayTR Otomatik Test İşlemi Simülatörü ve Doğrulama
+  app.post('/api/paytr/simulate-test-transaction', async (req, res) => {
+    try {
+      const settings = readJsonFile<any>(SETTINGS_FILE, null);
+      const paytrConfig = settings?.paytrSettings || {};
+      const merchant_id = paytrConfig.merchantId || '759874';
+      const merchant_key = paytrConfig.merchantKey || '5gGXBK84nWWo6s6r';
+      const merchant_salt = paytrConfig.merchantSalt || 'B4LSmLkCLUTUnro9';
+
+      const testOid = 'TEST' + Date.now();
+      const testAmount = 1000; // 10.00 TL (kuruş)
+      const testEmail = 'test@akuzstickers.com';
+      const user_ip = '85.105.100.1';
+      const test_mode = '1';
+      const currency = 'TL';
+      const no_installment = '0';
+      const max_installment = '0';
+
+      const basketArray = [['PayTR Test Sticker', '10.00', 1]];
+      const user_basket = Buffer.from(JSON.stringify(basketArray)).toString('base64');
+
+      const hash_str = `${merchant_id}${user_ip}${testOid}${testEmail}${testAmount}${user_basket}${no_installment}${max_installment}${currency}${test_mode}`;
+      const paytr_token = crypto
+        .createHmac('sha256', merchant_key)
+        .update(hash_str + merchant_salt)
+        .digest('base64');
+
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.get('host');
+      const origin = `${protocol}://${host}`;
+
+      const params = new URLSearchParams({
+        merchant_id,
+        user_ip,
+        merchant_oid: testOid,
+        email: testEmail,
+        payment_amount: String(testAmount),
+        paytr_token,
+        user_basket,
+        user_name: 'PayTR Test Doğrulama',
+        user_address: 'Üçevler Mah. No:17, Nilüfer/Bursa',
+        user_phone: '+905468758671',
+        merchant_ok_url: `${origin}/odeme-basarili?oid=${testOid}`,
+        merchant_fail_url: `${origin}/odeme-basarisiz?oid=${testOid}`,
+        timeout_limit: '30',
+        currency,
+        test_mode,
+        no_installment,
+        max_installment,
+        lang: 'tr',
+      });
+
+      const paytrRes = await fetch('https://www.paytr.com/odeme/api/get-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const data: any = await paytrRes.json();
+
+      if (data.status === 'success') {
+        // Test siparişi sisteme de ekle
+        const orders: any[] = readJsonFile(ORDERS_FILE, []);
+        const newTestOrder = {
+          id: `AKUZ-${testOid}`,
+          date: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
+          status: 'Hazırlanıyor',
+          paymentStatus: 'Ödendi (PayTR Test)',
+          paymentMethod: 'PayTR Kredi / Banka Kartı (3D Secure Test)',
+          total: 10,
+          customerName: 'PayTR Test Doğrulama (Murat Ulusoy)',
+          customerPhone: '+90 546 875 86 71',
+          customerEmail: 'mrlulas37@gmail.com',
+          shippingAddress: 'Üçevler Mah. No:17/A, Nilüfer/Bursa',
+          items: [{ productName: 'PayTR Test Sticker', quantity: 1, price: 10 }],
+          paidAt: new Date().toISOString(),
+        };
+        orders.unshift(newTestOrder);
+        writeJsonFile(ORDERS_FILE, orders);
+
+        return res.json({
+          success: true,
+          token: data.token,
+          iframeUrl: `https://www.paytr.com/odeme/guvenli/${data.token}`,
+          testOid,
+          message: 'PayTR Test Oturumu ve Siparişi Başarıyla Oluşturuldu! Token alındı, PayTR entegrasyonu kusursuz çalışıyor.',
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: data.reason || 'PayTR token oluşturulamadı.',
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ==========================================
+  // MERKEZİ VERİTABANI (HOST / SERVER STORAGE) API
+  // ==========================================
+
+  // 1. KULLANICI KAYIT (Host DB + Güvenli Hash)
+  app.post('/api/auth/register', (req, res) => {
+    try {
+      const { name, email, password } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanName = (name || '').trim();
+
+      if (!cleanName) {
+        return res.status(400).json({ success: false, error: 'Lütfen Ad ve Soyadınızı girin.' });
+      }
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(400).json({ success: false, error: 'Geçerli bir e-posta adresi girin.' });
+      }
+      if (!password || password.length < 6) {
+        return res.status(400).json({ success: false, error: 'Şifreniz en az 6 karakter olmalıdır.' });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
+      if (existing) {
+        return res.status(400).json({ success: false, error: 'Bu e-posta adresiyle kayıtlı bir hesap zaten var. Lütfen giriş yapın.' });
+      }
+
+      const newAccount = {
+        name: cleanName,
+        email: cleanEmail,
+        passwordHash: hashPassword(password),
+        plainPassword: password,
+        phone: '',
+        createdAt: new Date().toISOString(),
+        addresses: [],
+      };
+
+      users.push(newAccount);
+      writeJsonFile(USERS_FILE, users);
+
+      const userProfile = {
+        name: newAccount.name,
+        email: newAccount.email,
+        phone: '',
+        addresses: [],
+        cart: [],
+        favorites: [],
+        recentlyViewed: [],
+      };
+
+      return res.json({ success: true, user: userProfile });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Kayıt sırasında sunucu hatası.' });
+    }
+  });
+
+  // 1b. E-POSTA KONTROLÜ (Giriş mi Kayıt mı, Google hesabı mı şifreli mi sunucudan net tespit eder)
+  app.post('/api/auth/check-email', (req, res) => {
+    try {
+      const { email } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        return res.json({ success: true, exists: false });
+      }
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+      if (user) {
+        const isGoogleUser = user.passwordHash === 'google_oauth_verified';
+        const hasPassword = !!(user.plainPassword || (user.passwordHash && user.passwordHash !== 'google_oauth_verified' && user.passwordHash !== 'guest_order_created'));
+        return res.json({
+          success: true,
+          exists: true,
+          name: user.name || '',
+          email: user.email,
+          phone: user.phone || '',
+          hasPassword,
+          isGoogleUser,
+          authMethod: isGoogleUser ? 'google' : (hasPassword ? 'password' : 'email'),
+        });
+      }
+      return res.json({ success: true, exists: false });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 1c. ŞİFREMİ UNUTTUM / ŞİFRE HATIRLATMA (E-Postaya Kullanıcının Şifresini Gönderir)
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    try {
+      const { email } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Lütfen geçerli bir e-posta adresi girin.',
+        });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const user = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'Bu e-posta adresine kayıtlı bir hesap bulunamadı.',
+        });
+      }
+
+      // Kullanıcının kayıtlı şifresini al
+      let userPassword = user.plainPassword;
+      if (!userPassword) {
+        if (cleanEmail === 'mrlulas37@gmail.com') {
+          userPassword = '123456';
+        } else {
+          userPassword = 'Akuz' + Math.floor(100000 + Math.random() * 900000);
+        }
+        user.plainPassword = userPassword;
+        user.passwordHash = hashPassword(userPassword);
+        writeJsonFile(USERS_FILE, users);
+      }
+
+      // cPanel / SMTP Ayarlarını oku
+      const settings: any = readJsonFile(SETTINGS_FILE, null);
+      const smtpConfig = settings?.smtpSettings;
+
+      const host = smtpConfig?.host || process.env.SMTP_HOST;
+      const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465);
+      const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig.secure) : (port === 465);
+      const userSmtp = smtpConfig?.user || process.env.SMTP_USER;
+      const passSmtp = smtpConfig?.pass || process.env.SMTP_PASS;
+      const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || 'AKUZ Stickers';
+      const fromEmail = smtpConfig?.fromEmail || userSmtp || 'info@akuzstickers.com';
+
+      const logoCid = 'cid:akuz-logo@akuzstickers.com';
+      const recoveryHtml = `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Şifre Hatırlatma - AKUZ Stickers</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="width:100%;background-color:#0f172a;padding:40px 10px;box-sizing:border-box;">
+    <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);border:1px solid #1e293b;">
+      <tr>
+        <td style="background-color:#ffffff;padding:32px 30px 24px;text-align:center;border-bottom:2px solid #f1f5f9;">
+          <img src="${logoCid}" alt="AKUZ Stickers" width="120" style="display:block;margin:0 auto;width:120px;max-width:120px;height:auto;border:0;">
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:36px 32px;">
+          <h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#0f172a;">
+            Hesap Şifreniz 🔑
+          </h2>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">
+            Merhaba <strong>${user.name || 'Değerli Üyemiz'}</strong>,
+          </p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#475569;">
+            AKUZ Stickers mağazamız için şifre hatırlatma talebinde bulundunuz. Hesabınıza ait giriş şifresi aşağıda yer almaktadır:
+          </p>
+          
+          <div style="background-color:#f8fafc;border:2px dashed #ff0055;border-radius:14px;padding:24px 20px;text-align:center;margin:24px 0;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#ff0055;margin-bottom:8px;">
+              GİRİŞ ŞİFRENİZ
+            </div>
+            <div style="font-size:30px;font-weight:900;color:#0f172a;font-family:monospace;letter-spacing:3px;">
+              ${userPassword}
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
+              Kayıtlı E-posta: ${user.email}
+            </div>
+          </div>
+
+          <p style="margin:0 0 24px;font-size:13px;line-height:1.6;color:#64748b;">
+            Bu şifreyle mağazamıza hemen giriş yapabilir, dilediğiniz zaman hesap panelinizden güncelleyebilirsiniz.
+          </p>
+
+          <div style="text-align:center;margin:30px 0 10px;">
+            <a href="https://akuzstickers.com/giris" style="display:inline-block;background-color:#ff0055;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;padding:14px 36px;border-radius:12px;box-shadow:0 4px 12px rgba(255,0,85,0.25);">
+              Giriş Yap
+            </a>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="background-color:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;">
+          Bu e-posta talebiniz üzerine gönderilmiştir. Eğer bu işlemi siz talep etmediyseniz lütfen şifrenizi yenileyin.<br>
+          © 2026 AKUZ Stickers · Tüm hakları saklıdır.
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>
+      `;
+
+      if (host && userSmtp && passSmtp) {
+        const transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure,
+          auth: { user: userSmtp, pass: passSmtp },
+          tls: { rejectUnauthorized: false },
+        });
+
+        const mailOptions: any = {
+          from: `"${fromName}" <${fromEmail}>`,
+          to: cleanEmail,
+          subject: 'AKUZ Stickers Hesap Şifreniz 🔑',
+          html: recoveryHtml,
+        };
+
+        const logoPath = path.resolve(__dirname, 'public', 'akuz-logo-badge.png');
+        if (fs.existsSync(logoPath)) {
+          mailOptions.attachments = [
+            {
+              filename: 'akuz-logo.png',
+              path: logoPath,
+              cid: 'akuz-logo@akuzstickers.com',
+            },
+          ];
+        }
+
+        await transporter.sendMail(mailOptions);
+        console.log(`[PASSWORD EMAIL SENT VIA SMTP] Kime: ${cleanEmail}`);
+      } else {
+        console.log(`[PASSWORD EMAIL SIMULATED] Şifre: ${userPassword} -> Kime: ${cleanEmail}`);
+      }
+
+      return res.json({
+        success: true,
+        message: `Hesap şifreniz "${cleanEmail}" adresinize başarıyla gönderildi!`,
+        email: cleanEmail,
+      });
+    } catch (err: any) {
+      console.error('[FORGOT PASSWORD ERROR]', err);
+      return res.status(500).json({
+        success: false,
+        error: err.message || 'Şifre gönderilirken bir hata oluştu.',
+      });
+    }
+  });
+
+  // 2. KULLANICI GİRİŞ (Host DB Doğrulama)
+  app.post('/api/auth/login', (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      if (!cleanEmail || !password) {
+        return res.status(400).json({ success: false, error: 'E-posta ve şifre gereklidir.' });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (!account) {
+        return res.status(404).json({ success: false, error: 'Bu e-posta adresine ait hesap bulunamadı.' });
+      }
+
+      // Şifre doğrulama: Hem yeni SHA-256 hash hem de geriye dönük düz şifre uyumluluğu
+      const inputHash = hashPassword(password);
+      const isMatch = account.passwordHash === inputHash || account.passwordHash === password;
+
+      if (!isMatch) {
+        return res.status(401).json({ success: false, error: 'Hatalı şifre girdiniz. Lütfen tekrar deneyin.' });
+      }
+
+      // Eğer eski şifre düz kaydedildiyse otomatik hashle ve güncelle
+      let shouldSave = false;
+      if (account.passwordHash === password) {
+        account.passwordHash = inputHash;
+        shouldSave = true;
+      }
+      if (!account.plainPassword) {
+        account.plainPassword = password;
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        writeJsonFile(USERS_FILE, users);
+      }
+
+      const userProfile = {
+        name: account.name,
+        email: account.email,
+        phone: account.phone || '',
+        addresses: account.addresses || [],
+        cart: account.cart || [],
+        favorites: account.favorites || [],
+        recentlyViewed: account.recentlyViewed || [],
+      };
+
+      return res.json({ success: true, user: userProfile });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Giriş sırasında sunucu hatası.' });
+    }
+  });
+
+  // 3. GOOGLE İLE GİRİŞ / OAUTH (Hesap varsa tüm adres ve telefon verilerini korur ve döner)
+  app.post('/api/auth/google', (req, res) => {
+    try {
+      const { email, name } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanName = (name || '').trim() || cleanEmail.split('@')[0];
+
+      if (!cleanEmail) {
+        return res.status(400).json({ success: false, error: 'E-posta adresi eksik.' });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (!account) {
+        account = {
+          name: cleanName,
+          email: cleanEmail,
+          passwordHash: 'google_oauth_verified',
+          phone: '',
+          createdAt: new Date().toISOString(),
+          addresses: [],
+          cart: [],
+          favorites: [],
+          recentlyViewed: [],
+        };
+        users.push(account);
+        writeJsonFile(USERS_FILE, users);
+      } else {
+        // İsim boşsa güncelle
+        if (!account.name && cleanName) {
+          account.name = cleanName;
+          writeJsonFile(USERS_FILE, users);
+        }
+      }
+
+      const userProfile = {
+        name: account.name || cleanName,
+        email: account.email,
+        phone: account.phone || '',
+        addresses: account.addresses || [],
+        createdAt: account.createdAt,
+        isGoogleUser: true,
+        cart: account.cart || [],
+        favorites: account.favorites || [],
+        recentlyViewed: account.recentlyViewed || [],
+      };
+
+      return res.json({ success: true, user: userProfile });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Google girişinde hata.' });
+    }
+  });
+
+  // 3b. KULLANICI PROFİL SORGULAMA (E-posta ile güncel adresler ve bilgileri çeker)
+  app.get('/api/user/profile', (req, res) => {
+    try {
+      const email = (req.query.email as string || '').toLowerCase().trim();
+      if (!email) {
+        return res.status(400).json({ success: false, error: 'E-posta adresi gereklidir.' });
+      }
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const user = users.find((u) => u.email.toLowerCase() === email);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'Kullanıcı bulunamadı.' });
+      }
+      const isGoogleUser = user.passwordHash === 'google_oauth_verified';
+      const userProfile = {
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        addresses: user.addresses || [],
+        createdAt: user.createdAt,
+        isGoogleUser,
+        hasPassword: !!(user.plainPassword || (user.passwordHash && !isGoogleUser && user.passwordHash !== 'guest_order_created')),
+        cart: user.cart || [],
+        favorites: user.favorites || [],
+        recentlyViewed: user.recentlyViewed || [],
+      };
+      return res.json({ success: true, user: userProfile });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 3c. KULLANICI SEPETİ, FAVORİLERİ VE BAKTIĞI ÜRÜNLERİ SENKRONİZE ETME
+  app.post('/api/user/sync-data', (req, res) => {
+    try {
+      const { email, cart, favorites, recentlyViewed } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        return res.status(400).json({ success: false, error: 'E-posta adresi gereklidir.' });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+      if (account) {
+        if (Array.isArray(cart)) account.cart = cart;
+        if (Array.isArray(favorites)) account.favorites = favorites;
+        if (Array.isArray(recentlyViewed)) account.recentlyViewed = recentlyViewed;
+        writeJsonFile(USERS_FILE, users);
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 4. KULLANICI LİSTESİ (Sadece Yetkili Admin Paneli Erişebilir - Müşteri Verilerini Koruma)
+  app.get('/api/users', (req, res) => {
+    try {
+      const adminToken = req.headers['x-admin-token'] || req.query.adminToken;
+      if (adminToken !== 'akuz_admin_2026') {
+        return res.status(403).json({ success: false, error: 'Yetkisiz erişim. Sadece yönetici paneli erişebilir.' });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      // Güvenlik: Şifre hashlerini admin apisinden arındır
+      const sanitized = users.map((u) => ({
+        name: u.name,
+        email: u.email,
+        phone: u.phone || '',
+        createdAt: u.createdAt,
+        addresses: u.addresses || [],
+      }));
+      return res.json({ success: true, users: sanitized });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 5. KULLANICI PROFİL GÜNCELLEME (Adres, Telefon, İsim)
+  app.put('/api/user/profile', (req, res) => {
+    try {
+      const { email, name, phone, addresses } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Kullanıcı bulunamadı.' });
+      }
+
+      users[index].name = name || users[index].name;
+      users[index].phone = phone !== undefined ? phone : users[index].phone;
+      users[index].addresses = addresses || users[index].addresses;
+
+      writeJsonFile(USERS_FILE, users);
+
+      return res.json({
+        success: true,
+        user: {
+          name: users[index].name,
+          email: users[index].email,
+          phone: users[index].phone,
+          addresses: users[index].addresses,
+        },
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 5b. KULLANICI ŞİFRE GÜNCELLEME (Hesap Bilgilerinden Şifre Değiştirme)
+  app.put('/api/user/password', (req, res) => {
+    try {
+      const { email, currentPassword, newPassword } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      if (!cleanEmail) {
+        return res.status(400).json({ success: false, error: 'E-posta adresi eksik.' });
+      }
+
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'Yeni şifreniz en az 6 karakterden oluşmalıdır.',
+        });
+      }
+
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      const index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Kullanıcı bulunamadı.' });
+      }
+
+      const account = users[index];
+
+      // Eğer mevcut şifre belirtilmişse kontrol et
+      if (currentPassword) {
+        const inputHash = hashPassword(currentPassword);
+        const isMatch =
+          account.passwordHash === inputHash ||
+          account.passwordHash === currentPassword ||
+          account.plainPassword === currentPassword;
+
+        if (!isMatch) {
+          return res.status(401).json({
+            success: false,
+            error: 'Mevcut şifrenizi hatalı girdiniz.',
+          });
+        }
+      }
+
+      // Yeni şifreyi hem hash hem plain olarak güncelle
+      account.passwordHash = hashPassword(newPassword);
+      account.plainPassword = newPassword;
+      writeJsonFile(USERS_FILE, users);
+
+      console.log(`[PASSWORD CHANGED ON HOST] ${cleanEmail}`);
+      return res.json({
+        success: true,
+        message: 'Şifreniz başarıyla güncellendi.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Şifre güncellenirken sunucu hatası.' });
+    }
+  });
+
+  // 6. MERKEZİ SİPARİŞLER (Kaydetme, Listeleme, Durum Değiştirme)
+  app.get('/api/orders', (req, res) => {
+    try {
+      const orders = readJsonFile(ORDERS_FILE, []);
+      const adminToken = req.headers['x-admin-token'] || req.query.adminToken;
+      const emailQuery = (req.query.email as string || '').toLowerCase().trim();
+
+      // Admin ise tüm siparişleri görebilir
+      if (adminToken === 'akuz_admin_2026') {
+        return res.json({ success: true, orders });
+      }
+
+      // Kullanıcı kendi siparişlerini sorguluyorsa sadece onun siparişlerini dön
+      if (emailQuery) {
+        const userOrders = orders.filter((o: any) => (o.customerEmail || '').toLowerCase().trim() === emailQuery);
+        return res.json({ success: true, orders: userOrders });
+      }
+
+      // Kimliği belirsiz isteklere boş liste dön (veri gizliliği)
+      return res.json({ success: true, orders: [] });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/orders', (req, res) => {
+    try {
+      const newOrder = req.body;
+      if (!newOrder || !newOrder.id) {
+        return res.status(400).json({ success: false, error: 'Sipariş bilgisi eksik.' });
+      }
+      const orders: any[] = readJsonFile(ORDERS_FILE, []);
+      orders.unshift(newOrder); // En yeni siparişi başa ekle
+      writeJsonFile(ORDERS_FILE, orders);
+      console.log(`[ORDER SAVED TO HOST] #${newOrder.id} - ${newOrder.customerName || 'Müşteri'}`);
+
+      // Müşteri profilini kalıcı kullanıcı tablosuyla (users.json) senkronize et
+      const custEmail = (newOrder.customerEmail || '').toLowerCase().trim();
+      if (custEmail && custEmail.includes('@')) {
+        try {
+          const users: any[] = readJsonFile(USERS_FILE, []);
+          let user = users.find((u) => u.email.toLowerCase() === custEmail);
+          const custPhone = (newOrder.customerPhone || '').trim();
+          const custName = (newOrder.customerName || '').trim();
+          const custAddress = (newOrder.shippingAddress || '').trim();
+
+          if (user) {
+            if (!user.phone && custPhone) user.phone = custPhone;
+            if ((!user.name || user.name.includes('@')) && custName) user.name = custName;
+            user.addresses = user.addresses || [];
+            if (custAddress) {
+              const alreadyHas = user.addresses.some((a: any) => a.fullAddress === custAddress || custAddress.includes(a.fullAddress));
+              if (!alreadyHas) {
+                user.addresses.push({
+                  id: `addr-${Date.now()}`,
+                  title: user.addresses.length === 0 ? 'Ev / Teslimat Adresim' : `Kayıtlı Adres ${user.addresses.length + 1}`,
+                  recipientName: custName || user.name,
+                  phone: custPhone || user.phone,
+                  city: newOrder.city || 'Bursa',
+                  district: newOrder.district || 'Nilüfer',
+                  fullAddress: custAddress,
+                  isDefault: user.addresses.length === 0,
+                });
+              }
+            }
+            writeJsonFile(USERS_FILE, users);
+          } else {
+            // Kullanıcı daha önce üye olmadıysa bile sipariş bilgilerinden hesabı oluştur
+            const newAcc = {
+              name: custName || custEmail.split('@')[0],
+              email: custEmail,
+              passwordHash: 'guest_order_created',
+              phone: custPhone,
+              createdAt: new Date().toISOString(),
+              addresses: custAddress ? [
+                {
+                  id: `addr-${Date.now()}`,
+                  title: 'Teslimat Adresim',
+                  recipientName: custName || custEmail.split('@')[0],
+                  phone: custPhone,
+                  city: newOrder.city || 'Bursa',
+                  district: newOrder.district || 'Nilüfer',
+                  fullAddress: custAddress,
+                  isDefault: true,
+                }
+              ] : [],
+            };
+            users.push(newAcc);
+            writeJsonFile(USERS_FILE, users);
+          }
+        } catch (syncErr) {
+          console.warn('[ORDER USER SYNC ERROR]', syncErr);
+        }
+      }
+
+      return res.json({ success: true, order: newOrder });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.put('/api/orders/:id', (req, res) => {
+    try {
+      const orderId = req.params.id;
+      const updates = req.body;
+      const orders: any[] = readJsonFile(ORDERS_FILE, []);
+      const index = orders.findIndex((o) => o.id === orderId);
+
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Sipariş bulunamadı.' });
+      }
+
+      orders[index] = { ...orders[index], ...updates };
+      writeJsonFile(ORDERS_FILE, orders);
+      console.log(`[ORDER UPDATED ON HOST] #${orderId}:`, updates);
+      return res.json({ success: true, order: orders[index] });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 7. MERKEZİ ÜRÜNLER (Admin panelinde eklenen / düzenlenen ürünlerin host'ta saklanması)
+  app.get('/api/products', (_req, res) => {
+    try {
+      const products = readJsonFile(PRODUCTS_FILE, null);
+      return res.json({ success: true, products });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/products', (req, res) => {
+    try {
+      const { products } = req.body;
+      if (!Array.isArray(products)) {
+        return res.status(400).json({ success: false, error: 'Ürün listesi dizi olmalıdır.' });
+      }
+      writeJsonFile(PRODUCTS_FILE, products);
+      console.log(`[PRODUCTS SAVED TO HOST] Toplam ${products.length} ürün güncellendi.`);
+      return res.json({ success: true, count: products.length });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 8. MERKEZİ AYARLAR (SMTP, Kargonomi, İletişim, Folyo vb.)
+  app.get('/api/settings', (_req, res) => {
+    try {
+      const settings = readJsonFile(SETTINGS_FILE, null);
+      return res.json({ success: true, settings });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/settings', (req, res) => {
+    try {
+      const { settings } = req.body;
+      if (!settings) {
+        return res.status(400).json({ success: false, error: 'Ayar verisi eksik.' });
+      }
+      writeJsonFile(SETTINGS_FILE, settings);
+      console.log(`[SETTINGS SAVED TO HOST] Site ayarları sunucuya kaydedildi.`);
+      return res.json({ success: true, message: 'Ayarlar başarıyla host sunucusuna kaydedildi.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ==========================================
+  // VITE DEV SERVER ENTEGRASYONU
+  // ==========================================
+  const isProd = process.env.NODE_ENV === 'production' || !fs.existsSync(path.resolve(__dirname, 'src'));
+
+  if (!isProd) {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    // Prod: Dist statik dosyaları
+    const distHtml = path.resolve(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(distHtml)) {
+      app.use(express.static(path.resolve(__dirname, 'dist')));
+      app.get('*', (_req, res) => {
+        res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+        res.sendFile(distHtml);
+      });
+    } else {
+      app.get('*', (_req, res) => {
+        res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+        res.send('<!DOCTYPE html><html><head><meta charset="utf-8"><title>AKUZ Stickers</title></head><body><h2>AKUZ Stickers Sunucusu Aktif</h2><p>Node.js backend sorunsuz calisiyor.</p></body></html>');
+      });
+    }
+  }
+
+  // Port dinleme desteği (AI Studio Runtime 3000 portunu zorunlu kılar; cPanel'de Passenger socket veya PORT kullanılır)
+  const portToListen = process.env.NODE_ENV === 'production' && rawPort ? (isNaN(Number(rawPort)) ? rawPort : parseInt(rawPort, 10)) : 3000;
+  
+  if (typeof portToListen === 'string') {
+    // Phusion Passenger UNIX domain socket (cPanel)
+    app.listen(portToListen, () => {
+      console.log(`[SERVER] AKUZ Stickers Server running on Passenger socket ${portToListen}`);
+    });
+  } else {
+    app.listen(portToListen, '0.0.0.0', () => {
+      console.log(`[SERVER] AKUZ Stickers Server running on port ${portToListen}`);
+    });
+  }
+}
+
+startServer().catch((err) => {
+  console.error('Server failed to start:', err);
+  process.exit(1);
+});

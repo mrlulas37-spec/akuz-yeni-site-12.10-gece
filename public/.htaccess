@@ -1,0 +1,28 @@
+DirectoryIndex index.php index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. PayTR Callback ve Webhook İstekleri (Tüm olası URL varyasyonları)
+  RewriteRule ^(paytr-callback|paytr-callback\.php|callback|paytr|api/paytr/callback|api/paytr-callback|api/callback)/?$ paytr-callback.php [QSA,L]
+
+  # 2. PayTR Bildirim Botu POST İstekleri (Kök dizine, odeme veya index sayfasına atılan POST'lar)
+  # PayTR paneline yanlışlıkla site adresi (https://site.com/) veya /odeme yazılmışsa bile HTML yerine PHP OK yanıtı döner
+  RewriteCond %{REQUEST_METHOD} POST
+  RewriteCond %{REQUEST_URI} ^/(index\.html|index\.php|odeme|checkout|sepete-git|cart)?/?$
+  RewriteRule ^(.*)$ paytr-callback.php [QSA,L]
+
+  # 3. cPanel API İsteklerini PHP motoruna yönlendir
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+  # 4. Var olan dosya veya klasörler doğrudan açılsın (resimler, css, js)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 5. Kalan tüm sayfaları React SPA index.html'e yönlendir (404 hatasını önler)
+  RewriteRule ^index\.html$ - [L]
+  RewriteRule . /index.html [L]
+</IfModule>
+

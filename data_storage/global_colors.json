@@ -1,0 +1,109 @@
+[
+  {
+    "name": "Siyah",
+    "hex": "#111827",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Beyaz",
+    "hex": "#ffffff",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Hologramlı",
+    "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)",
+    "inStock": true,
+    "supportedFinishes": [
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Kırmızı",
+    "hex": "#dc2626",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Mavi",
+    "hex": "#2563eb",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Gold",
+    "hex": "#d97706",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Gümüş",
+    "hex": "#94a3b8",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Yeşil",
+    "hex": "#16a34a",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Sarı",
+    "hex": "#eab308",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Mor",
+    "hex": "#9333ea",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Lacivert",
+    "hex": "#1e3a8a",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "name": "Turuncu",
+    "hex": "#ea580c",
+    "inStock": true,
+    "supportedFinishes": [
+      "Mat",
+      "Parlak"
+    ]
+  }
+]

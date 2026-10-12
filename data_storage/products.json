@@ -1,0 +1,494 @@
+[
+  {
+    "id": "kisiye-ozel-yazi-sticker",
+    "name": "KİŞİYE ÖZEL YAZI & İSİM STICKER",
+    "slug": "kisiye-ozel-yazi",
+    "category": "custom",
+    "currentPrice": 49,
+    "oldPrice": 99,
+    "rating": 5,
+    "reviewsCount": 14,
+    "isPopular": true,
+    "isDiscounted": true,
+    "isCustomText": true,
+    "freeLetterCount": 10,
+    "extraLetterPrice": 4,
+    "dimensionPrices": {
+      "20x5 cm": 49,
+      "30x7 cm": 69,
+      "45x10 cm": 99,
+      "60x14 cm": 139,
+      "80x18 cm": 189
+    },
+    "tag": "KİŞİYE ÖZEL",
+    "description": "İstediğiniz metni, ismi, Instagram kullanıcı adını, araba modelini veya sloganınızı yazın; onlarca yarış, gotik, modern ve el yazısı fontu arasından anında canlı önizleme ile seçiminizi yapın. 1. kalite döküm transfer vinil folyo ile kesilir ve transfer bandı ile kullanıma hazır gönderilir.",
+    "svgType": "logo",
+    "dimensions": [
+      "20x5 cm",
+      "30x7 cm",
+      "45x10 cm",
+      "60x14 cm",
+      "80x18 cm"
+    ],
+    "colors": [
+      {
+        "name": "Siyah",
+        "hex": "#111827"
+      },
+      {
+        "name": "Beyaz",
+        "hex": "#ffffff"
+      },
+      {
+        "name": "Hologramlı",
+        "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+      },
+      {
+        "name": "Kırmızı",
+        "hex": "#dc2626"
+      },
+      {
+        "name": "Mavi",
+        "hex": "#2563eb"
+      },
+      {
+        "name": "Gold",
+        "hex": "#d97706"
+      },
+      {
+        "name": "Gümüş",
+        "hex": "#94a3b8"
+      },
+      {
+        "name": "Yeşil",
+        "hex": "#16a34a"
+      },
+      {
+        "name": "Sarı",
+        "hex": "#eab308"
+      },
+      {
+        "name": "Mor",
+        "hex": "#9333ea"
+      },
+      {
+        "name": "Lacivert",
+        "hex": "#1e3a8a"
+      },
+      {
+        "name": "Turuncu",
+        "hex": "#ea580c"
+      }
+    ],
+    "finishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "id": "ataturk-imza-sticker",
+    "name": "KEMAL ATATÜRK İMZA",
+    "slug": "ataturk-imza",
+    "category": "ataturk",
+    "currentPrice": 39,
+    "oldPrice": 79,
+    "rating": 0,
+    "reviewsCount": 0,
+    "isPopular": true,
+    "isDiscounted": true,
+    "dimensionPrices": {
+      "12x5 cm": 39,
+      "18x7 cm": 59,
+      "25x10 cm": 79,
+      "35x14 cm": 109
+    },
+    "tag": "ÇOK SATAN",
+    "description": "Gazi Mustafa Kemal Atatürk orijinal vektörel ıslak imza çıkartması. Araba arka camı, ön cam köşesi, bagaj kapağı veya motosiklet için hassas kesim yüksek kaliteli vinil folyo transfer.",
+    "svgType": "logo",
+    "imageUrl": "/products/IMG_1138.jpeg",
+    "images": [
+      "/products/IMG_1138.jpeg",
+      "/products/IMG_1140.jpeg"
+    ],
+    "dimensions": [
+      "12x5 cm",
+      "18x7 cm",
+      "25x10 cm",
+      "35x14 cm"
+    ],
+    "colors": [
+      {
+        "name": "Siyah",
+        "hex": "#111827"
+      },
+      {
+        "name": "Beyaz",
+        "hex": "#ffffff"
+      },
+      {
+        "name": "Hologramlı",
+        "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+      },
+      {
+        "name": "Kırmızı",
+        "hex": "#dc2626"
+      },
+      {
+        "name": "Mavi",
+        "hex": "#2563eb"
+      },
+      {
+        "name": "Gold",
+        "hex": "#d97706"
+      },
+      {
+        "name": "Gümüş",
+        "hex": "#94a3b8"
+      },
+      {
+        "name": "Yeşil",
+        "hex": "#16a34a"
+      },
+      {
+        "name": "Sarı",
+        "hex": "#eab308"
+      },
+      {
+        "name": "Mor",
+        "hex": "#9333ea"
+      },
+      {
+        "name": "Lacivert",
+        "hex": "#1e3a8a"
+      },
+      {
+        "name": "Turuncu",
+        "hex": "#ea580c"
+      }
+    ],
+    "finishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "id": "bagajdan-bakan-canavar-sticker",
+    "name": "BAGAJDAN BAKAN CANAVAR",
+    "slug": "bagajdan-bakan-canavar",
+    "category": "araba",
+    "currentPrice": 49,
+    "oldPrice": 89,
+    "rating": 0,
+    "reviewsCount": 0,
+    "isPopular": true,
+    "isDiscounted": true,
+    "tag": "YENİ ÜRÜN",
+    "description": "Bagaj kapağından, araba camından veya kaportadan sinsice bakan gözleriyle dikkat çeken canavar tasarımı çıkartma folyo. Güneşe, yıkamaya ve hava koşullarına dayanıklı yüksek kaliteli vinil sticker.",
+    "svgType": "logo",
+    "imageUrl": "/products/IMG_1141.jpeg",
+    "images": [
+      "/products/IMG_1141.jpeg",
+      "/products/IMG_1142.jpeg"
+    ],
+    "dimensions": [
+      "15x10 cm",
+      "20x13 cm",
+      "25x16 cm",
+      "30x20 cm"
+    ],
+    "colors": [
+      {
+        "name": "Siyah",
+        "hex": "#111827"
+      },
+      {
+        "name": "Beyaz",
+        "hex": "#ffffff"
+      },
+      {
+        "name": "Hologramlı",
+        "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+      },
+      {
+        "name": "Kırmızı",
+        "hex": "#dc2626"
+      },
+      {
+        "name": "Mavi",
+        "hex": "#2563eb"
+      },
+      {
+        "name": "Gold",
+        "hex": "#d97706"
+      },
+      {
+        "name": "Gümüş",
+        "hex": "#94a3b8"
+      },
+      {
+        "name": "Yeşil",
+        "hex": "#16a34a"
+      },
+      {
+        "name": "Sarı",
+        "hex": "#eab308"
+      },
+      {
+        "name": "Mor",
+        "hex": "#9333ea"
+      },
+      {
+        "name": "Lacivert",
+        "hex": "#1e3a8a"
+      },
+      {
+        "name": "Turuncu",
+        "hex": "#ea580c"
+      }
+    ],
+    "finishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "id": "gazi-mustafa-kemal-ataturk-imza-sticker",
+    "name": "GAZİ MUSTAFA KEMAL ATATÜRK İMZA",
+    "slug": "gazi-mustafa-kemal-ataturk-imza",
+    "category": "ataturk",
+    "currentPrice": 45,
+    "oldPrice": 85,
+    "rating": 0,
+    "reviewsCount": 0,
+    "isPopular": true,
+    "isDiscounted": true,
+    "tag": "YENİ ÜRÜN",
+    "description": "Gazi Mustafa Kemal Atatürk özel tasarım imza çıkartması. Araç camı, kaporta, dizüstü bilgisayar ve pürüzsüz tüm yüzeyler için yüksek kaliteli transfer vinil sticker.",
+    "svgType": "logo",
+    "imageUrl": "/products/IMG_1147.webp",
+    "images": [
+      "/products/IMG_1147.webp",
+      "/products/IMG_1146.jpeg"
+    ],
+    "dimensions": [
+      "15x6 cm",
+      "20x8 cm",
+      "25x10 cm",
+      "35x14 cm"
+    ],
+    "colors": [
+      {
+        "name": "Siyah",
+        "hex": "#111827"
+      },
+      {
+        "name": "Beyaz",
+        "hex": "#ffffff"
+      },
+      {
+        "name": "Hologramlı",
+        "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+      },
+      {
+        "name": "Kırmızı",
+        "hex": "#dc2626"
+      },
+      {
+        "name": "Mavi",
+        "hex": "#2563eb"
+      },
+      {
+        "name": "Gold",
+        "hex": "#d97706"
+      },
+      {
+        "name": "Gümüş",
+        "hex": "#94a3b8"
+      },
+      {
+        "name": "Yeşil",
+        "hex": "#16a34a"
+      },
+      {
+        "name": "Sarı",
+        "hex": "#eab308"
+      },
+      {
+        "name": "Mor",
+        "hex": "#9333ea"
+      },
+      {
+        "name": "Lacivert",
+        "hex": "#1e3a8a"
+      },
+      {
+        "name": "Turuncu",
+        "hex": "#ea580c"
+      }
+    ],
+    "finishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "id": "yaramaz-cocuk-sticker",
+    "name": "YARAMAZ ÇOCUK",
+    "slug": "yaramaz-cocuk",
+    "category": "araba",
+    "currentPrice": 39,
+    "oldPrice": 79,
+    "rating": 0,
+    "reviewsCount": 0,
+    "isPopular": true,
+    "isDiscounted": true,
+    "tag": "YENİ ÜRÜN",
+    "description": "Araba camı, depo kapağı veya bagaj için eğlenceli ve dikkat çekici yaramaz çocuk figür çıkartması. Suya, güneşe ve yüksek basınçlı oto yıkamaya tam dayanıklı birinci sınıf transfer folyo.",
+    "svgType": "logo",
+    "imageUrl": "/products/IMG_1143.webp",
+    "images": [
+      "/products/IMG_1143.webp",
+      "/products/IMG_1144.webp"
+    ],
+    "dimensions": [
+      "12x10 cm",
+      "16x13 cm",
+      "20x16 cm",
+      "25x20 cm"
+    ],
+    "colors": [
+      {
+        "name": "Siyah",
+        "hex": "#111827"
+      },
+      {
+        "name": "Beyaz",
+        "hex": "#ffffff"
+      },
+      {
+        "name": "Hologramlı",
+        "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+      },
+      {
+        "name": "Kırmızı",
+        "hex": "#dc2626"
+      },
+      {
+        "name": "Mavi",
+        "hex": "#2563eb"
+      },
+      {
+        "name": "Gold",
+        "hex": "#d97706"
+      },
+      {
+        "name": "Gümüş",
+        "hex": "#94a3b8"
+      },
+      {
+        "name": "Yeşil",
+        "hex": "#16a34a"
+      },
+      {
+        "name": "Sarı",
+        "hex": "#eab308"
+      },
+      {
+        "name": "Mor",
+        "hex": "#9333ea"
+      },
+      {
+        "name": "Lacivert",
+        "hex": "#1e3a8a"
+      },
+      {
+        "name": "Turuncu",
+        "hex": "#ea580c"
+      }
+    ],
+    "finishes": [
+      "Mat",
+      "Parlak"
+    ]
+  },
+  {
+    "id": "la-familia-es-todo-sticker",
+    "name": "LA FAMILIA ES TODO",
+    "slug": "la-familia-es-todo",
+    "category": "araba",
+    "currentPrice": 45,
+    "oldPrice": 85,
+    "rating": 0,
+    "reviewsCount": 0,
+    "isPopular": true,
+    "isDiscounted": true,
+    "tag": "YENİ ÜRÜN",
+    "description": "İtalyanca ve İspanyolca kültürün güçlü simgesi \"La Familia Es Todo\" (Aile Her Şeydir) tipografik ve gotik hat çıkartması. Araç arka camı, kapı altı, bagaj ve motosiklet yüzeyleri için özel kesim dayanıklı vinil transfer sticker.",
+    "svgType": "logo",
+    "imageUrl": "/products/phonto.jpeg",
+    "images": [
+      "/products/phonto.jpeg",
+      "/products/AkuzStickers_LaFamilia.jpg"
+    ],
+    "dimensions": [
+      "20x5 cm",
+      "30x7 cm",
+      "45x10 cm",
+      "60x14 cm"
+    ],
+    "colors": [
+      {
+        "name": "Siyah",
+        "hex": "#111827"
+      },
+      {
+        "name": "Beyaz",
+        "hex": "#ffffff"
+      },
+      {
+        "name": "Hologramlı",
+        "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+      },
+      {
+        "name": "Kırmızı",
+        "hex": "#dc2626"
+      },
+      {
+        "name": "Mavi",
+        "hex": "#2563eb"
+      },
+      {
+        "name": "Gold",
+        "hex": "#d97706"
+      },
+      {
+        "name": "Gümüş",
+        "hex": "#94a3b8"
+      },
+      {
+        "name": "Yeşil",
+        "hex": "#16a34a"
+      },
+      {
+        "name": "Sarı",
+        "hex": "#eab308"
+      },
+      {
+        "name": "Mor",
+        "hex": "#9333ea"
+      },
+      {
+        "name": "Lacivert",
+        "hex": "#1e3a8a"
+      },
+      {
+        "name": "Turuncu",
+        "hex": "#ea580c"
+      }
+    ],
+    "finishes": [
+      "Mat",
+      "Parlak"
+    ]
+  }
+]

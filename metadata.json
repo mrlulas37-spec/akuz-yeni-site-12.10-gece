@@ -1,0 +1,6 @@
+{
+  "name": "AKUZ Stickers - Premium Araç ve Motosiklet Stickerları",
+  "description": "AKUZ Stickers resmi e-ticaret mağazası. Otomobil, 4x4 off-road ve motosikletler için kaliteli döküm vinil çıkartmalar ve özel tasarımlar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

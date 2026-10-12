@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Murat Ulusoy",
+    "email": "mrlulas37@gmail.com",
+    "passwordHash": "15d8dace1b70b6f1165efe583d013e44d7ffc2bdab092acaa083114454631263",
+    "plainPassword": "123456",
+    "phone": "+90 546 875 86 71",
+    "createdAt": "2026-10-06T23:39:50.087Z",
+    "addresses": [
+      {
+        "id": "addr-1",
+        "title": "Ev Adresim",
+        "recipientName": "Murat Ulusoy",
+        "phone": "+90 546 875 86 71",
+        "city": "Bursa",
+        "district": "Nilüfer",
+        "fullAddress": "Üçevler Mah. 10. Sokak No:17/A",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "name": "Mert Ulusoy",
+    "email": "mertopro123@gmail.com",
+    "passwordHash": "google_oauth_verified",
+    "phone": "",
+    "createdAt": "2026-10-12T15:40:35.970Z",
+    "addresses": [],
+    "cart": [],
+    "favorites": [],
+    "recentlyViewed": [
+      "bagajdan-bakan-canavar-sticker",
+      "kisiye-ozel-yazi-sticker",
+      "gazi-mustafa-kemal-ataturk-imza-sticker",
+      "ataturk-imza-sticker"
+    ]
+  }
+]
