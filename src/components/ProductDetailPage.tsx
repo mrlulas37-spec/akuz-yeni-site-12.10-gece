@@ -918,7 +918,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               </p>
 
               <div className="grid grid-cols-2 gap-2 mt-4 text-[11px] text-slate-600 bg-slate-50 p-3.5 rounded-xl border border-slate-100 font-medium">
-                <div>✓ 1. Sınıf Alman Vinil Folyo</div>
+                <div>✓ 1. Sınıf Döküm Vinil Folyo</div>
                 <div>✓ Özel Transfer Bandı İle Kolay Uygulama</div>
                 <div>✓ Boyaya ve Cama Zarar Vermez</div>
                 <div>✓ Tazyikli Su & Güneş Işığına Dayanıklı</div>

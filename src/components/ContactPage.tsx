@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Mail, MessageCircle, MapPin, Copy, Check, ExternalLink, ArrowLeft, Clock, Send } from 'lucide-react';
+import { MapPin, Copy, Check, ExternalLink, ArrowLeft, Clock, Send } from 'lucide-react';
 import { AkuzLogo } from './AkuzLogo';
+import { CuteOpeningMailIcon, WhatsAppOfficialIcon } from './ContactSection';
 
 interface ContactPageProps {
   onGoHome: () => void;
@@ -15,6 +16,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
   whatsapp = '+90 546 875 86 71',
   address = 'Üçevler Mahallesi, Küçük Sanayi Sitesi, 6. Blok No: 17/1 Nilüfer / Bursa',
 }) => {
+  const targetEmail = 'akuzstickers@gmail.com';
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [formSent, setFormSent] = useState(false);
   const [name, setName] = useState('');
@@ -77,22 +79,22 @@ export const ContactPage: React.FC<ContactPageProps> = ({
             
             {/* 1. E-POSTA */}
             <div className="bg-slate-50/60 border border-slate-200 rounded-2xl p-6 flex flex-col items-center text-center transition-all hover:border-pink-300 hover:shadow-md">
-              <div className="w-12 h-12 rounded-xl bg-pink-100/70 border border-pink-200 flex items-center justify-center text-[#ff0055] mb-3">
-                <Mail size={24} />
+              <div className="w-14 h-14 rounded-2xl bg-pink-100/70 border border-pink-200 flex items-center justify-center text-[#ff0055] mb-3 shadow-xs">
+                <CuteOpeningMailIcon size={30} />
               </div>
               <span className="text-xs font-black uppercase tracking-wider text-[#ff0055] mb-1">
                 E-POSTA
               </span>
               <span className="text-xs text-slate-500 mb-2">Resmi Destek & Fatura</span>
               <a
-                href={`mailto:${email}`}
+                href={`mailto:${targetEmail}`}
                 className="text-slate-900 font-bold text-sm sm:text-base hover:text-[#ff0055] transition-colors break-all"
               >
-                {email}
+                {targetEmail}
               </a>
               <button
                 type="button"
-                onClick={() => copyToClipboard(email, 'email')}
+                onClick={() => copyToClipboard(targetEmail, 'email')}
                 className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 {copiedItem === 'email' ? (
@@ -118,17 +120,19 @@ export const ContactPage: React.FC<ContactPageProps> = ({
               title="WhatsApp ile Hemen Mesaj Gönder"
             >
               <div className="flex flex-col items-center">
-                <div className="relative w-14 h-14 rounded-xl bg-emerald-100/70 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-3 group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-xs">
-                  <MessageCircle size={26} className="animate-whatsapp-call" />
+                <div className="relative w-14 h-14 rounded-2xl bg-emerald-100/70 border border-emerald-200 flex items-center justify-center text-[#25D366] mb-3 group-hover:bg-[#25D366] group-hover:text-white transition-all shadow-xs">
+                  <div className="animate-whatsapp-call flex items-center justify-center">
+                    <WhatsAppOfficialIcon size={28} />
+                  </div>
                 </div>
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-600 mb-1">
+                <span className="text-xs font-black uppercase tracking-wider text-[#25D366] mb-1">
                   WHATSAPP
                 </span>
                 <span className="text-xs text-slate-500 mb-2">Hızlı Mesaj & Tasarım Danışma</span>
                 <span className="text-slate-900 font-bold text-base group-hover:text-emerald-600 transition-colors">
                   {whatsapp}
                 </span>
-                <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer shadow-xs">
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#25D366] hover:bg-[#20ba59] rounded-lg transition-colors cursor-pointer shadow-xs">
                   <ExternalLink size={13} />
                   <span>Mesaj Gönder</span>
                 </div>
@@ -140,14 +144,14 @@ export const ContactPage: React.FC<ContactPageProps> = ({
               href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('AKUZ Stickers, Üçevler Mahallesi, Küçük Sanayi Sitesi, 6. Blok No:17/1 Nilüfer/Bursa')}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="group block bg-slate-50/60 border border-slate-200 rounded-2xl p-6 text-center transition-all hover:border-amber-400 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer select-none"
+              className="group block bg-slate-50/60 border border-slate-200 rounded-2xl p-6 text-center transition-all hover:border-amber-400 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer select-none overflow-hidden relative"
               title="Google Haritalar'da AKUZ Stickers İçin Rota Oluştur"
             >
               <div className="flex flex-col items-center">
-                <div className="relative w-14 h-14 rounded-xl bg-amber-100/70 border border-amber-200 flex items-center justify-center text-amber-600 mb-3 group-hover:bg-amber-500 group-hover:text-white transition-all shadow-xs">
-                  <span className="absolute inset-0 rounded-xl border-2 border-amber-400 pointer-events-none animate-location-ring-1" />
-                  <span className="absolute inset-0 rounded-xl border-2 border-amber-400 pointer-events-none animate-location-ring-2" />
-                  <span className="absolute inset-0 rounded-xl border-2 border-amber-300 pointer-events-none animate-location-ring-3" />
+                <div className="relative w-14 h-14 rounded-2xl bg-amber-100/70 border border-amber-200 flex items-center justify-center text-amber-600 mb-3 group-hover:bg-amber-500 group-hover:text-white transition-all shadow-xs">
+                  <span className="absolute inset-0 rounded-full border-2 border-amber-400 pointer-events-none animate-location-ring-1" />
+                  <span className="absolute inset-0 rounded-full border-2 border-amber-400/80 pointer-events-none animate-location-ring-2" />
+                  <span className="absolute inset-0 rounded-full border-2 border-amber-300/60 pointer-events-none animate-location-ring-3" />
                   <MapPin size={26} className="relative z-10" />
                 </div>
                 <span className="text-xs font-black uppercase tracking-wider text-amber-700 mb-1">

@@ -24,7 +24,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { PullToRefresh } from './components/PullToRefresh';
 import { PageLoader } from './components/PageLoader';
 import { FastAkuzLoader } from './components/FastAkuzLoader';
-import { OrderTrackingModal } from './components/OrderTrackingModal';
+import { OrderTrackingPage } from './components/OrderTrackingPage';
 import { PRODUCTS as INITIAL_PRODUCTS } from './data/products';
 import { LogOut } from 'lucide-react';
 import { Product, CartItem, UserProfile, Order, Review, SiteSettings, ProductColorOption } from './types';
@@ -46,6 +46,7 @@ import {
   INITIAL_CATEGORY_CIRCLES,
   INITIAL_WHY_AKUZ_CARDS,
 } from './utils/adminStore';
+import { safeLocalStorageSet } from './utils/imageOptimizer';
 
 function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
   if (!incoming || typeof incoming !== 'object') return current;
@@ -68,11 +69,11 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
     shippingFee:
       incoming.shippingFee !== undefined && !isNaN(Number(incoming.shippingFee))
         ? Number(incoming.shippingFee)
-        : (current.shippingFee !== undefined ? current.shippingFee : 39.9),
+        : (current.shippingFee !== undefined && !isNaN(Number(current.shippingFee)) ? Number(current.shippingFee) : 39.9),
     freeShippingThreshold:
       incoming.freeShippingThreshold !== undefined && !isNaN(Number(incoming.freeShippingThreshold))
         ? Number(incoming.freeShippingThreshold)
-        : (current.freeShippingThreshold !== undefined ? current.freeShippingThreshold : 150),
+        : (current.freeShippingThreshold !== undefined && !isNaN(Number(current.freeShippingThreshold)) ? Number(current.freeShippingThreshold) : 150),
     categories,
     whyAkuzCards,
     aboutParagraphs,
@@ -92,6 +93,7 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
       ...(current.smtpSettings || {}),
       ...(incoming.smtpSettings || {}),
     },
+    contactEmail: 'akuzstickers@gmail.com',
   };
 }
 
@@ -460,7 +462,6 @@ export default function App() {
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
   const [legalDocType, setLegalDocType] = useState<string | null>(null);
   const [isFastLoading, setIsFastLoading] = useState(false);
-  const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggingOutRef = useRef(false);
 
@@ -623,12 +624,12 @@ export default function App() {
 
   // Synchronize dynamic products and settings to storage
   useEffect(() => {
-    localStorage.setItem('akuz_dynamic_products', JSON.stringify(products));
+    safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(products));
   }, [products]);
 
   const handleUpdateProducts = (updated: Product[]) => {
     setProducts(updated);
-    localStorage.setItem('akuz_dynamic_products', JSON.stringify(updated));
+    safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(updated));
     // Host merkezi veritabanına kaydet
     fetch('/api/products', {
       method: 'POST',
@@ -880,7 +881,7 @@ export default function App() {
       {/* 0.1 PULL TO REFRESH (Aşağı çekince sayfayı yenileme özelliği) */}
       <PullToRefresh
         onRefresh={handlePullRefresh}
-        disabled={isSearchModalOpen || isCartDrawerOpen || Boolean(legalDocType) || isOrderTrackingOpen || isFastLoading}
+        disabled={isSearchModalOpen || isCartDrawerOpen || Boolean(legalDocType) || isFastLoading}
       />
 
       {/* 1. ÜST PANEL (HEADER - Admin panelindeyken mağaza üst çubuğu gizlenir) */}
@@ -892,13 +893,18 @@ export default function App() {
           cartCount={cartItems.reduce((acc, item) => acc + item.quantity, 0)}
           currentUser={currentUser}
           onOpenAuth={() => navigateTo('/giris')}
-          onOpenAccount={() => {
-            navigateTo('/hesap');
+          onOpenAccount={(tab?: 'orders' | 'profile' | 'addresses' | 'password') => {
+            if (tab === 'addresses') navigateTo('/adreslerim');
+            else if (tab === 'password') navigateTo('/sifre-degistir');
+            else if (tab === 'orders') navigateTo('/siparislerim');
+            else navigateTo('/hesap');
           }}
           onOpenOrders={() => {
             navigateTo('/siparislerim');
           }}
-          onOpenOrderTracking={() => setIsOrderTrackingOpen(true)}
+          onOpenOrderTracking={() => {
+            navigateTo('/siparis-sorgula');
+          }}
           onLogout={handleLogout}
           onOpenFavorites={handleOpenFavorites}
           onOpenCart={() => setIsCartDrawerOpen(true)}
@@ -921,6 +927,7 @@ export default function App() {
           recentlyViewedProducts={recentlyViewedProducts}
           onSelectProduct={handleSelectProduct}
           onSelectCategory={handleSelectCategoryAndNavigate}
+          siteSettings={siteSettings}
         />
       )}
 
@@ -975,11 +982,19 @@ export default function App() {
             }}
           />
         </main>
-      ) : currentPath === '/hesap' || currentPath === '/hesabim' || currentPath === '/siparislerim' ? (
+      ) : currentPath === '/hesap' || currentPath === '/hesabim' || currentPath === '/siparislerim' || currentPath === '/adreslerim' || currentPath === '/sifre-degistir' ? (
         <main className="flex-1">
           <AccountPage
             user={currentUser}
-            initialTab={currentPath === '/siparislerim' ? 'orders' : 'profile'}
+            initialTab={
+              currentPath === '/siparislerim'
+                ? 'orders'
+                : currentPath === '/adreslerim'
+                ? 'addresses'
+                : currentPath === '/sifre-degistir'
+                ? 'password'
+                : 'profile'
+            }
             onUpdateUser={(updated) => {
               setCurrentUser(updated);
               updateUserProfileData(updated);
@@ -1025,6 +1040,14 @@ export default function App() {
             email={siteSettings.contactEmail}
             whatsapp={siteSettings.contactWhatsApp}
             address={siteSettings.contactAddress}
+          />
+        </main>
+      ) : currentPath === '/siparis-sorgula' || currentPath === '/siparis-takip' ? (
+        <main className="flex-1">
+          <OrderTrackingPage
+            orders={orders}
+            onGoHome={() => navigateTo('/')}
+            onNavigateToCatalog={() => navigateTo('/katalog')}
           />
         </main>
       ) : currentPath === '/kvkk' ? (
@@ -1225,13 +1248,6 @@ export default function App() {
           documentType={legalDocType}
         />
       )}
-
-      {/* SİPARİŞ SORGULAMA MODALI (Sol menüden sipariş numarası ile sorgulama) */}
-      <OrderTrackingModal
-        isOpen={isOrderTrackingOpen}
-        onClose={() => setIsOrderTrackingOpen(false)}
-        orders={orders}
-      />
 
       {/* HESAPTAN ÇIKIŞ YAPILIYOR BİLDİRİMİ (2 Saniye Ekranda Kalır) */}
       {isLoggingOut && (

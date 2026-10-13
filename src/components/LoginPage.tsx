@@ -57,8 +57,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   // Last Google account
   const [lastGoogle, setLastGoogle] = useState<{ email: string; name: string } | null>(null);
-  const googleBtnRef = React.useRef<HTMLDivElement>(null);
-  const googleConfirmBtnRef = React.useRef<HTMLDivElement>(null);
 
   // Başarılı giriş state'i
   const [successUser, setSuccessUser] = useState<UserProfile | null>(null);
@@ -75,77 +73,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }, 700);
   };
 
-  // Google Resmi Butonunu (GIS - Google Identity Services) Doğrudan Başlat
-  useEffect(() => {
-    if (step !== 'email' && step !== 'google_account_confirm') return;
 
-    const renderGsiBtn = () => {
-      const g = (window as any).google;
-      if (!g?.accounts?.id) return;
-
-      let clientId = '660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com';
-      try {
-        const raw = localStorage.getItem('akuz_site_settings');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed.googleClientId) clientId = parsed.googleClientId.trim();
-        }
-      } catch {}
-
-      try {
-        g.accounts.id.initialize({
-          client_id: clientId,
-          callback: async (resp: any) => {
-            if (!resp?.credential) return;
-            try {
-              const base64Url = resp.credential.split('.')[1];
-              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-              const jsonPayload = decodeURIComponent(
-                atob(base64)
-                  .split('')
-                  .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-                  .join('')
-              );
-              const payload = JSON.parse(jsonPayload);
-              if (payload?.email) {
-                setIsLoading(true);
-                const loginRes = await loginWithGoogleAccount(
-                  payload.email,
-                  payload.name || payload.given_name || payload.email.split('@')[0]
-                );
-                triggerSuccessfulLogin(loginRes.user);
-              }
-            } catch (err: any) {
-              console.warn('[GSI PARSE ERROR]', err);
-              setIsLoading(false);
-            }
-          },
-        });
-
-        const activeRef = step === 'email' ? googleBtnRef.current : googleConfirmBtnRef.current;
-        if (activeRef) {
-          activeRef.innerHTML = '';
-          const btnWidth = Math.min(380, Math.max(280, (window.innerWidth || 360) - 60));
-          g.accounts.id.renderButton(activeRef, {
-            theme: 'outline',
-            size: 'large',
-            width: btnWidth,
-            text: 'continue_with',
-            shape: 'rectangular',
-            logo_alignment: 'left',
-          });
-        }
-      } catch (e) {
-        console.warn('[GSI RENDER ERROR]', e);
-      }
-    };
-
-    renderGsiBtn();
-    const timer = setTimeout(renderGsiBtn, 300);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [step]);
 
   // Doğrudan gerçek Google açılır penceresini ve hesap seçicisini başlatır
   const handleLaunchGooglePicker = async () => {
@@ -414,12 +342,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <div className="border-t border-slate-200 w-full" />
             </div>
 
-            {/* Google ile Giriş Yap Buton Alanı (Google Identity Services %100 Uyumlu) */}
+            {/* Google ile Giriş Yap */}
             <div className="space-y-3">
-              {/* Resmi Google OAuth Butonu */}
-              <div ref={googleBtnRef} className="w-full flex justify-center min-h-[44px] overflow-hidden" />
-
-              {/* Hızlı Giriş Butonu */}
               <button
                 type="button"
                 disabled={isLoading}
@@ -479,9 +403,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <span className="font-semibold">{email}</span> e-posta adresiniz sitemizde kayıtlıdır. Tüm adresleriniz ve geçmiş siparişleriniz korunmaktadır.
               </p>
             </div>
-
-            {/* Resmi Google Butonu */}
-            <div ref={googleConfirmBtnRef} className="w-full flex justify-center min-h-[44px] overflow-hidden" />
 
             {/* Tek Tıkla Giriş Yap */}
             <button

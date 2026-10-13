@@ -47,6 +47,8 @@ import {
   Upload,
   CreditCard,
   Lock,
+  Camera,
+  Loader2,
 } from 'lucide-react';
 import {
   Product,
@@ -64,6 +66,7 @@ import {
   INITIAL_CATEGORY_CIRCLES,
   INITIAL_WHY_AKUZ_CARDS,
 } from '../utils/adminStore';
+import { processAndUploadProductImage } from '../utils/imageOptimizer';
 import { RegisteredAccount } from '../utils/auth';
 import {
   testSmtpConnection,
@@ -179,7 +182,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleRebuildCpanel = async () => {
+  const handleRebuildCpanel = async (andDownload?: { url: string; filename: string }) => {
     try {
       setRebuildingCpanel(true);
       const res = await fetch('/api/rebuild-cpanel-packages', {
@@ -188,17 +191,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         body: JSON.stringify({
           products,
           settings: siteSettings,
+          globalColors,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        showNotification('cPanel için tüm ürünler, siparişler ve ayarlar güncellendi, ZIP paketleri hazırlandı!');
+        showNotification('Site dosyaları güncellendi ve en son haliyle ZIP paketlerine aktarıldı!');
         await fetchCpanelStatus();
+        if (andDownload) {
+          await handleDownloadZip(andDownload.url, andDownload.filename);
+        }
       } else {
         throw new Error(data.error || 'Paketleme başarısız oldu');
       }
     } catch (err: any) {
-      alert('Paket derleme hatası: ' + (err.message || 'Bilinmeyen hata'));
+      alert('Site dosyalarını güncelleme hatası: ' + (err.message || 'Bilinmeyen hata'));
     } finally {
       setRebuildingCpanel(false);
     }
@@ -213,7 +220,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleDownloadZip = async (url: string, filename: string) => {
     try {
       setDownloadingZip(filename);
-      const res = await fetch(url);
+      // Cache-buster: tarayıcının eski ZIP dosyasını disk önbelleğinden getirmesini kesin olarak engeller
+      const cacheBustUrl = `${url}?t=${Date.now()}`;
+      const res = await fetch(cacheBustUrl, { cache: 'no-store' });
       if (!res.ok) throw new Error('Sunucudan dosya alınamadı (' + res.status + ')');
       const blob = await res.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -224,11 +233,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       link.click();
       document.body.removeChild(link);
       setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
-      showNotification(filename + ' başarıyla indirildi!');
+      showNotification(`${filename} güncel haliyle başarıyla indirildi!`);
     } catch (err: any) {
       console.error('İndirme hatası:', err);
       // Fallback
-      window.location.href = url;
+      window.location.href = `${url}?t=${Date.now()}`;
     } finally {
       setDownloadingZip(null);
     }
@@ -490,30 +499,95 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     showNotification('Kategori yuvarlakları güncellendi.');
   };
 
-  const handleCategoryFileUpload = (catId: CategoryCircleItem['id'], file: File) => {
+  const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
+  const [quickUploadingProdId, setQuickUploadingProdId] = useState<string | null>(null);
+
+  const handleCategoryFileUpload = async (catId: CategoryCircleItem['id'], file: File) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (result) {
-        handleUpdateCategory(catId, 'imageUrl', result);
-        showNotification('Fotoğraf yüklendi ve kategori yuvarlağına uygulandı!');
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      showNotification('Kategori fotoğrafı optimize ediliyor...');
+      const url = await processAndUploadProductImage(file);
+      handleUpdateCategory(catId, 'imageUrl', url);
+      showNotification('Kategori yuvarlak fotoğrafı başarıyla güncellendi!');
+    } catch (err: any) {
+      console.error('[CATEGORY UPLOAD ERROR]', err);
+      showNotification('Fotoğraf yüklenemedi: ' + (err.message || 'Geçersiz dosya'));
+    }
   };
 
-  const handleProductFileUpload = (file: File) => {
+  const handleProductFileUpload = async (file: File) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (result) {
-        setFormImageUrl(result);
-        showNotification('Ürün görseli seçildi!');
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsUploadingProductImage(true);
+      setUploadProgressText('Görsel optimize ediliyor...');
+      const url = await processAndUploadProductImage(file, (msg) => {
+        setUploadProgressText(msg);
+      });
+      setFormImageUrl(url);
+      showNotification('Ürün ana görseli başarıyla seçildi ve hazırlandı!');
+    } catch (err: any) {
+      console.error('[PRODUCT UPLOAD ERROR]', err);
+      showNotification('Fotoğraf yüklenirken hata oluştu: ' + (err.message || 'Lütfen geçerli bir resim seçin.'));
+    } finally {
+      setIsUploadingProductImage(false);
+      setUploadProgressText('');
+    }
+  };
+
+  const handleAdditionalFileUpload = async (file: File) => {
+    if (!file) return;
+    try {
+      setIsUploadingProductImage(true);
+      setUploadProgressText('Ek görsel optimize ediliyor...');
+      const url = await processAndUploadProductImage(file, (msg) => {
+        setUploadProgressText(msg);
+      });
+      setFormAdditionalImages((prev) => {
+        const list = prev ? prev.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        if (!list.includes(url)) list.push(url);
+        return list.join(', ');
+      });
+      showNotification('Ek görsel başarıyla eklendi!');
+    } catch (err: any) {
+      console.error('[ADDITIONAL UPLOAD ERROR]', err);
+      showNotification('Ek görsel yüklenirken hata: ' + (err.message || 'Geçersiz resim'));
+    } finally {
+      setIsUploadingProductImage(false);
+      setUploadProgressText('');
+    }
+  };
+
+  const handleQuickProductPhotoUpload = async (product: Product, file: File) => {
+    if (!file) return;
+    try {
+      setQuickUploadingProdId(product.id);
+      showNotification(`"${product.name}" için fotoğraf optimize ediliyor ve yükleniyor...`);
+      const url = await processAndUploadProductImage(file);
+
+      // Ürünü doğrudan güncelle
+      const updated = products.map((p) => {
+        if (p.id === product.id) {
+          const newImages = p.images ? [...p.images] : [];
+          if (!newImages.includes(url)) {
+            newImages.unshift(url);
+          }
+          return {
+            ...p,
+            imageUrl: url,
+            images: newImages,
+          };
+        }
+        return p;
+      });
+      onUpdateProducts(updated);
+      showNotification(`"${product.name}" ürününün fotoğrafı başarıyla güncellendi!`);
+    } catch (err: any) {
+      console.error('[QUICK UPLOAD ERROR]', err);
+      showNotification('Fotoğraf güncellenirken hata oluştu: ' + (err.message || 'Geçersiz dosya.'));
+    } finally {
+      setQuickUploadingProdId(null);
+    }
   };
 
   // Hızlı Fiyat Güncelleme Durumu
@@ -1256,18 +1330,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleSaveShippingFee = () => {
-    const fee = Math.max(0, isNaN(Number(shippingFee)) ? 0 : Number(shippingFee));
-    const threshold = Math.max(0, isNaN(Number(freeShippingThreshold)) ? 0 : Number(freeShippingThreshold));
-
+  const handleUpdateShippingFeeAndThreshold = (
+    newFee: number,
+    newThreshold: number,
+    notify = false
+  ) => {
+    const validFee = Math.max(0, isNaN(Number(newFee)) ? 0 : Number(newFee));
+    const validThreshold = Math.max(0, isNaN(Number(newThreshold)) ? 0 : Number(newThreshold));
+    setShippingFee(validFee);
+    setFreeShippingThreshold(validThreshold);
     onUpdateSiteSettings({
       ...siteSettings,
-      shippingFee: fee,
-      freeShippingThreshold: threshold,
+      shippingFee: validFee,
+      freeShippingThreshold: validThreshold,
     });
-    showNotification(
-      `Müşteri kargo ücreti ayarları kaydedildi! (Standart Kargo: ${fee === 0 ? 'Ücretsiz' : `₺${fee.toFixed(2).replace('.', ',')}`}, Ücretsiz Kargo Limiti: ₺${threshold.toFixed(2).replace('.', ',')})`
-    );
+    if (notify) {
+      showNotification(
+        `Müşteri kargo ayarları anında kaydedildi! (Standart Kargo: ${validFee === 0 ? 'Ücretsiz' : `₺${validFee.toFixed(2).replace('.', ',')}`}, Ücretsiz Kargo Sepet Barajı: ₺${validThreshold >= 999999 ? 'Limitsiz (Hep Ücretli)' : validThreshold.toFixed(2).replace('.', ',')})`
+      );
+    }
+  };
+
+  const handleSaveShippingFee = () => {
+    handleUpdateShippingFeeAndThreshold(shippingFee, freeShippingThreshold, true);
   };
 
   const handleSaveKargonomi = () => {
@@ -1406,6 +1491,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               {isMobileMenuOpen ? <X size={15} /> : <Menu size={15} />}
               <span>{isMobileMenuOpen ? 'Menüyü Kapat' : 'Menü'}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('cpanel-deploy');
+                setIsMobileMenuOpen(false);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Archive size={14} className="text-emerald-600" />
+              <span className="hidden sm:inline">Site Dosyalarını Güncelle & İndir</span>
+              <span className="sm:hidden">Dosyaları Güncelle</span>
             </button>
 
             <button
@@ -1750,7 +1847,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {filteredProducts.map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="py-3 px-4">
-                            <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
+                            <div className="relative group/thumb w-12 h-12 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                              {quickUploadingProdId === p.id ? (
+                                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white z-10">
+                                  <Loader2 size={16} className="animate-spin text-orange-400" />
+                                </div>
+                              ) : null}
                               {p.isCustomText ? (
                                 <span className="text-[9px] font-black text-slate-800 text-center uppercase px-1">
                                   YAZINIZI YAZIN
@@ -1759,6 +1861,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
                               ) : (
                                 <ImageIcon size={20} className="text-slate-400" />
+                              )}
+
+                              {/* Hızlı Fotoğraf Değiştirme Butonu (Doğrudan tablodan) */}
+                              {!p.isCustomText && (
+                                <label
+                                  className="absolute inset-0 bg-black/55 opacity-0 group-hover/thumb:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity z-10"
+                                  title="Bu ürünün fotoğrafını doğrudan cihazdan güncelle"
+                                >
+                                  <Camera size={14} className="text-white drop-shadow" />
+                                  <span className="text-[8px] font-bold mt-0.5">Değiştir</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    disabled={quickUploadingProdId === p.id}
+                                    onChange={(e) => {
+                                      if (e.target.files?.[0]) {
+                                        handleQuickProductPhotoUpload(p, e.target.files[0]);
+                                      }
+                                    }}
+                                  />
+                                </label>
                               )}
                             </div>
                           </td>
@@ -3421,10 +3545,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold rounded-xl flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold rounded-lg flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span>Geçerli Kargo: {Number(shippingFee) === 0 ? 'Ücretsiz (0 ₺)' : `₺${Number(shippingFee).toFixed(2).replace('.', ',')}`}</span>
+                    </span>
+                    <span className="text-[11px] px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-800 font-extrabold rounded-lg">
+                      Ücretsiz Barajı: {Number(freeShippingThreshold) >= 999999 ? 'Limitsiz (Hep Ücretli)' : `₺${Number(freeShippingThreshold).toFixed(2).replace('.', ',')}`}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200">
+                      ✓ Canlı Senkronize
                     </span>
                   </div>
                 </div>
@@ -3447,7 +3577,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         step="0.1"
                         min="0"
                         value={shippingFee}
-                        onChange={(e) => setShippingFee(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          handleUpdateShippingFeeAndThreshold(val, freeShippingThreshold, false);
+                        }}
                         placeholder="39.90"
                         className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                       />
@@ -3471,7 +3604,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <button
                             key={btn.label}
                             type="button"
-                            onClick={() => setShippingFee(btn.val)}
+                            onClick={() => handleUpdateShippingFeeAndThreshold(btn.val, freeShippingThreshold, true)}
                             className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
                               Number(shippingFee) === btn.val
                                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -3502,7 +3635,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         step="1"
                         min="0"
                         value={freeShippingThreshold}
-                        onChange={(e) => setFreeShippingThreshold(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          handleUpdateShippingFeeAndThreshold(shippingFee, val, false);
+                        }}
                         placeholder="150"
                         className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                       />
@@ -3526,7 +3662,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <button
                             key={btn.label}
                             type="button"
-                            onClick={() => setFreeShippingThreshold(btn.val)}
+                            onClick={() => handleUpdateShippingFeeAndThreshold(shippingFee, btn.val, true)}
                             className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
                               Number(freeShippingThreshold) === btn.val
                                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -3573,6 +3709,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <Check size={16} />
                     <span>Müşteri Kargo Ücreti Ayarlarını Kaydet</span>
                   </button>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    (Değişiklikleriniz sepete ve ödeme sayfasına otomatik aktarılır)
+                  </span>
                 </div>
               </div>
 
@@ -3836,24 +3975,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="shrink-0 flex flex-col items-start md:items-end gap-2">
                     <button
                       type="button"
-                      onClick={handleRebuildCpanel}
+                      onClick={() => handleRebuildCpanel()}
                       disabled={rebuildingCpanel}
-                      className="px-5 py-3 bg-white text-emerald-800 hover:bg-emerald-50 disabled:opacity-60 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg hover:shadow-xl active:scale-95 transition-all cursor-pointer"
+                      className="px-6 py-3.5 bg-white text-emerald-900 hover:bg-emerald-50 disabled:opacity-60 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shadow-lg hover:shadow-xl active:scale-95 transition-all cursor-pointer border-2 border-emerald-300/40"
                     >
                       {rebuildingCpanel ? (
                         <>
-                          <RefreshCw size={17} className="animate-spin text-emerald-600" />
-                          <span>Paketler Derleniyor...</span>
+                          <RefreshCw size={18} className="animate-spin text-emerald-600" />
+                          <span>Şu Anki Site Dosyaları Güncelleniyor...</span>
                         </>
                       ) : (
                         <>
-                          <RefreshCw size={17} className="text-emerald-600" />
-                          <span>Paketleri Şimdi Yeniden Derle</span>
+                          <RefreshCw size={18} className="text-emerald-600" />
+                          <span>Şu Anki Site Dosyalarını Güncelle</span>
                         </>
                       )}
                     </button>
-                    <span className="text-[11px] text-emerald-200/70">
-                      Son değişiklikleri ZIP'lere aktarır
+                    <span className="text-[11px] text-emerald-200/90 font-medium">
+                      Tüm son kodları, ürünleri ve ayarları derleyip ZIP'leri yeniler
                     </span>
                   </div>
                 </div>
@@ -3884,6 +4023,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 space-y-1.5 text-[11px] text-slate-600 font-medium">
                       <div className="flex items-center gap-2">
                         <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                        <span><strong>src/ & index.html</strong> (Tüm güncel kaynak kodlar)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle size={14} className="text-emerald-600 shrink-0" />
                         <span><strong>server.js</strong> (Derlenmiş hazır Express backend)</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -3892,7 +4035,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle size={14} className="text-emerald-600 shrink-0" />
-                        <span><strong>data_storage/</strong> (Kullanıcılar ve siparişler)</span>
+                        <span><strong>data_storage/</strong> (Kullanıcılar, ürünler ve siparişler)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <CheckCircle size={14} className="text-emerald-600 shrink-0" />
@@ -3901,23 +4044,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-6 mt-6 border-t border-slate-100 flex flex-col gap-2">
+                  <div className="pt-6 mt-6 border-t border-slate-100 flex flex-col gap-2.5">
+                    {/* ÖNCELİKLİ: GÜNCELLE VE İNDİR */}
                     <button
-                      onClick={() => handleDownloadZip('/download-cpanel-full.zip', 'cpanel_full_app.zip')}
+                      type="button"
+                      onClick={() => handleRebuildCpanel({ url: '/download-cpanel-full.zip', filename: 'cpanel_full_app.zip' })}
                       disabled={Boolean(downloadingZip) || rebuildingCpanel}
                       className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-98 transition-all cursor-pointer"
                     >
-                      {downloadingZip === 'cpanel_full_app.zip' ? (
+                      {rebuildingCpanel ? (
                         <>
                           <RefreshCw size={18} className="animate-spin" />
-                          <span>Paket Hazırlanıyor & İndiriliyor...</span>
+                          <span>Şu Anki Kodlar Derleniyor...</span>
+                        </>
+                      ) : downloadingZip === 'cpanel_full_app.zip' ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          <span>İndiriliyor...</span>
                         </>
                       ) : (
                         <>
                           <Download size={18} />
-                          <span>Tam Paketi İndir (.ZIP)</span>
+                          <span>Şu Anki Kodlarla Güncelle & İndir (.ZIP)</span>
                         </>
                       )}
+                    </button>
+
+                    {/* HIZLI İNDİR (YENİDEN DERLEMEDEN) */}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadZip('/download-cpanel-full.zip', 'cpanel_full_app.zip')}
+                      disabled={Boolean(downloadingZip) || rebuildingCpanel}
+                      className="w-full py-2.5 px-4 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Download size={14} />
+                      <span>Mevcut Paketi Doğrudan İndir</span>
                     </button>
                   </div>
                 </div>
@@ -3959,23 +4120,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-6 mt-6 border-t border-slate-100 flex flex-col gap-2">
+                  <div className="pt-6 mt-6 border-t border-slate-100 flex flex-col gap-2.5">
+                    {/* ÖNCELİKLİ: GÜNCELLE VE İNDİR */}
                     <button
-                      onClick={() => handleDownloadZip('/download-cpanel-dist.zip', 'cpanel_public_html_dist.zip')}
+                      type="button"
+                      onClick={() => handleRebuildCpanel({ url: '/download-cpanel-dist.zip', filename: 'cpanel_public_html_dist.zip' })}
                       disabled={Boolean(downloadingZip) || rebuildingCpanel}
                       className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-98 transition-all cursor-pointer"
                     >
-                      {downloadingZip === 'cpanel_public_html_dist.zip' ? (
+                      {rebuildingCpanel ? (
                         <>
                           <RefreshCw size={18} className="animate-spin" />
-                          <span>Paket Hazırlanıyor & İndiriliyor...</span>
+                          <span>Şu Anki Kodlar Derleniyor...</span>
+                        </>
+                      ) : downloadingZip === 'cpanel_public_html_dist.zip' ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          <span>İndiriliyor...</span>
                         </>
                       ) : (
                         <>
                           <Download size={18} />
-                          <span>Statik Paketi İndir (.ZIP)</span>
+                          <span>Şu Anki Kodlarla Güncelle & İndir (.ZIP)</span>
                         </>
                       )}
+                    </button>
+
+                    {/* HIZLI İNDİR (YENİDEN DERLEMEDEN) */}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadZip('/download-cpanel-dist.zip', 'cpanel_public_html_dist.zip')}
+                      disabled={Boolean(downloadingZip) || rebuildingCpanel}
+                      className="w-full py-2.5 px-4 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Download size={14} />
+                      <span>Mevcut Paketi Doğrudan İndir</span>
                     </button>
                   </div>
                 </div>
@@ -4294,12 +4473,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   Ürün Ana Görseli (Fotoğraf Yükle veya URL Gir)
                 </label>
                 <div className="flex items-center gap-2 mb-2">
-                  <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 text-[#ff6600] border border-orange-200 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs active:scale-[0.98]">
-                    <Upload size={14} />
-                    <span>Cihazdan Fotoğraf Seç</span>
+                  <label className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 text-[#ff6600] border border-orange-200 rounded-lg text-xs font-bold transition-all shadow-2xs active:scale-[0.98] ${isUploadingProductImage ? 'opacity-70 cursor-wait' : 'cursor-pointer'}`}>
+                    {isUploadingProductImage ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin text-[#ff6600]" />
+                        <span>{uploadProgressText || 'Optimize Ediliyor...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={14} />
+                        <span>Cihazdan Fotoğraf Seç</span>
+                      </>
+                    )}
                     <input
                       type="file"
                       accept="image/*"
+                      disabled={isUploadingProductImage}
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files?.[0]) {
@@ -4309,8 +4498,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </label>
                   {formImageUrl && (
-                    <div className="w-10 h-10 rounded-lg border border-slate-200 overflow-hidden shrink-0 shadow-2xs bg-slate-100">
+                    <div className="relative group/prev w-12 h-12 rounded-lg border border-slate-200 overflow-hidden shrink-0 shadow-2xs bg-slate-100">
                       <img src={formImageUrl} alt="Önizleme" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setFormImageUrl('')}
+                        className="absolute inset-0 bg-red-600/80 text-white text-[10px] font-bold opacity-0 group-hover/prev:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
+                        title="Fotoğrafı Kaldır"
+                      >
+                        Kaldır
+                      </button>
                     </div>
                   )}
                 </div>
@@ -4321,12 +4518,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   onChange={(e) => setFormImageUrl(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs sm:text-sm font-medium focus:outline-none focus:border-[#ff0055]"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  💡 Seçilen yüksek çözünürlüklü fotoğraflar otomatik olarak optimize edilir ve web için hızlandırılır.
+                </p>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Ek Görseller (Virgülle ayırın)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    Ek Görseller (Varsa diğer açılar)
+                  </label>
+                  <label className="text-[11px] font-bold text-[#ff6600] hover:text-[#e05500] cursor-pointer flex items-center gap-1">
+                    <Plus size={12} />
+                    <span>Cihazdan Ek Görsel Ekle</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isUploadingProductImage}
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                          handleAdditionalFileUpload(e.target.files[0]);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
                 <input
                   type="text"
                   placeholder="/products/IMG_1140.jpeg, /products/IMG_1141.jpeg"

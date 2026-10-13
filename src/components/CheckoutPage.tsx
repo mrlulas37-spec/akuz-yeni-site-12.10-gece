@@ -9,21 +9,80 @@ import {
   MapPin,
   Lock,
   AlertTriangle,
-  MessageCircle,
   X,
   CheckCircle2,
   ShieldCheck,
   ChevronRight,
+  ChevronDown,
+  Plus,
   Sparkles,
   UserCheck,
 } from 'lucide-react';
-import { CartItem, UserProfile, Order, SiteSettings } from '../types';
+import { CartItem, UserProfile, Order, SiteSettings, Address } from '../types';
 import { StickerGraphic } from './StickerGraphic';
 import { sendOrderPreparingEmail } from '../utils/emailService';
 import { createKargonomiShipment } from '../utils/kargonomiService';
 import { getStoredSiteSettings } from '../utils/adminStore';
 import { calculateItemUnitPrice } from '../utils/pricingHelper';
-import { TURKEY_PROVINCES, PROVINCE_NAMES } from '../data/turkeyLocations';
+import { TURKEY_PROVINCES, PROVINCE_NAMES, getNeighborhoodsForDistrict } from '../data/turkeyLocations';
+
+interface CountryCodeOption {
+  code: string;
+  dial: string;
+  flag: string;
+  name: string;
+}
+
+const COUNTRY_OPTIONS: CountryCodeOption[] = [
+  { code: 'TR', dial: '+90', flag: '🇹🇷', name: 'Türkiye (+90)' },
+  { code: 'AZ', dial: '+994', flag: '🇦🇿', name: 'Azerbaycan (+994)' },
+  { code: 'DE', dial: '+49', flag: '🇩🇪', name: 'Almanya (+49)' },
+  { code: 'NL', dial: '+31', flag: '🇳🇱', name: 'Hollanda (+31)' },
+  { code: 'GB', dial: '+44', flag: '🇬🇧', name: 'Birleşik Krallık (+44)' },
+  { code: 'FR', dial: '+33', flag: '🇫🇷', name: 'Fransa (+33)' },
+  { code: 'US', dial: '+1', flag: '🇺🇸', name: 'ABD / Kanada (+1)' },
+  { code: 'AT', dial: '+43', flag: '🇦🇹', name: 'Avusturya (+43)' },
+  { code: 'BE', dial: '+32', flag: '🇧🇪', name: 'Belçika (+32)' },
+  { code: 'CH', dial: '+41', flag: '🇨🇭', name: 'İsviçre (+41)' },
+  { code: 'SA', dial: '+966', flag: '🇸🇦', name: 'Suudi Arabistan (+966)' },
+  { code: 'AE', dial: '+971', flag: '🇦🇪', name: 'BAE (+971)' },
+  { code: 'QA', dial: '+974', flag: '🇶🇦', name: 'Katar (+974)' },
+  { code: 'RU', dial: '+7', flag: '🇷🇺', name: 'Rusya (+7)' },
+  { code: 'GR', dial: '+30', flag: '🇬🇷', name: 'Yunanistan (+30)' },
+  { code: 'BG', dial: '+359', flag: '🇧🇬', name: 'Bulgaristan (+359)' },
+  { code: 'OTHER', dial: '+', flag: '🌐', name: 'Diğer (+)' },
+];
+
+/**
+ * Telefon numarasını biçimlendirir.
+ * TR (+90) için kullanıcı isteği doğrultusunda: 3 hane - 3 hane - 4 hane (XXX XXX XXXX)
+ * Örn: 546 875 8671
+ */
+const formatPhoneNumber = (val: string, dial: string): string => {
+  let digits = val.replace(/\D/g, '');
+  if (dial === '+90') {
+    // Başta 0 varsa kaldır (kullanıcı 05XX yazarsa otomatik 5XX'e dönüştür)
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    // TR numaraları en fazla 10 haneli
+    digits = digits.slice(0, 10);
+    if (digits.length <= 3) {
+      return digits;
+    } else if (digits.length <= 6) {
+      return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+    } else {
+      return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+    }
+  } else {
+    // Diğer ülkeler için en fazla 14 hane ve doğal aralıklı yazım
+    digits = digits.slice(0, 14);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+    if (digits.length <= 10) return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+    return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 10)} ${digits.slice(10)}`;
+  }
+};
 
 interface CheckoutPageProps {
   cartItems: CartItem[];
@@ -49,8 +108,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   // Sipariş başarıyla verildi durumu
   const [orderPlaced, setOrderPlaced] = useState<Order | null>(null);
 
-  // Ödeme yöntemi seçimi: 'whatsapp' | 'card' | 'bank_transfer'
-  const [paymentMethod, setPaymentMethod] = useState<'whatsapp' | 'card' | 'bank_transfer'>('card');
+  // Ödeme yöntemi: PayTR Kredi / Banka Kartı (WhatsApp ve Havale kaldırıldı)
+  const [paymentMethod] = useState<'card'>('card');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   // Üye olmadan devam et seçimi
@@ -63,12 +122,19 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   const [paytrError, setPaytrError] = useState<string | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
 
-  // Form alanları (İl ve İlçe her zaman varsayılan olarak boş kalır, kullanıcı 81 ilden seçer)
+  // Kayıtlı Adres Seçimi: 'new' veya kayıtlı adres ID'si
+  const [selectedAddressId, setSelectedAddressId] = useState<string | 'new'>('new');
+
+  // Telefon Ülke Kodu Seçimi (Varsayılan Türkiye +90)
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>('+90');
+
+  // Form alanları
   const [fullName, setFullName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [city, setCity] = useState<string>('');
   const [district, setDistrict] = useState<string>('');
+  const [neighborhood, setNeighborhood] = useState<string>('');
   const [fullAddress, setFullAddress] = useState<string>('');
   const [orderNote, setOrderNote] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
@@ -78,25 +144,32 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     email?: string;
     city?: string;
     district?: string;
+    neighborhood?: string;
     fullAddress?: string;
   }>({});
 
-  // Hesapta olan bilgileri çek (İl ve İlçe her zaman boş kalır)
+  // Hesapta olan bilgileri veya kayıtlı adresleri çek
   useEffect(() => {
     let initialName = currentUser?.name || '';
     let initialPhone = currentUser?.phone || '';
     let initialEmail = currentUser?.email || '';
+    let initialCity = '';
+    let initialDistrict = '';
+    let initialNeighborhood = '';
     let initialAddress = '';
+    let initialSelectedId: string | 'new' = 'new';
 
     if (currentUser?.addresses && currentUser.addresses.length > 0) {
       const defaultAddr = currentUser.addresses.find((a) => a.isDefault) || currentUser.addresses[0];
+      initialSelectedId = defaultAddr.id;
       initialAddress = defaultAddr.fullAddress || '';
-      if (!initialPhone && defaultAddr.phone) initialPhone = defaultAddr.phone;
-      if (!initialName && defaultAddr.recipientName) initialName = defaultAddr.recipientName;
-    }
-
-    // LocalStorage fallback
-    if (!initialName || !initialPhone || !initialAddress) {
+      initialCity = defaultAddr.city || '';
+      initialDistrict = defaultAddr.district || '';
+      initialNeighborhood = defaultAddr.neighborhood || '';
+      if (defaultAddr.phone) initialPhone = defaultAddr.phone;
+      if (defaultAddr.recipientName) initialName = defaultAddr.recipientName;
+    } else {
+      // LocalStorage fallback
       try {
         const savedUser = localStorage.getItem('akuz_user');
         if (savedUser) {
@@ -106,7 +179,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           if (!initialEmail && parsed.email) initialEmail = parsed.email;
           if (parsed.addresses && parsed.addresses.length > 0) {
             const def = parsed.addresses.find((a: any) => a.isDefault) || parsed.addresses[0];
-            if (!initialAddress && def.fullAddress) initialAddress = def.fullAddress;
+            initialSelectedId = def.id || 'saved-1';
+            initialAddress = def.fullAddress || '';
+            initialCity = def.city || '';
+            initialDistrict = def.district || '';
+            initialNeighborhood = def.neighborhood || '';
+            if (def.phone) initialPhone = def.phone;
+            if (def.recipientName) initialName = def.recipientName;
           }
         }
       } catch (e) {
@@ -115,13 +194,49 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     }
 
     setFullName(initialName);
-    setPhone(initialPhone);
+    setPhone(formatPhoneNumber(initialPhone, '+90'));
     setEmail(initialEmail);
-    // İl ve İlçe kullanıcı seçene kadar her zaman boş kalır
+    setCity(initialCity);
+    setDistrict(initialDistrict);
+    setNeighborhood(initialNeighborhood);
+    setFullAddress(initialAddress);
+    setSelectedAddressId(initialSelectedId);
+  }, [currentUser]);
+
+  // Mahalle için özel / elle giriş durumu
+  const [isCustomNeighborhood, setIsCustomNeighborhood] = useState(false);
+
+  // Kayıtlı adres seçildiğinde alanları anında doldur
+  const handleSelectSavedAddress = (addr: Address) => {
+    setSelectedAddressId(addr.id);
+    if (addr.recipientName) setFullName(addr.recipientName);
+    if (addr.phone) setPhone(formatPhoneNumber(addr.phone, selectedCountryCode));
+    setCity(addr.city || '');
+    setDistrict(addr.district || '');
+    setNeighborhood(addr.neighborhood || '');
+    // Eğer gelen mahalle standart listede yoksa elle giriş modunu aç
+    if (addr.neighborhood && addr.district) {
+      const list = getNeighborhoodsForDistrict(addr.district);
+      setIsCustomNeighborhood(!list.includes(addr.neighborhood));
+    } else {
+      setIsCustomNeighborhood(false);
+    }
+    setFullAddress(addr.fullAddress || '');
+    setFieldErrors({});
+    setFormError('');
+  };
+
+  // Yeni / Farklı adres gir seçildiğinde alanları temizle
+  const handleSelectNewAddress = () => {
+    setSelectedAddressId('new');
     setCity('');
     setDistrict('');
-    setFullAddress(initialAddress);
-  }, [currentUser]);
+    setNeighborhood('');
+    setIsCustomNeighborhood(false);
+    setFullAddress('');
+    setFieldErrors({});
+    setFormError('');
+  };
 
   // Zorunlu alan kontrolü - Eksik olan alanların tek tek adını belirler
   const validateOrderForm = (): boolean => {
@@ -131,6 +246,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       email?: string;
       city?: string;
       district?: string;
+      neighborhood?: string;
       fullAddress?: string;
     } = {};
     const missingFields: string[] = [];
@@ -140,6 +256,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     const cleanEmail = email.trim();
     const cleanCity = city.trim();
     const cleanDistrict = district.trim();
+    const cleanNeighborhood = neighborhood.trim();
     const cleanAddress = fullAddress.trim();
 
     if (!cleanName) {
@@ -150,9 +267,15 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     if (!cleanPhone) {
       errors.phone = 'Telefon numarası alanı zorunludur.';
       missingFields.push('Telefon Numarası');
-    } else if (cleanPhone.replace(/\D/g, '').length < 10) {
-      errors.phone = 'Geçerli bir telefon numarası giriniz (en az 10 hane).';
-      missingFields.push('Geçerli Telefon Numarası');
+    } else {
+      const rawDigits = cleanPhone.replace(/\D/g, '');
+      if (selectedCountryCode === '+90' && rawDigits.length !== 10) {
+        errors.phone = 'Geçerli 10 haneli Türkiye cep telefonu giriniz (Örn: 5XX XXX XXXX).';
+        missingFields.push('10 Haneli Telefon Numarası');
+      } else if (selectedCountryCode !== '+90' && rawDigits.length < 7) {
+        errors.phone = 'Geçerli bir telefon numarası giriniz.';
+        missingFields.push('Geçerli Telefon Numarası');
+      }
     }
 
     if (!cleanEmail) {
@@ -173,8 +296,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       missingFields.push('İlçe');
     }
 
+    if (!cleanNeighborhood) {
+      errors.neighborhood = 'Lütfen mahalle bilginizi giriniz.';
+      missingFields.push('Mahalle');
+    }
+
     if (!cleanAddress) {
-      errors.fullAddress = 'Açık teslimat adresi alanı zorunludur.';
+      errors.fullAddress = 'Açık teslimat adresi (cadde, sokak, no) alanı zorunludur.';
       missingFields.push('Açık Adres');
     }
 
@@ -198,9 +326,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     (sum, item) => sum + getItemPrice(item) * item.quantity,
     0
   );
-  const freeShippingThreshold = siteSettings?.freeShippingThreshold ?? 150;
-  const standardShippingFee = siteSettings?.shippingFee ?? 39.9;
-  const shippingFee = (subtotal >= freeShippingThreshold || subtotal === 0 || standardShippingFee === 0) ? 0 : standardShippingFee;
+  const standardShippingFee = typeof siteSettings?.shippingFee === 'number'
+    ? siteSettings.shippingFee
+    : (siteSettings?.shippingFee !== undefined && !isNaN(Number(siteSettings.shippingFee)) ? Number(siteSettings.shippingFee) : 39.9);
+  const freeShippingThreshold = typeof siteSettings?.freeShippingThreshold === 'number'
+    ? siteSettings.freeShippingThreshold
+    : (siteSettings?.freeShippingThreshold !== undefined && !isNaN(Number(siteSettings.freeShippingThreshold)) ? Number(siteSettings.freeShippingThreshold) : 150);
+
+  const isAllShippingFree = standardShippingFee === 0 || freeShippingThreshold === 0;
+  const isNoFreeShipping = freeShippingThreshold >= 999999;
+  const isFreeShippingQualified = isAllShippingFree || (subtotal >= freeShippingThreshold && !isNoFreeShipping);
+  const shippingFee = (subtotal === 0 || isFreeShippingQualified) ? 0 : standardShippingFee;
   const grandTotal = subtotal + shippingFee;
 
   // PayTR Başarılı/Başarısız Dönüş Takibi
@@ -210,7 +346,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     const oid = params.get('oid');
     if (paytrResult === 'success') {
       const orderIdToUse = oid ? `AKUZ-${oid.replace(/^AKUZ/, '')}` : ('AKUZ-' + Math.floor(1000 + Math.random() * 9000));
-      handleExecuteOrder(false, 'PayTR Kredi / Banka Kartı (3D Secure)', orderIdToUse);
+      handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', orderIdToUse);
       window.history.replaceState({}, '', window.location.pathname);
     } else if (paytrResult === 'failed') {
       setPaytrError('Ödeme işlemi bankanız veya PayTR tarafından onaylanamadı. Lütfen kart bilgilerinizi kontrol ediniz.');
@@ -229,6 +365,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     const generatedOrderId = 'AKUZ' + Date.now();
     setPendingOrderId(generatedOrderId);
 
+    const finalAddress = neighborhood.trim()
+      ? `${neighborhood.trim()} Mah., ${fullAddress.trim()}`
+      : fullAddress.trim();
+    const finalPhone = `${selectedCountryCode} ${phone.trim()}`;
+
     try {
       const response = await fetch('/api/paytr/create-token', {
         method: 'POST',
@@ -237,8 +378,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           orderId: generatedOrderId,
           fullName: fullName.trim(),
           email: email.trim(),
-          phone: phone.trim(),
-          address: fullAddress.trim(),
+          phone: finalPhone,
+          address: finalAddress,
           city: city.trim(),
           district: district.trim(),
           totalAmount: grandTotal,
@@ -265,20 +406,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     }
   };
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePaymentSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!validateOrderForm()) return;
-
-    if (paymentMethod === 'card') {
-      handleInitiatePaytrPayment();
-    } else if (paymentMethod === 'bank_transfer') {
-      handleExecuteOrder(false, 'Banka Havalesi / EFT');
-    } else {
-      handleExecuteOrder(true, 'WhatsApp Hızlı Sipariş');
-    }
+    handleInitiatePaytrPayment();
   };
 
-  const handleExecuteOrder = (viaWhatsApp: boolean, methodLabel: string, customOrderId?: string) => {
+  const handleExecuteOrder = (methodLabel: string = 'PayTR Kredi / Banka Kartı (3D Secure)', customOrderId?: string) => {
     if (!validateOrderForm()) return;
     setFormError('');
 
@@ -294,6 +428,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     }));
 
     const cleanEmail = email ? email.trim() : '';
+    const finalAddress = neighborhood.trim()
+      ? `${neighborhood.trim()} Mah., ${fullAddress.trim()}`
+      : fullAddress.trim();
+    const finalPhone = `${selectedCountryCode} ${phone.trim()}`;
 
     const newOrder: Order = {
       id: newOrderId,
@@ -301,9 +439,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       status: 'Hazırlanıyor',
       total: grandTotal,
       customerName: fullName.trim(),
-      customerPhone: phone.trim(),
+      customerPhone: finalPhone,
       customerEmail: cleanEmail,
-      shippingAddress: `${fullAddress.trim()}, ${district}/${city}`,
+      shippingAddress: `${finalAddress}, ${district}/${city}`,
       items: orderItems,
     };
 
@@ -325,8 +463,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         orderId: newOrderId,
         customerName: fullName.trim() || 'Değerli Müşterimiz',
         customerEmail: cleanEmail,
-        customerPhone: phone.trim(),
-        shippingAddress: `${fullAddress.trim()}, ${district}/${city}`,
+        customerPhone: finalPhone,
+        shippingAddress: `${finalAddress}, ${district}/${city}`,
         items: orderItems,
         totalPrice: grandTotal,
         orderNote,
@@ -340,8 +478,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       createKargonomiShipment({
         orderId: newOrderId,
         recipientName: fullName.trim() || 'Müşteri',
-        recipientPhone: phone.trim() || '05555555555',
-        recipientAddress: fullAddress.trim() || 'Teslimat Adresi',
+        recipientPhone: finalPhone,
+        recipientAddress: finalAddress,
         recipientCity: city,
         recipientDistrict: district,
         itemsDescription: orderItems.map((i) => `${i.quantity}x ${i.productName}`).join(', '),
@@ -359,22 +497,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     // Modal varsa kapat ve onay ekranını aç
     setIsPaytrModalOpen(false);
     setOrderPlaced(newOrder);
-
-    // WhatsApp seçildiyse güvenli anchor yönlendirmesi
-    if (viaWhatsApp) {
-      try {
-        const waUrl = `https://wa.me/905468758671?text=${generateWhatsAppMessage()}`;
-        const a = document.createElement('a');
-        a.href = waUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch (e) {
-        console.log('WhatsApp link created', e);
-      }
-    }
   };
 
   const generateWhatsAppMessage = () => {
@@ -447,11 +569,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             <div className="flex justify-between text-slate-500">
               <span>Ödeme Şekli:</span>
               <span className="font-semibold text-slate-800">
-                {paymentMethod === 'card'
-                  ? '💳 Kredi / Banka Kartı (3D Secure Onaylandı)'
-                  : paymentMethod === 'bank_transfer'
-                  ? '🏦 Banka Havalesi / EFT'
-                  : '💬 WhatsApp İle Hızlı Onay'}
+                💳 Kredi / Banka Kartı (PayTR 3D Secure Onaylandı)
               </span>
             </div>
 
@@ -470,34 +588,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             </div>
           </div>
 
-          {paymentMethod === 'bank_transfer' && (
-            <div className="p-3.5 bg-indigo-50/80 rounded-2xl border border-indigo-200 text-left text-xs space-y-1.5 text-indigo-950">
-              <p className="font-bold flex items-center gap-1.5 text-indigo-900">
-                <span>Havale / EFT Hesap Bilgisi</span>
-              </p>
-              <div className="p-2 bg-white rounded-lg border border-indigo-100 font-mono text-[11px] select-all">
-                TR42 0004 6000 0012 3456 7890 12
-              </div>
-              <p className="text-[11px] text-indigo-800">
-                Alıcı: <strong>Murat Ulusoy</strong> · Banka: <strong>Akbank / Ziraat Bankası</strong>
-              </p>
-              <p className="text-[10px] text-indigo-600">
-                * Açıklama kısmına <strong className="font-mono">#{orderPlaced.id}</strong> yazmanız siparişinizin derhal hazırlanmasını sağlar.
-              </p>
-            </div>
-          )}
-
           <div className="space-y-3 pt-2">
-            <a
-              href={`https://wa.me/905468758671?text=${generateWhatsAppMessage()}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20ba59] text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/20"
-            >
-              <MessageCircle size={18} />
-              <span>WhatsApp İle Siparişi Onayla & Takip Et</span>
-            </a>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {onViewOrders && (
                 <button
@@ -667,10 +758,99 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             
             {/* İletişim & Adres Formu */}
             <form onSubmit={handlePaymentSubmit} className="bg-white p-5 sm:p-7 rounded-3xl border border-slate-200/90 shadow-2xs space-y-5">
-              <h2 className="text-base font-black text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
-                <Truck size={18} className="text-[#ff0055]" />
-                <span>Teslimat Adresi Detayları</span>
-              </h2>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <Truck size={18} className="text-[#ff0055]" />
+                  <span>Teslimat Adresi Detayları</span>
+                </h2>
+                {currentUser?.addresses && currentUser.addresses.length > 0 && selectedAddressId !== 'new' && (
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>Kayıtlı Adres Seçili</span>
+                  </span>
+                )}
+              </div>
+
+              {/* KAYITLI ADRES SEÇİM ALANI (Eğer kullanıcının kayıtlı adresi varsa seçebilir) */}
+              {currentUser?.addresses && currentUser.addresses.length > 0 && (
+                <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <MapPin size={14} className="text-[#ff0055]" />
+                      <span>Kayıtlı Teslimat Adresleriniz</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSelectNewAddress}
+                      className={`text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 ${
+                        selectedAddressId === 'new'
+                          ? 'text-[#ff0055] font-black'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      <Plus size={13} />
+                      <span>Farklı / Yeni Adres Gir</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {currentUser.addresses.map((addr) => {
+                      const isSelected = selectedAddressId === addr.id;
+                      return (
+                        <div
+                          key={addr.id}
+                          onClick={() => handleSelectSavedAddress(addr)}
+                          className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer relative ${
+                            isSelected
+                              ? 'border-[#ff0055] bg-pink-50/40 ring-2 ring-[#ff0055]/20 shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-2xs'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'border-[#ff0055] bg-[#ff0055]' : 'border-slate-300 bg-white'
+                                }`}
+                              >
+                                {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </span>
+                              <span className="font-extrabold text-xs text-slate-900">
+                                {addr.title || 'Teslimat Adresi'}
+                              </span>
+                            </div>
+                            {addr.isDefault && (
+                              <span className="text-[10px] bg-orange-100 text-orange-700 font-bold px-1.5 py-0.5 rounded">
+                                Varsayılan
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-700 font-semibold truncate">
+                            {addr.recipientName || fullName} · {addr.phone || phone}
+                          </p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                            {addr.neighborhood ? `${addr.neighborhood} Mah., ` : ''}
+                            {addr.fullAddress}, {addr.district}/{addr.city}
+                          </p>
+                        </div>
+                      );
+                    })}
+
+                    {/* Farklı / Yeni Adres Ekle Kartı */}
+                    <div
+                      onClick={handleSelectNewAddress}
+                      className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        selectedAddressId === 'new'
+                          ? 'border-[#ff0055] bg-pink-50/40 ring-2 ring-[#ff0055]/20 shadow-xs text-[#ff0055] font-black'
+                          : 'border-dashed border-slate-300 bg-white hover:border-slate-400 text-slate-600 font-bold'
+                      }`}
+                    >
+                      <Plus size={16} />
+                      <span className="text-xs">Yeni / Farklı Bir Adres Gir</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Ad Soyad */}
@@ -700,7 +880,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   />
                 </div>
 
-                {/* Telefon Numarası */}
+                {/* Telefon Numarası (Ülke Kodu Seçimi + 3 hane 3 hane 4 hane boşluklu format) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
@@ -711,20 +891,52 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       <span className="text-[11px] font-bold text-rose-600">{fieldErrors.phone}</span>
                     )}
                   </label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => {
-                      setPhone(e.target.value);
-                      if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
-                    }}
-                    placeholder="Örn: 0546 875 86 71"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium ${
-                      fieldErrors.phone
-                        ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
-                        : 'bg-slate-50 border-slate-200 focus:border-[#ff0055] focus:bg-white'
-                    }`}
-                  />
+                  <div className="flex gap-2">
+                    {/* Ülke Kodu Seçici */}
+                    <div className="relative shrink-0">
+                      <select
+                        value={selectedCountryCode}
+                        onChange={(e) => {
+                          const newDial = e.target.value;
+                          setSelectedCountryCode(newDial);
+                          setPhone(formatPhoneNumber(phone, newDial));
+                        }}
+                        className="h-full pl-2.5 pr-7 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-800 focus:outline-none focus:border-[#ff0055] focus:bg-white transition-all appearance-none cursor-pointer"
+                        title="Ülke Telefon Kodu Seçiniz"
+                      >
+                        {COUNTRY_OPTIONS.map((c) => (
+                          <option key={c.code} value={c.dial}>
+                            {c.flag} {c.dial}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-400">
+                        <ChevronDown size={14} />
+                      </div>
+                    </div>
+
+                    {/* Telefon Numarası Girişi */}
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => {
+                        const formatted = formatPhoneNumber(e.target.value, selectedCountryCode);
+                        setPhone(formatted);
+                        if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+                      }}
+                      placeholder={selectedCountryCode === '+90' ? '5XX XXX XXXX' : 'Telefon Numarası'}
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium ${
+                        fieldErrors.phone
+                          ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
+                          : 'bg-slate-50 border-slate-200 focus:border-[#ff0055] focus:bg-white'
+                      }`}
+                    />
+                  </div>
+                  {selectedCountryCode === '+90' && (
+                    <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                      Örn: 546 875 8671 (3 hane 3 hane 4 hane boşluklu format)
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -755,8 +967,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 />
               </div>
 
-              {/* İl ve İlçe (81 İl Seçimi ve Dinamik İlçe Seçimi - Her Zaman Boş Başlar) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* İl, İlçe ve Mahalle (İl ve İlçe Gibi Mahalle İçin de Seçenek Eklendi) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {/* İl */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                     <span>İl <span className="text-[#ff0055]">*</span></span>
@@ -770,9 +983,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       const selected = e.target.value;
                       setCity(selected);
                       setDistrict('');
+                      setNeighborhood('');
+                      setIsCustomNeighborhood(false);
                       if (fieldErrors.city) setFieldErrors((prev) => ({ ...prev, city: undefined }));
                     }}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium cursor-pointer ${
+                    className={`w-full px-3 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium cursor-pointer ${
                       fieldErrors.city
                         ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
                         : 'bg-slate-50 border-slate-200 focus:border-[#ff0055] focus:bg-white'
@@ -787,6 +1002,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   </select>
                 </div>
 
+                {/* İlçe */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                     <span>İlçe <span className="text-[#ff0055]">*</span></span>
@@ -798,10 +1014,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                     value={district}
                     disabled={!city}
                     onChange={(e) => {
-                      setDistrict(e.target.value);
+                      const selected = e.target.value;
+                      setDistrict(selected);
+                      setNeighborhood('');
+                      setIsCustomNeighborhood(false);
                       if (fieldErrors.district) setFieldErrors((prev) => ({ ...prev, district: undefined }));
                     }}
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                    className={`w-full px-3 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                       fieldErrors.district
                         ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
                         : 'bg-slate-50 border-slate-200 focus:border-[#ff0055] focus:bg-white'
@@ -816,6 +1035,91 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       ))}
                   </select>
                 </div>
+
+                {/* Mahalle (İl ve İlçe Gibi Seçenek + Listede Olmayan İçin Elle Giriş) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span>Mahalle <span className="text-[#ff0055]">*</span></span>
+                    {fieldErrors.neighborhood && (
+                      <span className="text-[11px] font-bold text-rose-600">{fieldErrors.neighborhood}</span>
+                    )}
+                  </label>
+                  {!isCustomNeighborhood ? (
+                    <div className="flex gap-1.5">
+                      <select
+                        value={neighborhood}
+                        disabled={!district}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__custom__') {
+                            setIsCustomNeighborhood(true);
+                            setNeighborhood('');
+                          } else {
+                            setNeighborhood(val);
+                            if (fieldErrors.neighborhood) setFieldErrors((prev) => ({ ...prev, neighborhood: undefined }));
+                          }
+                        }}
+                        className={`w-full px-3 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                          fieldErrors.neighborhood
+                            ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
+                            : 'bg-slate-50 border-slate-200 focus:border-[#ff0055] focus:bg-white'
+                        }`}
+                      >
+                        <option value="">{district ? 'Mahalle Seçiniz' : 'Önce İlçe Seçin'}</option>
+                        {district &&
+                          getNeighborhoodsForDistrict(district).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        {district && (
+                          <option value="__custom__">
+                            ✍️ Listede Yoksa / Elle Yaz...
+                          </option>
+                        )}
+                      </select>
+                      {district && (
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomNeighborhood(true)}
+                          className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                          title="Mahalleyi Elle Yaz"
+                        >
+                          Yaz
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={neighborhood}
+                        onChange={(e) => {
+                          setNeighborhood(e.target.value);
+                          if (fieldErrors.neighborhood) setFieldErrors((prev) => ({ ...prev, neighborhood: undefined }));
+                        }}
+                        placeholder="Mahalle adı yazınız"
+                        className={`w-full px-3 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium ${
+                          fieldErrors.neighborhood
+                            ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
+                            : 'bg-slate-50 border-slate-200 focus:border-[#ff0055] focus:bg-white'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomNeighborhood(false);
+                          setNeighborhood('');
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                        title="Seçenek Listesine Dön"
+                      >
+                        Seç
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Açık Teslimat Adresi */}
@@ -823,20 +1127,20 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <MapPin size={13} className="text-slate-400" />
-                    <span>Açık Teslimat Adresi <span className="text-[#ff0055]">*</span></span>
+                    <span>Açık Teslimat Adresi (Cadde, Sokak, Bina No, Daire) <span className="text-[#ff0055]">*</span></span>
                   </span>
                   {fieldErrors.fullAddress && (
                     <span className="text-[11px] font-bold text-rose-600">{fieldErrors.fullAddress}</span>
                   )}
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={fullAddress}
                   onChange={(e) => {
                     setFullAddress(e.target.value);
                     if (fieldErrors.fullAddress) setFieldErrors((prev) => ({ ...prev, fullAddress: undefined }));
                   }}
-                  placeholder="Mahalle, cadde, sokak, apartman ve daire no bilgisi..."
+                  placeholder="Cadde, sokak, apartman ve daire no bilgisi..."
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium resize-none ${
                     fieldErrors.fullAddress
                       ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'
@@ -926,7 +1230,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Kargo Ücreti:</span>
+                  <span>Kargo Ücreti 🚚:</span>
                   <span className="font-price font-semibold">
                     {shippingFee === 0 ? (
                       <span className="text-emerald-600 font-bold">ÜCRETSİZ</span>
@@ -943,136 +1247,63 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 </div>
               </div>
 
-              {/* ÖDEME YÖNTEMİ SEÇİMİ (Trendyol Modeli) */}
+              {/* ÖDEME YÖNTEMİ: PayTR Kredi / Banka Kartı */}
               <div className="pt-2">
-                <label className="block text-xs font-bold text-slate-800 mb-2">
-                  Ödeme Yöntemi Seçin:
-                </label>
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('whatsapp')}
-                    className={`py-2.5 px-2 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'whatsapp'
-                        ? 'border-emerald-500 bg-emerald-50/70 text-emerald-800 shadow-xs'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                    }`}
-                  >
-                    <MessageCircle size={16} className="text-emerald-600" />
-                    <span>WhatsApp</span>
-                  </button>
+                <div className="p-4 bg-gradient-to-br from-pink-50/80 via-white to-slate-50 rounded-2xl border border-pink-200/90 space-y-3 text-xs mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-pink-100 border border-pink-200 flex items-center justify-center text-[#ff0055]">
+                        <CreditCard size={17} />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-slate-900 text-xs">Kredi / Banka Kartı (PayTR)</h4>
+                        <p className="text-[10px] text-slate-500">256-Bit SSL & 3D Secure Doğrulamalı</p>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      GÜVENLİ POS
+                    </span>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('card')}
-                    className={`py-2.5 px-2 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'card'
-                        ? 'border-[#ff0055] bg-pink-50/70 text-pink-800 shadow-xs'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                    }`}
-                  >
-                    <CreditCard size={16} className="text-[#ff0055]" />
-                    <span>Kredi Kartı (PayTR)</span>
-                  </button>
+                  {/* Desteklenen Kart Rozetleri */}
+                  <div className="pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-700">
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Troy</span>
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Visa</span>
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">MasterCard</span>
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">World</span>
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Bonus</span>
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Maximum</span>
+                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Axess</span>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('bank_transfer')}
-                    className={`py-2.5 px-2 rounded-xl border text-[11px] sm:text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'bank_transfer'
-                        ? 'border-indigo-500 bg-indigo-50/70 text-indigo-800 shadow-xs'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                    }`}
-                  >
-                    <Truck size={16} className="text-indigo-600" />
-                    <span>Havale/EFT</span>
-                  </button>
+                  {paytrError && (
+                    <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
+                      <AlertTriangle size={15} className="shrink-0 text-red-600" />
+                      <span>{paytrError}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Siparişi tamamla butonuna tıkladığınızda, bankanızın resmi SMS doğrulamalı PayTR 3D Secure güvenli ödeme ekranı açılacaktır.
+                  </p>
                 </div>
-
-                {/* PayTR Sanal POS Bilgi ve Güven Kutusu */}
-                {paymentMethod === 'card' && (
-                  <div className="p-3.5 bg-gradient-to-br from-pink-50/80 via-white to-slate-50 rounded-2xl border border-pink-200/90 space-y-2.5 text-xs animate-fadeIn mb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-pink-100 border border-pink-200 flex items-center justify-center text-[#ff0055]">
-                          <Lock size={15} />
-                        </div>
-                        <div>
-                          <h4 className="font-extrabold text-slate-900 text-xs">PayTR 256-Bit SSL Sanal POS</h4>
-                          <p className="text-[10px] text-slate-500">Banka Onaylı 3D Secure Güvenli Ödeme</p>
-                        </div>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        AKTİF
-                      </span>
-                    </div>
-
-                    {/* Desteklenen Kart Rozetleri */}
-                    <div className="pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-700">
-                      <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Troy</span>
-                      <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Visa</span>
-                      <span className="px-2 py-0.5 bg-white rounded border border-slate-200">MasterCard</span>
-                      <span className="px-2 py-0.5 bg-white rounded border border-slate-200">World</span>
-                      <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Bonus</span>
-                      <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Maximum</span>
-                    </div>
-
-                    {paytrError && (
-                      <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
-                        <AlertTriangle size={15} className="shrink-0 text-red-600" />
-                        <span>{paytrError}</span>
-                      </div>
-                    )}
-
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Butona tıkladığınızda, bankanızın resmi SMS doğrulamalı PayTR 3D Secure ödeme ekranı güvenle açılacaktır.
-                    </p>
-                  </div>
-                )}
-
-                {/* Havale / EFT Bilgi Kutusu */}
-                {paymentMethod === 'bank_transfer' && (
-                  <div className="p-3 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-[11px] text-indigo-900 space-y-1 animate-fadeIn mb-3">
-                    <p className="font-bold flex items-center gap-1">
-                      <span>Banka: Akbank & Ziraat Bankası</span>
-                    </p>
-                    <p className="font-mono font-semibold">TR42 0004 6000 0012 3456 7890 12</p>
-                    <p className="text-[10px] text-indigo-700">Alıcı: Murat Ulusoy · Açıklamaya sipariş numaranızı yazınız.</p>
-                  </div>
-                )}
               </div>
 
               {/* SİPARİŞİ TAMAMLA BUTONU */}
               <div className="space-y-2.5 pt-1">
-                {paymentMethod === 'whatsapp' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleExecuteOrder(true, 'WhatsApp Hızlı Sipariş')}
-                    className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20ba59] active:scale-98 text-white rounded-xl text-xs sm:text-sm font-black transition-all shadow-md shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <MessageCircle size={18} />
-                    <span>WhatsApp İle Siparişi Tamamla</span>
-                  </button>
-                ) : paymentMethod === 'card' ? (
-                  <button
-                    type="button"
-                    disabled={isProcessingPayment}
-                    onClick={handlePaymentSubmit}
-                    className="w-full py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-75 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-black transition-all shadow-md shadow-rose-500/25 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <CreditCard size={18} />
-                    <span>{isProcessingPayment ? 'PayTR Ödeme Ekranı Yükleniyor...' : `PayTR ile Güvenli Öde (${grandTotal.toFixed(2)} TL)`}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleExecuteOrder(false, 'Banka Havalesi / EFT')}
-                    className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-black transition-all shadow-md shadow-indigo-500/25 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <CheckCircle2 size={18} />
-                    <span>Havale / EFT Siparişini Oluştur</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={isProcessingPayment}
+                  onClick={handlePaymentSubmit}
+                  className="w-full py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-75 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-black transition-all shadow-md shadow-rose-500/25 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <CreditCard size={18} />
+                  <span>
+                    {isProcessingPayment
+                      ? 'PayTR Ödeme Ekranı Yükleniyor...'
+                      : `PayTR ile Güvenli Öde (${grandTotal.toFixed(2).replace('.', ',')} TL)`}
+                  </span>
+                </button>
               </div>
 
               <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
@@ -1157,7 +1388,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   onClick={() => {
                     setIsPaytrModalOpen(false);
                     const customOid = pendingOrderId ? `AKUZ-${pendingOrderId.replace(/^AKUZ/, '')}` : undefined;
-                    handleExecuteOrder(false, 'PayTR Kredi / Banka Kartı (3D Secure)', customOid);
+                    handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', customOid);
                   }}
                   className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                 >

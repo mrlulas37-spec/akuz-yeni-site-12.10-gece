@@ -294,3 +294,149 @@ export const TURKEY_PROVINCES: Record<string, string[]> = {
 };
 
 export const PROVINCE_NAMES = Object.keys(TURKEY_PROVINCES).sort((a, b) => a.localeCompare(b, 'tr'));
+
+// Türkiye genelinde en yaygın mahalle isimleri
+export const COMMON_TURKEY_NEIGHBORHOODS: string[] = [
+  'Merkez Mah.',
+  'Atatürk Mah.',
+  'Cumhuriyet Mah.',
+  'Fatih Mah.',
+  'Yeni Mahalle',
+  'Hürriyet Mah.',
+  'İstiklal Mah.',
+  'Zafer Mah.',
+  'İnönü Mah.',
+  'Barış Mah.',
+  'Gazi Mah.',
+  'Bahçelievler Mah.',
+  'Mimar Sinan Mah.',
+  'Yıldız Mah.',
+  'Yavuz Selim Mah.',
+  'Çamlık Mah.',
+  'Yeşilyurt Mah.',
+  'Esentepe Mah.',
+  'Gültepe Mah.',
+  'Barbaros Mah.',
+  'Namık Kemal Mah.',
+  'Şehitler Mah.',
+  'Aydınlık Mah.',
+  'Pazar Mah.',
+  'Kale Mah.',
+  'Karşıyaka Mah.',
+  'Erenler Mah.',
+  'Yeşilova Mah.',
+  'Güneş Mah.',
+  'Kurtuluş Mah.',
+  'Akşemsettin Mah.',
+  'Bağlarbaşı Mah.',
+  'Göztepe Mah.',
+  'Muratpaşa Mah.',
+  'Ortamahalle',
+  'Tepebaşı Mah.',
+  'Ulus Mah.',
+  'Vatan Mah.',
+  'Yunus Emre Mah.',
+  'Ziya Gökalp Mah.'
+];
+
+// Öne çıkan büyük ilçeler için mahalle listeleri
+export const DISTRICT_NEIGHBORHOODS: Record<string, string[]> = {
+  'Kadıköy': [
+    'Caferağa Mah. (Moda)', 'Caddebostan Mah.', 'Fenerbahçe Mah.', 'Feneryolu Mah.',
+    'Suadiye Mah.', 'Bostancı Mah.', 'Erenköy Mah.', 'Göztepe Mah.', 'Koşuyolu Mah.',
+    'Acıbadem Mah.', 'Rasimpaşa Mah.', 'Hasanpaşa Mah.', 'Fikirtepe Mah.', 'Osmanağa Mah.',
+    '19 Mayıs Mah.', 'Sahrayıcedit Mah.'
+  ],
+  'Beşiktaş': [
+    'Bebek Mah.', 'Etiler Mah.', 'Levent Mah.', 'Ortaköy Mah.', 'Abbasağa Mah.',
+    'Sinanpaşa Mah.', 'Türkali Mah.', 'Gayrettepe Mah.', 'Akat Mah.', 'Konaklar Mah.',
+    'Yıldız Mah.', 'Vişnezade Mah.', 'Kuruçeşme Mah.', 'Ulus Mah.', 'Levazım Mah.'
+  ],
+  'Şişli': [
+    'Mecidiyeköy Mah.', 'Teşvikiye Mah.', 'Fulya Mah.', 'Halaskargazi Mah.',
+    'Harbiye Mah.', 'Esentepe Mah.', 'Feriköy Mah.', 'Gülbahar Mah.', 'Kuştepe Mah.',
+    'Merkez Mah.', 'Paşa Mah.', '19 Mayıs Mah.', 'İnönü Mah.'
+  ],
+  'Üsküdar': [
+    'Acıbadem Mah.', 'Altunizade Mah.', 'Beylerbeyi Mah.', 'Çengelköy Mah.',
+    'Kandilli Mah.', 'Kuzguncuk Mah.', 'Mimar Sinan Mah.', 'Salacak Mah.',
+    'Ünalan Mah.', 'Bulgurlu Mah.', 'Kirazlıtepe Mah.', 'Yavuztürk Mah.'
+  ],
+  'Bakırköy': [
+    'Ataköy 1. Kısım Mah.', 'Ataköy 2-5-6. Kısım Mah.', 'Ataköy 7-8-9-10. Kısım Mah.',
+    'Yeşilköy Mah.', 'Yeşilyurt Mah.', 'Florya (Şenlikköy) Mah.', 'Zuhuratbaba Mah.',
+    'Kartaltepe Mah.', 'Osmaniye Mah.', 'Cevizlik Mah.', 'Sakızağacı Mah.'
+  ],
+  'Çankaya': [
+    'Kızılay Mah.', 'Kavaklıdere Mah. (Tunalı)', 'Bahçelievler Mah.', 'Ayrancı Mah.',
+    'Balgat Mah.', 'Çayyolu Mah.', 'Ümitköy Mah.', 'Dikmen Mah.', 'Yıldız Mah.',
+    'Gaziosmanpaşa Mah.', 'Maltepe Mah.', 'Birlik Mah.', 'Oran Mah.', 'Çukurambar Mah.'
+  ],
+  'Yenimahalle': [
+    'Batıkent Mah.', 'Demetevler Mah.', 'Çayyolu Mah.', 'İvedik Mah.',
+    'Ergazi Mah.', 'Kardelen Mah.', 'Kentkoop Mah.', 'Ragıp Tüzün Mah.', 'Uğur Mumcu Mah.'
+  ],
+  'Keçiören': [
+    'Etlik Mah.', 'Ayvalı Mah.', 'Esertepe Mah.', 'Kalaba Mah.', 'Kuşcağız Mah.',
+    'Pınarbaşı Mah.', 'Sanatoryum Mah.', 'Şenlik Mah.', 'Ufuktepe Mah.', 'Yayla Mah.'
+  ],
+  'Konak': [
+    'Alsancak Mah.', 'Göztepe Mah.', 'Güzelyalı Mah.', 'Kültür Mah.', 'Hatay Mah.',
+    'Kahramanlar Mah.', 'Akdeniz Mah.', 'Murat Reis Mah.', 'Mithatpaşa Mah.', 'Gültepe Mah.'
+  ],
+  'Karşıyaka': [
+    'Bostanlı Mah.', 'Mavişehir Mah.', 'Alaybey Mah.', 'Donanmacı Mah.',
+    'Aksoy Mah.', 'Bahçelievler Mah.', 'Nergiz Mah.', 'Tersane Mah.', 'Yalı Mah.'
+  ],
+  'Bornova': [
+    'Küçükpark (Kazımdirik) Mah.', 'Büyükpark Mah.', 'Erzene Mah.', 'Evka 3 Mah.',
+    'Evka 4 Mah.', 'Işıkkent Mah.', 'Pınarbaşı Mah.', 'Altındağ Mah.', 'Yeşilova Mah.'
+  ],
+  'Muratpaşa': [
+    'Lara Mah.', 'Şirinyalı Mah.', 'Fener Mah.', 'Gençlik Mah.', 'Meltem Mah.',
+    'Çağlayan Mah.', 'Yeşilbahçe Mah.', 'Kırcami Mah.', 'Güzeloba Mah.', 'Konuksever Mah.'
+  ],
+  'Konyaaltı': [
+    'Arapsuyu Mah.', 'Altınkum Mah.', 'Gürsu Mah.', 'Liman Mah.', 'Hurma Mah.',
+    'Toros Mah.', 'Uluç Mah.', 'Sarısu Mah.', 'Molla Yusuf Mah.'
+  ],
+  'Alanya': [
+    'Güller Pınarı Mah.', 'Saray Mah.', 'Kızlar Pınarı Mah.', 'Oba Mah.',
+    'Mahmutlar Mah.', 'Tosmur Mah.', 'Kestel Mah.', 'Avsallar Mah.', 'Konaklı Mah.'
+  ],
+  'Seyhan': [
+    'Cemalpaşa Mah.', 'Gazipaşa Mah.', 'Reşatbey Mah.', 'Gürselpaşa Mah.',
+    'Ziyapaşa Mah.', 'Yeşilyurt Mah.', 'Fatih Mah.', 'Bey Mah.', 'Mithatpaşa Mah.'
+  ],
+  'Çukurova': [
+    'Güzelyalı Mah.', 'Beyazevler Mah.', 'Toros Mah.', 'Huzurevleri Mah.',
+    'Mahfesığmaz Mah.', 'Yurt Mah.', 'Karslılar Mah.', 'Belediyeevleri Mah.'
+  ],
+  'Nilüfer': [
+    'Görükle Mah.', 'Özlüce Mah.', 'Fethiye Mah.', 'İhsaniye Mah.',
+    'Ataevler Mah.', 'Beşevler Mah.', 'Çamlıca Mah.', 'Balat Mah.', 'Altınşehir Mah.'
+  ],
+  'Osmangazi': [
+    'Çekirge Mah.', 'Heykel Mah.', 'Altıparmak Mah.', 'Santral Garaj Mah.',
+    'Demirtaş Mah.', 'Kükürtlü Mah.', 'Muradiye Mah.', 'Tahtakale Mah.'
+  ]
+};
+
+/**
+ * Seçilen ilçeye özel veya genel mahalle seçeneklerini döndürür
+ */
+export const getNeighborhoodsForDistrict = (district: string): string[] => {
+  if (!district) return COMMON_TURKEY_NEIGHBORHOODS;
+  if (DISTRICT_NEIGHBORHOODS[district]) {
+    const specific = DISTRICT_NEIGHBORHOODS[district];
+    const combined = [...specific];
+    for (const c of COMMON_TURKEY_NEIGHBORHOODS) {
+      if (!combined.includes(c)) {
+        combined.push(c);
+      }
+    }
+    return combined;
+  }
+  return COMMON_TURKEY_NEIGHBORHOODS;
+};
+

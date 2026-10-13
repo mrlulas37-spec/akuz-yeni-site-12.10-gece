@@ -49,11 +49,12 @@ Dosya: cpanel_public_html_dist.zip
    - products/ (Görseller)
    - api/index.php (PayTR ve sipariş API motoru)
    - paytr-callback.php (PayTR bildirim adresi)
-   - data_storage/ (Siparişler ve PayTR ayarları)
+   - data_storage/ (Siparişler, ürünler ve PayTR ayarları)
+   - uploads/ (Yüklenen ürün ve vitrin fotoğrafları)
    - .htaccess (Sayfa yönlendirmeleri ve API kuralları)
 
-* data_storage klasörünün yazma izninin (chmod) 755 veya 777 olduğundan 
-  emin olun (Siparişlerin kaydedilebilmesi için).
+* data_storage ve uploads klasörlerinin yazma izninin (chmod) 755 veya 777 olduğundan 
+  emin olun (Siparişlerin ve ürün fotoğraflarının kaydedilebilmesi için).
 
 ------------------------------------------------------------
 2. PAYTR MAĞAZA PANELİ AYARLARI
@@ -145,6 +146,20 @@ with zipfile.ZipFile(dist_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 zf.write(full_path, rel_path)
                 added.add(rel_path)
 
+    # Ensure uploads folder is included for product photos
+    uploads_dir = os.path.join(PUBLIC_DIR, 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+    for root, dirs, files in os.walk(uploads_dir):
+        for file in files:
+            full_path = os.path.join(root, file)
+            rel_path = os.path.join('uploads', os.path.relpath(full_path, uploads_dir))
+            if rel_path not in added:
+                zf.write(full_path, rel_path)
+                added.add(rel_path)
+    if 'uploads/.gitkeep' not in added:
+        zf.writestr('uploads/.gitkeep', '')
+        added.add('uploads/.gitkeep')
+
 print(f"Created: {dist_zip_path} ({os.path.getsize(dist_zip_path)} bytes)")
 
 # 3. Build cpanel_full_app.zip
@@ -164,6 +179,7 @@ with zipfile.ZipFile(full_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         '.env.example',
         'server.ts',
         'firebase-applet-config.json',
+        'index.html',
     ]
     for ef in essential_files:
         ef_path = os.path.join(BASE_DIR, ef)
@@ -171,6 +187,15 @@ with zipfile.ZipFile(full_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             zf.write(ef_path, ef)
 
     zf.writestr('README_KURULUM.txt', README_CONTENT)
+
+    # src/ directory (Tüm güncel site kaynak kodları)
+    src_dir = os.path.join(BASE_DIR, 'src')
+    if os.path.exists(src_dir):
+        for root, dirs, files in os.walk(src_dir):
+            for file in files:
+                full_path = os.path.join(root, file)
+                rel_path = os.path.join('src', os.path.relpath(full_path, src_dir))
+                zf.write(full_path, rel_path)
 
     # dist directory
     for root, dirs, files in os.walk(DIST_DIR):

@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,29 +63,39 @@ if (!fs.existsSync(USERS_FILE)) {
 async function startServer() {
   const app = express();
   const rawPort = process.env.PORT;
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-  app.get(["/download-cpanel-dist.zip", "/cpanel_public_html_dist.zip"], (_req, res) => {
-    const filePath = path.resolve(__dirname, "cpanel_archives", "cpanel_public_html_dist.zip");
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  const UPLOADS_DIR = path.resolve(__dirname, "public", "uploads");
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+  app.use("/uploads", express.static(UPLOADS_DIR));
+  const ensureAndSendZip = (zipName, req, res) => {
+    const filePath = path.resolve(__dirname, "cpanel_archives", zipName);
+    const shouldRebuild = req.query.rebuild === "1" || !fs.existsSync(filePath);
+    if (shouldRebuild) {
+      try {
+        console.log(`[CPANEL DOWNLOAD] ${zipName} indirilmeden \xF6nce g\xFCncel paket derleniyor...`);
+        const scriptPath = path.resolve(__dirname, "scripts", "package-cpanel.py");
+        execSync(`python3 "${scriptPath}"`, { stdio: "inherit" });
+      } catch (err) {
+        console.error("[CPANEL DOWNLOAD REBUILD ERROR]", err);
+      }
+    }
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     if (fs.existsSync(filePath)) {
-      res.download(filePath, "cpanel_public_html_dist.zip");
+      res.download(filePath, zipName);
     } else {
       res.status(404).send("ZIP dosyas\u0131 bulunamad\u0131.");
     }
+  };
+  app.get(["/download-cpanel-dist.zip", "/cpanel_public_html_dist.zip"], (req, res) => {
+    ensureAndSendZip("cpanel_public_html_dist.zip", req, res);
   });
-  app.get(["/download-cpanel-full.zip", "/cpanel_full_app.zip"], (_req, res) => {
-    const filePath = path.resolve(__dirname, "cpanel_archives", "cpanel_full_app.zip");
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    if (fs.existsSync(filePath)) {
-      res.download(filePath, "cpanel_full_app.zip");
-    } else {
-      res.status(404).send("ZIP dosyas\u0131 bulunamad\u0131.");
-    }
+  app.get(["/download-cpanel-full.zip", "/cpanel_full_app.zip"], (req, res) => {
+    ensureAndSendZip("cpanel_full_app.zip", req, res);
   });
   app.get("/api/cpanel-packages-status", (_req, res) => {
     try {
@@ -120,11 +131,16 @@ async function startServer() {
         writeJsonFile(SETTINGS_FILE, req.body.settings);
         console.log(`[CPANEL SYNC] Ayarlar g\xFCncellendi.`);
       }
+      if (req.body?.globalColors && Array.isArray(req.body.globalColors)) {
+        const colorsFile = path.join(DATA_DIR, "global_colors.json");
+        writeJsonFile(colorsFile, req.body.globalColors);
+        console.log(`[CPANEL SYNC] Renk paleti g\xFCncellendi.`);
+      }
       const scriptPath = path.resolve(__dirname, "scripts", "package-cpanel.py");
-      const { execSync } = require("child_process");
       execSync(`python3 "${scriptPath}"`, { stdio: "inherit" });
       res.json({ success: true, message: "cPanel paketleri ba\u015Far\u0131yla yeniden derlendi ve t\xFCm veriler g\xFCncellendi." });
     } catch (err) {
+      console.error("[REBUILD ERROR]", err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -1167,6 +1183,39 @@ async function startServer() {
       return res.json({ success: true, order: orders[index] });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  app.post(["/api/upload", "/api/upload-image"], (req, res) => {
+    try {
+      const { image, fileName: customName } = req.body;
+      if (!image || typeof image !== "string") {
+        return res.status(400).json({ success: false, error: "G\xF6rsel verisi g\xF6nderilmedi." });
+      }
+      let ext = "jpg";
+      let base64Data = image;
+      const matches = image.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      if (matches) {
+        ext = matches[1].toLowerCase() === "jpeg" ? "jpg" : matches[1].toLowerCase();
+        if (ext === "svg+xml") ext = "svg";
+        base64Data = matches[2];
+      }
+      const buffer = Buffer.from(base64Data, "base64");
+      const safeName = `prod_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.${ext}`;
+      const targetPath = path.join(UPLOADS_DIR, safeName);
+      fs.writeFileSync(targetPath, buffer);
+      const distUploads = path.resolve(__dirname, "dist", "uploads");
+      if (fs.existsSync(path.resolve(__dirname, "dist"))) {
+        if (!fs.existsSync(distUploads)) {
+          fs.mkdirSync(distUploads, { recursive: true });
+        }
+        fs.writeFileSync(path.join(distUploads, safeName), buffer);
+      }
+      const publicUrl = `/uploads/${safeName}`;
+      console.log(`[UPLOAD] \xDCr\xFCn foto\u011Fraf\u0131 kaydedildi: ${publicUrl} (${(buffer.length / 1024).toFixed(1)} KB)`);
+      return res.json({ success: true, url: publicUrl, sizeKb: (buffer.length / 1024).toFixed(1) });
+    } catch (err) {
+      console.error("[UPLOAD ERROR]", err);
+      return res.status(500).json({ success: false, error: err.message || "Foto\u011Fraf y\xFCklenemedi." });
     }
   });
   app.get("/api/products", (_req, res) => {

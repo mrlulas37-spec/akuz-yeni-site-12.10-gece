@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Heart, ShoppingBag, User as UserIcon, Package, LogOut, Shield, Menu } from 'lucide-react';
+import { Search, Heart, ShoppingBag, User as UserIcon, Package, LogOut, Shield, Menu, MapPin, Lock } from 'lucide-react';
 import { AkuzLogo } from './AkuzLogo';
-import { UserProfile, Product } from '../types';
+import { UserProfile, Product, SiteSettings } from '../types';
 import { SearchDropdownContent } from './SearchDropdownContent';
 import { SideNavDrawer } from './SideNavDrawer';
 import { saveRecentSearch } from '../utils/recentSearches';
@@ -13,7 +13,7 @@ interface NavbarProps {
   cartCount: number;
   currentUser: UserProfile | null;
   onOpenAuth: () => void;
-  onOpenAccount: () => void;
+  onOpenAccount: (tab?: 'orders' | 'profile' | 'addresses' | 'password') => void;
   onOpenOrders?: () => void;
   onOpenOrderTracking?: () => void;
   onLogout?: () => void;
@@ -27,6 +27,7 @@ interface NavbarProps {
   products?: Product[];
   onSelectProduct?: (product: Product) => void;
   recentlyViewedProducts?: Product[];
+  siteSettings?: SiteSettings;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -50,6 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   products = [],
   onSelectProduct,
   recentlyViewedProducts = [],
+  siteSettings,
 }) => {
   const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
@@ -134,15 +136,26 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
+  const freeThreshold = typeof siteSettings?.freeShippingThreshold === 'number'
+    ? siteSettings.freeShippingThreshold
+    : (siteSettings?.freeShippingThreshold !== undefined && !isNaN(Number(siteSettings.freeShippingThreshold)) ? Number(siteSettings.freeShippingThreshold) : 150);
+  const currentFee = typeof siteSettings?.shippingFee === 'number'
+    ? siteSettings.shippingFee
+    : (siteSettings?.shippingFee !== undefined && !isNaN(Number(siteSettings.shippingFee)) ? Number(siteSettings.shippingFee) : 39.9);
+
+  const shippingTickerText = (currentFee === 0 || freeThreshold === 0)
+    ? 'Tüm Siparişlerde Kargo Bedava!'
+    : freeThreshold >= 999999
+    ? `Sabit Kargo: ₺${currentFee.toFixed(2).replace('.', ',')}`
+    : `${freeThreshold.toFixed(0)} TL ve Üzeri Ücretsiz Kargo!`;
+
   const TOP_TICKER_ITEMS = [
     { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 FIRSAT' },
-    { text: '400 TL ve Üzeri Ücretsiz Kargo!', badge: '🚚 KARGO BEDAVA' },
+    { text: shippingTickerText, badge: '🚚 KARGO BEDAVA' },
+    { text: 'Suya ve Güneşe Dayanıklı Özel Tasarım Çıkartmalar', badge: '⭐ DAYANIKLI' },
+    { text: shippingTickerText, badge: '🚚 KARGO BEDAVA' },
     { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 FIRSAT' },
-    { text: '400 TL ve Üzeri Ücretsiz Kargo!', badge: '🚚 KARGO BEDAVA' },
-    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 FIRSAT' },
-    { text: '400 TL ve Üzeri Ücretsiz Kargo!', badge: '🚚 KARGO BEDAVA' },
-    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 FIRSAT' },
-    { text: '400 TL ve Üzeri Ücretsiz Kargo!', badge: '🚚 KARGO BEDAVA' },
+    { text: shippingTickerText, badge: '🚚 KARGO BEDAVA' },
   ];
 
   return (
@@ -261,12 +274,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                             type="button"
                             onClick={() => {
                               setIsAccountMenuOpen(false);
-                              onOpenAccount();
+                              onOpenAccount('profile');
                             }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
                           >
-                            <UserIcon size={17} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <UserIcon size={16} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
                             <span>Hesap Bilgilerim</span>
+                          </button>
+
+                          {/* 4. Adreslerim */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAccountMenuOpen(false);
+                              onOpenAccount('addresses');
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                          >
+                            <MapPin size={16} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <span>Adreslerim</span>
+                          </button>
+
+                          {/* 5. Şifre Değiştir */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAccountMenuOpen(false);
+                              onOpenAccount('password');
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                          >
+                            <Lock size={16} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <span>Şifre Değiştir</span>
                           </button>
 
                           {/* 4. Çıkış Yap */}

@@ -4,13 +4,15 @@ import { UserProfile, Address, Order } from '../types';
 import { changeUserPassword } from '../utils/auth';
 import { TURKEY_PROVINCES, PROVINCE_NAMES } from '../data/turkeyLocations';
 
+export type AccountTab = 'orders' | 'profile' | 'addresses' | 'password';
+
 interface AccountPageProps {
   user: UserProfile | null;
   onUpdateUser: (updatedUser: UserProfile) => void;
   onLogout: () => void;
   orders: Order[];
   onGoHome: () => void;
-  initialTab?: 'orders' | 'profile';
+  initialTab?: AccountTab;
 }
 
 export const AccountPage: React.FC<AccountPageProps> = ({
@@ -21,7 +23,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   onGoHome,
   initialTab = 'profile',
 }) => {
-  const [activeTab, setActiveTab] = useState<'orders' | 'profile'>(initialTab);
+  const [activeTab, setActiveTab] = useState<AccountTab>(initialTab);
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Editable Profile State
   const [name, setName] = useState(user?.name || '');
@@ -186,7 +194,15 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
           <div className="flex items-center gap-2.5">
             <span className="text-xs text-slate-400 font-medium hidden sm:inline">
-              Hesabım / {activeTab === 'orders' ? 'Siparişlerim' : 'Hesap Bilgileri'}
+              Hesabım / {
+                activeTab === 'orders'
+                  ? 'Siparişlerim'
+                  : activeTab === 'profile'
+                  ? 'Hesap Bilgileri'
+                  : activeTab === 'addresses'
+                  ? 'Adreslerim'
+                  : 'Şifre Değiştir'
+              }
             </span>
             <button
               type="button"
@@ -203,7 +219,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         {/* Ana Grid Yapısı: Sol Sidebar Panel + Sağ İçerik Alanı */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
           
-          {/* SOL PANEL (Siparişlerim, Hesap Bilgileri) */}
+          {/* SOL PANEL (Siparişlerim, Hesap Bilgileri, Adreslerim, Şifre Değiştir) */}
           <aside className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden p-3.5 sm:p-4 space-y-3">
             
             {/* Kullanıcı Profil Özeti */}
@@ -237,7 +253,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   <Package size={17} className={activeTab === 'orders' ? 'text-white' : 'text-slate-500'} />
                   <span>Siparişlerim</span>
                 </div>
-                {orders.length > 0 && (
+                {userOrders.length > 0 && (
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
                       activeTab === 'orders'
@@ -245,7 +261,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                         : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    {orders.length}
+                    {userOrders.length}
                   </span>
                 )}
               </button>
@@ -262,6 +278,47 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               >
                 <User size={17} className={activeTab === 'profile' ? 'text-white' : 'text-slate-500'} />
                 <span>Hesap Bilgileri</span>
+              </button>
+
+              {/* 3. Adreslerim / Adres Ekle */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('addresses')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                  activeTab === 'addresses'
+                    ? 'bg-[#ff0055] text-white shadow-sm shadow-pink-200'
+                    : 'text-slate-700 hover:bg-slate-100/80 hover:text-slate-900'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <MapPin size={17} className={activeTab === 'addresses' ? 'text-white' : 'text-slate-500'} />
+                  <span>Adreslerim</span>
+                </div>
+                {user.addresses && user.addresses.length > 0 && (
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                      activeTab === 'addresses'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {user.addresses.length}
+                  </span>
+                )}
+              </button>
+
+              {/* 4. Şifre Değiştir */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('password')}
+                className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                  activeTab === 'password'
+                    ? 'bg-[#ff0055] text-white shadow-sm shadow-pink-200'
+                    : 'text-slate-700 hover:bg-slate-100/80 hover:text-slate-900'
+                }`}
+              >
+                <Lock size={17} className={activeTab === 'password' ? 'text-white' : 'text-slate-500'} />
+                <span>Şifre Değiştir</span>
               </button>
             </nav>
 
@@ -373,11 +430,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
               </div>
             )}
 
-            {/* TAB 2: HESAP BİLGİLERİ (Fotoğraftaki Kişisel & İletişim Bilgileri + Teslimat Adresleri) */}
+            {/* TAB 2: HESAP BİLGİLERİ (Kişisel & İletişim Bilgileri) */}
             {activeTab === 'profile' && (
-              <div className="space-y-8">
+              <div className="space-y-6">
                 
-                {/* 1. KİŞİSEL & İLETİŞİM BİLGİLERİ */}
+                {/* KİŞİSEL & İLETİŞİM BİLGİLERİ */}
                 <div className="bg-slate-50/70 p-5 sm:p-6 rounded-2xl border border-slate-200/80">
                   <div className="flex items-center gap-2 mb-4">
                     <User size={18} className="text-[#ff0055]" />
@@ -437,75 +494,170 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                   </form>
                 </div>
 
-                {/* 2. KAYITLI TESLİMAT ADRESLERİ */}
-                <div className="bg-slate-50/70 p-5 sm:p-6 rounded-2xl border border-slate-200/80">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <MapPin size={18} className="text-[#ff0055]" />
-                      <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                        Kayıtlı Teslimat Adresleri
-                      </h3>
+                {/* Hızlı Erişim Kartları: Adreslerim & Şifre Değiştir */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div
+                    onClick={() => setActiveTab('addresses')}
+                    className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/90 hover:border-[#ff0055]/40 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="w-10 h-10 rounded-xl bg-pink-50 text-[#ff0055] flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                        <MapPin size={20} />
+                      </div>
+                      <h4 className="text-sm font-black text-slate-900 group-hover:text-[#ff0055] transition-colors">
+                        Teslimat Adreslerim
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {user.addresses.length > 0
+                          ? `${user.addresses.length} adet kayıtlı teslimat adresiniz var.`
+                          : 'Henüz kayıtlı bir adresiniz yok. Yeni adres ekleyin.'}
+                      </p>
                     </div>
-                    <button
-                      onClick={() => setShowAddressForm(!showAddressForm)}
-                      className="text-xs font-bold text-[#ff0055] hover:text-[#d90048] flex items-center gap-1 cursor-pointer bg-pink-50 hover:bg-pink-100/70 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Plus size={15} />
-                      <span>Yeni Adres Ekle</span>
-                    </button>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-[#ff0055]">
+                      <span>Adresleri Yönet / Ekle</span>
+                      <span>→</span>
+                    </div>
                   </div>
 
-                  {/* Yeni Adres Formu */}
-                  {showAddressForm && (
-                    <form onSubmit={handleAddAddress} className="mb-5 p-4 sm:p-5 bg-white rounded-xl border border-pink-200 space-y-3 shadow-xs">
-                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                  <div
+                    onClick={() => setActiveTab('password')}
+                    className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/90 hover:border-[#ff0055]/40 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                        <Lock size={20} />
+                      </div>
+                      <h4 className="text-sm font-black text-slate-900 group-hover:text-orange-600 transition-colors">
+                        Şifre Değiştir
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Hesabınızın güvenliği için dilediğiniz zaman yeni şifre oluşturun.
+                      </p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
+                      <span>Şifreyi Değiştir</span>
+                      <span>→</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* TAB 3: ADRESLERİM / ADRES EKLE */}
+            {activeTab === 'addresses' && (
+              <div className="space-y-6">
+                <div className="border-b border-slate-100 pb-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                        <MapPin size={20} className="text-[#ff0055]" />
+                        Teslimat Adreslerim
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Siparişlerinizde kullanacağınız teslimat adreslerini buradan ekleyebilir ve yönetebilirsiniz.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddressForm(!showAddressForm)}
+                      className="text-xs font-bold text-white bg-[#ff0055] hover:bg-[#d90048] flex items-center gap-1.5 cursor-pointer px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 shrink-0"
+                    >
+                      <Plus size={16} />
+                      <span>{showAddressForm ? 'Formu Kapat' : 'Yeni Adres Ekle'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Yeni Adres Ekleme Formu */}
+                {showAddressForm && (
+                  <form onSubmit={handleAddAddress} className="p-4 sm:p-5 bg-slate-50/90 rounded-2xl border border-pink-200/90 space-y-3.5 shadow-sm animate-fadeIn">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                        <MapPin size={15} className="text-[#ff0055]" />
                         Yeni Adres Bilgisi
                       </h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddressForm(false)}
+                        className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                      >
+                        Vazgeç
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Adres Başlığı *
+                        </label>
                         <input
                           type="text"
                           required
-                          placeholder="Adres Başlığı (Örn: Ev Adresim, Garaj)"
+                          placeholder="Örn: Ev Adresim, İş Yeri, Garaj"
                           value={addrTitle}
                           onChange={(e) => setAddrTitle(e.target.value)}
-                          className="px-3.5 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055]"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Teslim Alacak Kişi"
-                          value={addrRecipient}
-                          onChange={(e) => setAddrRecipient(e.target.value)}
-                          className="px-3.5 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055]"
+                          className="w-full px-3.5 py-2.5 text-xs bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] font-medium"
                         />
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Teslim Alacak Kişi
+                        </label>
                         <input
                           type="text"
-                          placeholder="Telefon Numarası"
+                          placeholder={name || 'Ad Soyad'}
+                          value={addrRecipient}
+                          onChange={(e) => setAddrRecipient(e.target.value)}
+                          className="w-full px-3.5 py-2.5 text-xs bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Telefon Numarası
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={phone || '+90 5XX XXX XX XX'}
                           value={addrPhone}
                           onChange={(e) => setAddrPhone(e.target.value)}
-                          className="px-3.5 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055]"
+                          className="w-full px-3.5 py-2.5 text-xs bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] font-medium"
                         />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          İl (81 İl) *
+                        </label>
                         <select
                           value={addrCity}
+                          required
                           onChange={(e) => {
                             setAddrCity(e.target.value);
                             setAddrDistrict('');
                           }}
-                          className="px-3 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] bg-white cursor-pointer"
+                          className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] bg-white cursor-pointer font-medium"
                         >
-                          <option value="">İl Seçiniz (81 İl)</option>
+                          <option value="">İl Seçiniz</option>
                           {PROVINCE_NAMES.map((prov) => (
                             <option key={prov} value={prov}>
                               {prov}
                             </option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          İlçe *
+                        </label>
                         <select
                           value={addrDistrict}
+                          required
                           disabled={!addrCity}
                           onChange={(e) => setAddrDistrict(e.target.value)}
-                          className="px-3 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] bg-white cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] bg-white cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed font-medium"
                         >
                           <option value="">{addrCity ? 'İlçe Seçiniz' : 'Önce İl Seçiniz'}</option>
                           {addrCity &&
@@ -516,98 +668,123 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                             ))}
                         </select>
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        Açık Adres (Cadde, Mahalle, Sokak, No, Daire) *
+                      </label>
                       <textarea
                         required
-                        placeholder="Tam Adres (Cadde, sokak, bina ve daire no)"
+                        placeholder="Örn: Atatürk Mah. Cumhuriyet Cad. No: 12 D: 4"
                         value={addrFull}
                         onChange={(e) => setAddrFull(e.target.value)}
                         rows={2}
-                        className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055]"
+                        className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055]/30 focus:border-[#ff0055] bg-white font-medium"
                       />
-                      <div className="flex justify-end gap-2 pt-1">
+                    </div>
+
+                    <div className="flex justify-end gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddressForm(false)}
+                        className="px-4 py-2 text-xs text-slate-500 hover:text-slate-800 font-bold cursor-pointer rounded-xl hover:bg-slate-200/60 transition-colors"
+                      >
+                        İptal
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-[#ff0055] hover:bg-[#d90048] text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                      >
+                        Adresi Kaydet
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Kayıtlı Adres Kartları */}
+                <div className="space-y-3">
+                  {user.addresses.length === 0 ? (
+                    <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 p-6">
+                      <div className="w-12 h-12 bg-white text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs border border-slate-200">
+                        <MapPin size={24} />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-800">Henüz Kayıtlı Adresiniz Yok</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        Siparişlerinizin hızlı ve hatasız teslim edilmesi için teslimat adresinizi hemen kaydedebilirsiniz.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddressForm(true)}
+                        className="mt-4 px-4 py-2.5 bg-[#ff0055] hover:bg-[#d90048] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Plus size={15} />
+                        <span>İlk Adresinizi Ekleyin</span>
+                      </button>
+                    </div>
+                  ) : (
+                    user.addresses.map((addr) => (
+                      <div
+                        key={addr.id}
+                        className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/90 flex items-start justify-between gap-4 shadow-2xs hover:border-slate-300 transition-colors"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs sm:text-sm font-extrabold text-slate-900">
+                              {addr.title}
+                            </span>
+                            {addr.isDefault && (
+                              <span className="text-[10px] bg-orange-100 text-orange-700 font-bold px-2 py-0.5 rounded-md">
+                                Varsayılan
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-700 font-semibold mt-1.5">
+                            {addr.recipientName} ({addr.phone})
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                            {addr.fullAddress} - {addr.district} / {addr.city}
+                          </p>
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() => setShowAddressForm(false)}
-                          className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+                          onClick={() => handleDeleteAddress(addr.id)}
+                          className="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-xl hover:bg-rose-50 cursor-pointer shrink-0"
+                          title="Adresi Sil"
                         >
-                          İptal
-                        </button>
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-[#ff0055] hover:bg-[#d90048] text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-xs"
-                        >
-                          Adresi Kaydet
+                          <Trash2 size={16} />
                         </button>
                       </div>
-                    </form>
+                    ))
                   )}
-
-                  {/* Kayıtlı Adres Kartları (Fotoğraftaki tasarım) */}
-                  <div className="space-y-3">
-                    {user.addresses.length === 0 ? (
-                      <p className="text-xs text-slate-500 py-3 text-center bg-white rounded-xl border border-dashed border-slate-200">
-                        Henüz kayıtlı bir teslimat adresi bulunmuyor.
-                      </p>
-                    ) : (
-                      user.addresses.map((addr) => (
-                        <div
-                          key={addr.id}
-                          className="p-4 bg-white rounded-xl border border-slate-200/90 flex items-start justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs sm:text-sm font-extrabold text-slate-900">
-                                {addr.title}
-                              </span>
-                              {addr.isDefault && (
-                                <span className="text-[10px] bg-orange-100 text-orange-700 font-bold px-2 py-0.5 rounded-md">
-                                  Varsayılan
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-700 font-semibold mt-1.5">
-                              {addr.recipientName} ({addr.phone})
-                            </p>
-                            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                              {addr.fullAddress} - {addr.district} / {addr.city}
-                            </p>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteAddress(addr.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-rose-50 cursor-pointer shrink-0"
-                            title="Adresi Sil"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
                 </div>
+              </div>
+            )}
 
-                {/* 3. GÜVENLİK & ŞİFRE DEĞİŞTİRME */}
-                <div className="bg-slate-50/70 p-5 sm:p-6 rounded-2xl border border-slate-200/80">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Lock size={18} className="text-[#ff0055]" />
-                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                      Şifre Değiştir
-                    </h3>
-                  </div>
-                  <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+            {/* TAB 4: ŞİFRE DEĞİŞTİR (Sayfanın en altında kaybolmadan doğrudan açılır) */}
+            {activeTab === 'password' && (
+              <div className="space-y-6">
+                <div className="border-b border-slate-100 pb-4">
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                    <Lock size={20} className="text-[#ff0055]" />
+                    Şifre Değiştir
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                     Hesap güvenliğiniz için şifrenizi dilediğiniz zaman buradan yenileyebilirsiniz.
                   </p>
+                </div>
 
+                <div className="bg-slate-50/70 p-5 sm:p-6 rounded-2xl border border-slate-200/80">
                   {passwordError && (
-                    <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5 animate-fadeIn">
+                    <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5 animate-fadeIn font-semibold">
                       <AlertCircle size={16} className="shrink-0 mt-0.5" />
                       <span>{passwordError}</span>
                     </div>
                   )}
 
                   {passwordSuccess && (
-                    <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-fadeIn font-semibold">
+                    <div className="mb-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-fadeIn font-semibold">
                       <Check size={16} className="text-emerald-600 shrink-0" />
                       <span>{passwordSuccess}</span>
                     </div>
@@ -682,11 +859,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex justify-end pt-1">
+                    <div className="flex justify-end pt-2">
                       <button
                         type="submit"
                         disabled={isUpdatingPassword}
-                        className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-75 text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm active:scale-98"
+                        className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-75 text-white rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm active:scale-98"
                       >
                         <Lock size={15} />
                         <span>{isUpdatingPassword ? 'Güncelleniyor...' : 'Şifreyi Değiştir'}</span>
@@ -694,7 +871,6 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                     </div>
                   </form>
                 </div>
-
               </div>
             )}
 

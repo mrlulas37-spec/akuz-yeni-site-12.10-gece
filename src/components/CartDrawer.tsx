@@ -88,10 +88,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     0
   );
 
-  const freeShippingThreshold = siteSettings?.freeShippingThreshold ?? 150;
-  const standardShippingFee = siteSettings?.shippingFee ?? 39.9;
-  const remainingForFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
-  const shippingFee = (subtotal >= freeShippingThreshold || subtotal === 0 || standardShippingFee === 0) ? 0 : standardShippingFee;
+  const standardShippingFee = typeof siteSettings?.shippingFee === 'number'
+    ? siteSettings.shippingFee
+    : (siteSettings?.shippingFee !== undefined && !isNaN(Number(siteSettings.shippingFee)) ? Number(siteSettings.shippingFee) : 39.9);
+  const freeShippingThreshold = typeof siteSettings?.freeShippingThreshold === 'number'
+    ? siteSettings.freeShippingThreshold
+    : (siteSettings?.freeShippingThreshold !== undefined && !isNaN(Number(siteSettings.freeShippingThreshold)) ? Number(siteSettings.freeShippingThreshold) : 150);
+
+  const isAllShippingFree = standardShippingFee === 0 || freeShippingThreshold === 0;
+  const isNoFreeShipping = freeShippingThreshold >= 999999;
+  const isFreeShippingQualified = isAllShippingFree || (subtotal >= freeShippingThreshold && !isNoFreeShipping);
+  const remainingForFreeShipping = isAllShippingFree || isNoFreeShipping ? 0 : Math.max(0, freeShippingThreshold - subtotal);
+  const shippingFee = (subtotal === 0 || isFreeShippingQualified) ? 0 : standardShippingFee;
   const grandTotal = subtotal + shippingFee;
 
   return (
@@ -156,7 +164,22 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
         {/* Ücretsiz Kargo İlerleme Çubuğu */}
         <div className="bg-slate-50/90 px-4 py-2.5 border-b border-slate-200/80 text-xs shrink-0">
-          {remainingForFreeShipping > 0 ? (
+          {isAllShippingFree ? (
+            <p className="text-emerald-700 font-bold flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-600" />
+              <span>Tüm siparişlerde kargo AKUZ Stickers tarafından hediye! 🚀</span>
+            </p>
+          ) : isNoFreeShipping ? (
+            <div className="flex items-center justify-between text-slate-700 font-medium">
+              <span className="flex items-center gap-1.5 text-slate-600">
+                <Truck size={14} className="text-slate-500" />
+                <span>Standart Kargo:</span>
+              </span>
+              <strong className="text-slate-900 font-extrabold font-price">
+                ₺{standardShippingFee.toFixed(2).replace('.', ',')}
+              </strong>
+            </div>
+          ) : remainingForFreeShipping > 0 ? (
             <div>
               <div className="flex items-center justify-between text-slate-700 font-medium">
                 <span className="flex items-center gap-1.5 text-slate-600">
@@ -175,11 +198,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   }}
                 />
               </div>
+              <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 font-medium">
+                <span>₺0</span>
+                <span>₺{freeShippingThreshold.toFixed(0)} üzeri ÜCRETSİZ</span>
+              </div>
             </div>
           ) : (
             <p className="text-emerald-700 font-bold flex items-center gap-2">
               <CheckCircle2 size={16} className="text-emerald-600" />
-              <span>Tebrikler! Kargo AKUZ Stickers tarafından hediye! 🚀</span>
+              <span>Tebrikler! ₺{freeShippingThreshold.toFixed(0)} üzeri kargo AKUZ Stickers tarafından hediye! 🚀</span>
             </p>
           )}
         </div>
@@ -299,7 +326,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <div>
                 <span className="text-xs text-slate-500 font-medium">Ara Toplam:</span>
                 <p className="text-[11px] text-slate-400 font-medium">
-                  Kargo: {shippingFee === 0 ? 'Ücretsiz' : `₺${shippingFee.toFixed(2).replace('.', ',')}`}
+                  Kargo Ücreti 🚚: {shippingFee === 0 ? 'Ücretsiz' : `₺${shippingFee.toFixed(2).replace('.', ',')}`}
                 </p>
               </div>
               <span className="font-price text-xl font-extrabold text-[#ff0055]">

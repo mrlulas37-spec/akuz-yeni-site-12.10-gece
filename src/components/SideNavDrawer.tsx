@@ -15,6 +15,8 @@ import {
   ChevronRight,
   Phone,
   Flame,
+  MapPin,
+  Lock,
 } from 'lucide-react';
 import { AkuzLogo } from './AkuzLogo';
 import { UserProfile, Product } from '../types';
@@ -26,7 +28,7 @@ interface SideNavDrawerProps {
   favoritesCount: number;
   cartCount: number;
   onOpenAuth: () => void;
-  onOpenAccount: () => void;
+  onOpenAccount: (tab?: 'orders' | 'profile' | 'addresses' | 'password') => void;
   onOpenOrders?: () => void;
   onOpenOrderTracking?: () => void;
   onOpenFavorites: () => void;
@@ -171,13 +173,43 @@ export const SideNavDrawer: React.FC<SideNavDrawerProps> = ({
                     type="button"
                     onClick={() => {
                       handleSmoothClose();
-                      onOpenAccount();
+                      onOpenAccount('profile');
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-slate-700 hover:text-[#ff6600] hover:bg-white rounded-lg transition-colors cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
                       <UserIcon size={14} className="text-[#ff6600]" />
-                      <span>Profilim & Adreslerim</span>
+                      <span>Hesap Bilgilerim</span>
+                    </span>
+                    <ChevronRight size={13} className="text-slate-400" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSmoothClose();
+                      onOpenAccount('addresses');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-slate-700 hover:text-[#ff6600] hover:bg-white rounded-lg transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <MapPin size={14} className="text-[#ff6600]" />
+                      <span>Teslimat Adreslerim</span>
+                    </span>
+                    <ChevronRight size={13} className="text-slate-400" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSmoothClose();
+                      onOpenAccount('password');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-semibold text-slate-700 hover:text-[#ff6600] hover:bg-white rounded-lg transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Lock size={14} className="text-[#ff6600]" />
+                      <span>Şifre Değiştir</span>
                     </span>
                     <ChevronRight size={13} className="text-slate-400" />
                   </button>

@@ -452,21 +452,21 @@ button, a {
 }
 
 .animate-whatsapp-call {
-  animation: whatsappCallPulse 3s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
+  animation: whatsappCallPulse 2.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
   transform-origin: center center;
 }
 
-/* 10. Konum Simgesinden Yayılan Dairesel Radar / Konum Dalgaları */
+/* 10. Konum Simgesinden Yayılan Dairesel Radar Dalgaları (Kullanıcı İsteği: Daireleri Daha Büyük) */
 @keyframes locationPingRing {
   0% {
-    transform: scale(0.7);
+    transform: scale(0.85);
     opacity: 0.9;
   }
-  60% {
-    opacity: 0.45;
+  45% {
+    opacity: 0.55;
   }
   100% {
-    transform: scale(2.4);
+    transform: scale(2.25);
     opacity: 0;
   }
 }
@@ -481,6 +481,47 @@ button, a {
 
 .animate-location-ring-3 {
   animation: locationPingRing 2.2s cubic-bezier(0.1, 0.5, 0.3, 1) infinite 1.5s;
+}
+
+/* 11. E-posta Zarf Paketi Açılma Animasyonu (Üçgen Kapak 2.5 Saniyede Bir Yukarı Doğru Açılır) */
+@keyframes envelopeTriangleFlapOpen {
+  0%, 15% {
+    transform: scaleY(1);
+    transform-origin: top center;
+  }
+  32%, 65% {
+    transform: scaleY(-1);
+    transform-origin: top center;
+  }
+  82%, 100% {
+    transform: scaleY(1);
+    transform-origin: top center;
+  }
+}
+
+@keyframes envelopeLetterPeekOut {
+  0%, 18% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  34%, 63% {
+    transform: translateY(-9px);
+    opacity: 1;
+  }
+  80%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+}
+
+.animate-envelope-triangle-flap {
+  transform-box: fill-box;
+  transform-origin: top center;
+  animation: envelopeTriangleFlapOpen 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-envelope-letter-slide {
+  animation: envelopeLetterPeekOut 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 /* 11. 2 Saniyelik Güvenli Çıkış İlerleme Çubuğu Animasyonu */

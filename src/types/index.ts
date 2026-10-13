@@ -159,6 +159,7 @@ export interface Address {
   phone: string;
   city: string;
   district: string;
+  neighborhood?: string;
   fullAddress: string;
   isDefault?: boolean;
 }

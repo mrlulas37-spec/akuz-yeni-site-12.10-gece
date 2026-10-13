@@ -22,7 +22,7 @@
   "aboutParagraphs": [
     "AKUZ Stickers, aracınıza, motosikletinize, kaskınıza, aynanıza, kısacası aklınıza gelebilecek çoğu yerde yapıştırıldığı yeri özelleştiren, ruh katan, özgün tasarımlar oluşturan genç girişimciler tarafından hayata geçirilmiş bir girişimdir. En kaliteli dış mekan vinil çıkartmaları sizlerle buluşturuyor, müşteri memnuniyetini ön planda tutuyoruz."
   ],
-  "contactEmail": "info@akuzstickers.com",
+  "contactEmail": "akuzstickers@gmail.com",
   "contactPhone": "+90 546 875 86 71",
   "contactWhatsApp": "+90 546 875 86 71",
   "contactAddress": "Üçevler Mahallesi, Küçük Sanayi Sitesi, 6. Blok No: 17/1 Nilüfer / Bursa",
@@ -105,7 +105,7 @@
     "enabled": true,
     "testMode": true
   },
-  "googleClientId": "660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com",
-  "shippingFee": 39.9,
-  "freeShippingThreshold": 150
+  "shippingFee": 89.9,
+  "freeShippingThreshold": 400,
+  "googleClientId": "660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com"
 }

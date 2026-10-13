@@ -194,6 +194,53 @@ if ($route === 'send-email') {
     exit;
 }
 
+// 2.5 IMAGE UPLOAD (Ürün ve vitrin fotoğrafları yükleme)
+if ($route === 'upload' || $route === 'upload-image') {
+    $rawBase64 = $body['image'] ?? '';
+    if (empty($rawBase64)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Görsel verisi gönderilmedi.']);
+        exit;
+    }
+
+    $ext = 'jpg';
+    if (preg_match('/^data:image\/([a-zA-Z0-9+]+);base64,/', $rawBase64, $matches)) {
+        $ext = strtolower($matches[1]);
+        if ($ext === 'jpeg') $ext = 'jpg';
+        if ($ext === 'svg+xml') $ext = 'svg';
+        $data = substr($rawBase64, strpos($rawBase64, ',') + 1);
+    } else {
+        $data = $rawBase64;
+    }
+
+    $decoded = base64_decode($data);
+    if ($decoded === false) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Geçersiz görsel verisi.']);
+        exit;
+    }
+
+    $uploadsDir = __DIR__ . '/../uploads';
+    if (!is_dir($uploadsDir)) {
+        @mkdir($uploadsDir, 0755, true);
+    }
+
+    $fileName = 'prod_' . time() . '_' . substr(md5(uniqid()), 0, 6) . '.' . $ext;
+    $filePath = $uploadsDir . '/' . $fileName;
+
+    if (@file_put_contents($filePath, $decoded)) {
+        echo json_encode([
+            'success' => true,
+            'url' => '/uploads/' . $fileName,
+            'fileName' => $fileName
+        ]);
+    } else {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Fotoğraf sunucuya kaydedilemedi. Klasör izinlerini kontrol edin.']);
+    }
+    exit;
+}
+
 // 3. PRODUCTS
 if ($route === 'products') {
     $prodFile = $dataDir . '/products.json';

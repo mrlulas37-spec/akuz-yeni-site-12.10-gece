@@ -154,11 +154,17 @@ export const getStoredSiteSettings = (): SiteSettings => {
     if (!parsed.whyAkuzCards || !Array.isArray(parsed.whyAkuzCards) || parsed.whyAkuzCards.length === 0 || parsed.whyAkuzCards.some(c => c.description.includes('Alman malı') || c.title.includes('Özel Tasarım'))) {
       parsed.whyAkuzCards = INITIAL_WHY_AKUZ_CARDS;
     }
-    if (!parsed.contactEmail || parsed.contactEmail.includes('akuzromork')) {
+    if (!parsed.contactEmail || parsed.contactEmail !== 'akuzstickers@gmail.com') {
       parsed.contactEmail = 'akuzstickers@gmail.com';
     }
     if (!parsed.contactAddress || parsed.contactAddress.includes('10. Sokak') || parsed.contactAddress === 'Bursa, Türkiye') {
       parsed.contactAddress = INITIAL_SITE_SETTINGS.contactAddress;
+    }
+    if (parsed.shippingFee !== undefined && !isNaN(Number(parsed.shippingFee))) {
+      parsed.shippingFee = Number(parsed.shippingFee);
+    }
+    if (parsed.freeShippingThreshold !== undefined && !isNaN(Number(parsed.freeShippingThreshold))) {
+      parsed.freeShippingThreshold = Number(parsed.freeShippingThreshold);
     }
     return parsed;
   } catch {

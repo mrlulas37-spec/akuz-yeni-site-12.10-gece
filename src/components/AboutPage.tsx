@@ -55,7 +55,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onGoHome, onNavigateToCata
 
             <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 flex flex-col items-center text-center">
               <Award className="w-8 h-8 text-amber-600 mb-2" />
-              <h3 className="font-bold text-slate-900 text-sm mb-1">Alman Folyo Kalitesi</h3>
+              <h3 className="font-bold text-slate-900 text-sm mb-1">1. Sınıf Vinil Kalitesi</h3>
               <p className="text-xs text-slate-600">Premium sınıf döküm vinil hammadde</p>
             </div>
 

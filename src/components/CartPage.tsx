@@ -64,10 +64,18 @@ export const CartPage: React.FC<CartPageProps> = ({
     0
   );
 
-  const freeShippingThreshold = siteSettings?.freeShippingThreshold ?? 150;
-  const standardShippingFee = siteSettings?.shippingFee ?? 39.9;
-  const remainingForFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
-  const shippingFee = (subtotal >= freeShippingThreshold || subtotal === 0 || standardShippingFee === 0) ? 0 : standardShippingFee;
+  const standardShippingFee = typeof siteSettings?.shippingFee === 'number'
+    ? siteSettings.shippingFee
+    : (siteSettings?.shippingFee !== undefined && !isNaN(Number(siteSettings.shippingFee)) ? Number(siteSettings.shippingFee) : 39.9);
+  const freeShippingThreshold = typeof siteSettings?.freeShippingThreshold === 'number'
+    ? siteSettings.freeShippingThreshold
+    : (siteSettings?.freeShippingThreshold !== undefined && !isNaN(Number(siteSettings.freeShippingThreshold)) ? Number(siteSettings.freeShippingThreshold) : 150);
+
+  const isAllShippingFree = standardShippingFee === 0 || freeShippingThreshold === 0;
+  const isNoFreeShipping = freeShippingThreshold >= 999999;
+  const isFreeShippingQualified = isAllShippingFree || (subtotal >= freeShippingThreshold && !isNoFreeShipping);
+  const remainingForFreeShipping = isAllShippingFree || isNoFreeShipping ? 0 : Math.max(0, freeShippingThreshold - subtotal);
+  const shippingFee = (subtotal === 0 || isFreeShippingQualified) ? 0 : standardShippingFee;
   const discountAmount = (subtotal * appliedDiscount) / 100;
   const grandTotal = Math.max(0, subtotal - discountAmount + shippingFee);
 
@@ -166,12 +174,27 @@ export const CartPage: React.FC<CartPageProps> = ({
               
               {/* Kargo Bilgilendirme Kutusu */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
-                {remainingForFreeShipping > 0 ? (
+                {isAllShippingFree ? (
+                  <p className="text-emerald-700 font-bold flex items-center gap-2 text-xs sm:text-sm">
+                    <CheckCircle2 size={18} className="text-emerald-600" />
+                    <span>🎉 Tebrikler! Tüm siparişlerde kargo AKUZ Stickers tarafından hediye! 🚀</span>
+                  </p>
+                ) : isNoFreeShipping ? (
+                  <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700 font-medium">
+                    <span className="flex items-center gap-2 text-slate-600">
+                      <Truck size={17} className="text-slate-500" />
+                      <span>Standart Anlaşmalı Kargo:</span>
+                    </span>
+                    <strong className="text-slate-900 font-extrabold font-price">
+                      ₺{standardShippingFee.toFixed(2).replace('.', ',')}
+                    </strong>
+                  </div>
+                ) : remainingForFreeShipping > 0 ? (
                   <div>
                     <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700 font-medium">
                       <span className="flex items-center gap-2 text-slate-600">
                         <Truck size={17} className="text-[#ff0055]" />
-                        <span>Ücretsiz kargo avantajı için:</span>
+                        <span>Ücretsiz kargo avantajı için (₺{freeShippingThreshold.toFixed(0)} Barajı):</span>
                       </span>
                       <strong className="text-[#ff0055] font-extrabold font-price">
                         ₺{remainingForFreeShipping.toFixed(2).replace('.', ',')} daha ekleyin
@@ -185,11 +208,15 @@ export const CartPage: React.FC<CartPageProps> = ({
                         }}
                       />
                     </div>
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 font-medium">
+                      <span>₺0</span>
+                      <span>₺{freeShippingThreshold.toFixed(0)} ve üzeri ÜCRETSİZ KARGO</span>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-emerald-700 font-bold flex items-center gap-2 text-xs sm:text-sm">
                     <CheckCircle2 size={18} className="text-emerald-600" />
-                    <span>Tebrikler! ₺150 üzeri sepetiniz için kargo AKUZ Stickers tarafından hediye! 🚀</span>
+                    <span>Tebrikler! ₺{freeShippingThreshold.toFixed(0)} üzeri sepetiniz için kargo AKUZ Stickers tarafından hediye! 🚀</span>
                   </p>
                 )}
               </div>
@@ -303,7 +330,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                 <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 flex items-center gap-3">
                   <ShieldCheck size={20} className="text-emerald-600 shrink-0" />
                   <div className="text-xs">
-                    <p className="font-bold text-slate-800">1. Sınıf Alman Vinil</p>
+                    <p className="font-bold text-slate-800">1. Sınıf Vinil</p>
                     <p className="text-slate-400">Solmaz ve sökülmez kalite</p>
                   </div>
                 </div>
@@ -311,7 +338,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                   <Truck size={20} className="text-[#ff0055] shrink-0" />
                   <div className="text-xs">
                     <p className="font-bold text-slate-800">Hızlı & Güvenli Kargo</p>
-                    <p className="text-slate-400">Özel korumalı rulo kutularda</p>
+                    <p className="text-slate-400">Korumalı Paketleme</p>
                   </div>
                 </div>
                 <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 flex items-center gap-3">
@@ -384,7 +411,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                   )}
 
                   <div className="flex justify-between">
-                    <span>Kargo Ücreti:</span>
+                    <span>Kargo Ücreti 🚚:</span>
                     <span className="font-price font-semibold">
                       {shippingFee === 0 ? (
                         <span className="text-emerald-600 font-bold">ÜCRETSİZ</span>
