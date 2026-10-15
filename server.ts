@@ -19,6 +19,7 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const GOOGLE_CREDENTIALS_FILE = path.join(DATA_DIR, 'google_credentials.json');
 
 // Yardımcı dosya okuma/yazma fonksiyonları
 function readJsonFile<T>(filePath: string, fallback: T): T {
@@ -45,31 +46,9 @@ function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password + '_akuz_salt_secret').digest('hex');
 }
 
-// Başlangıç Admin Hesabı Tohumlama (Veritabanı boşsa oluşturur)
+// Başlangıçta kullanıcı listesi temiz (Kullanıcı talebiyle sıfırlandı)
 if (!fs.existsSync(USERS_FILE)) {
-  const initialUsers = [
-    {
-      name: 'Murat Ulusoy',
-      email: 'mrlulas37@gmail.com',
-      passwordHash: hashPassword('123456'),
-      plainPassword: '123456',
-      phone: '+90 546 875 86 71',
-      createdAt: new Date().toISOString(),
-      addresses: [
-        {
-          id: 'addr-1',
-          title: 'Ev Adresim',
-          recipientName: 'Murat Ulusoy',
-          phone: '+90 546 875 86 71',
-          city: 'Bursa',
-          district: 'Nilüfer',
-          fullAddress: 'Üçevler Mah. 10. Sokak No:17/A',
-          isDefault: true,
-        },
-      ],
-    },
-  ];
-  writeJsonFile(USERS_FILE, initialUsers);
+  writeJsonFile(USERS_FILE, []);
 }
 
 async function startServer() {
@@ -814,6 +793,142 @@ async function startServer() {
   // MERKEZİ VERİTABANI (HOST / SERVER STORAGE) API
   // ==========================================
 
+  // 0. UNIFIED AUTH API (/api/auth.php)
+  app.post(['/api/auth.php', '/auth.php'], (req, res) => {
+    try {
+      const { action, email, password, full_name, name, phone, address } = req.body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      if (action === 'register') {
+        const cleanName = (full_name || name || '').trim();
+        if (!cleanName) return res.status(400).json({ success: false, error: 'Lütfen Ad ve Soyadınızı girin.' });
+        if (!cleanEmail || !cleanEmail.includes('@')) return res.status(400).json({ success: false, error: 'Geçerli bir e-posta adresi girin.' });
+        if (!password || password.length < 6) return res.status(400).json({ success: false, error: 'Şifreniz en az 6 karakter olmalıdır.' });
+
+        const users: any[] = readJsonFile(USERS_FILE, []);
+        const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (existing) {
+          return res.status(400).json({ success: false, error: 'Bu e-posta adresiyle kayıtlı bir hesap zaten var. Lütfen giriş yapın.' });
+        }
+
+        const addresses = address ? [{
+          id: 'addr-1',
+          title: 'Kayıtlı Adresim',
+          recipientName: cleanName,
+          phone: phone || '',
+          city: 'Bursa',
+          district: 'Nilüfer',
+          fullAddress: address,
+          isDefault: true,
+        }] : [];
+
+        const newAccount = {
+          name: cleanName,
+          full_name: cleanName,
+          email: cleanEmail,
+          passwordHash: hashPassword(password),
+          plainPassword: password,
+          phone: phone || '',
+          address: address || '',
+          createdAt: new Date().toISOString(),
+          addresses,
+        };
+
+        users.push(newAccount);
+        writeJsonFile(USERS_FILE, users);
+
+        return res.json({
+          success: true,
+          message: 'Kayıt başarılı, giriş yapabilirsiniz',
+          user: {
+            full_name: cleanName,
+            name: cleanName,
+            email: cleanEmail,
+            phone: phone || '',
+            address: address || '',
+            addresses,
+          },
+        });
+      }
+
+      if (action === 'login') {
+        if (!cleanEmail || !password) return res.status(400).json({ success: false, error: 'E-posta ve şifre gereklidir.' });
+
+        const users: any[] = readJsonFile(USERS_FILE, []);
+        const account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (!account) return res.status(404).json({ success: false, error: 'Bu e-posta adresine ait hesap bulunamadı.' });
+
+        // Google ile kayıtlı kullanıcı kontrolü
+        const isGoogleAccount = account.passwordHash === 'google_oauth_verified' || account.auth_provider === 'google';
+        if (isGoogleAccount) {
+          return res.status(400).json({
+            success: false,
+            isGoogleAccount: true,
+            error: 'Bu hesap Google ile oluşturulmuştur. Lütfen "Google ile Giriş Yap" butonunu kullanarak oturum açınız.'
+          });
+        }
+
+        const inputHash = hashPassword(password);
+        const isMatch = account.passwordHash === inputHash || account.passwordHash === password || account.plainPassword === password;
+        if (!isMatch) return res.status(401).json({ success: false, error: 'Hatalı şifre girdiniz. Lütfen tekrar deneyin.' });
+
+        return res.json({
+          success: true,
+          message: 'Giriş başarılı',
+          user: {
+            full_name: account.full_name || account.name,
+            name: account.name || account.full_name,
+            email: account.email,
+            phone: account.phone || '',
+            address: account.address || (account.addresses?.[0]?.fullAddress || ''),
+            addresses: account.addresses || [],
+          },
+        });
+      }
+
+      if (action === 'google') {
+        const cleanName = (full_name || name || '').trim() || cleanEmail.split('@')[0];
+        if (!cleanEmail) return res.status(400).json({ success: false, error: 'E-posta gereklidir.' });
+
+        const users: any[] = readJsonFile(USERS_FILE, []);
+        let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (!account) {
+          account = {
+            name: cleanName,
+            full_name: cleanName,
+            email: cleanEmail,
+            phone: phone || '',
+            address: address || '',
+            createdAt: new Date().toISOString(),
+            addresses: [],
+          };
+          users.push(account);
+        } else {
+          account.name = cleanName;
+          account.full_name = cleanName;
+        }
+        writeJsonFile(USERS_FILE, users);
+
+        return res.json({
+          success: true,
+          message: 'Google ile giriş başarılı',
+          user: {
+            full_name: cleanName,
+            name: cleanName,
+            email: account.email,
+            phone: account.phone || '',
+            address: account.address || (account.addresses?.[0]?.fullAddress || ''),
+            addresses: account.addresses || [],
+          },
+        });
+      }
+
+      return res.json({ success: true, message: 'AKUZ Stickers Auth API Aktif' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // 1. KULLANICI KAYIT (Host DB + Güvenli Hash)
   app.post('/api/auth/register', (req, res) => {
     try {
@@ -1071,6 +1186,16 @@ async function startServer() {
         return res.status(404).json({ success: false, error: 'Bu e-posta adresine ait hesap bulunamadı.' });
       }
 
+      // Google ile kayıtlı kullanıcı kontrolü
+      const isGoogleAccount = account.passwordHash === 'google_oauth_verified' || account.auth_provider === 'google';
+      if (isGoogleAccount) {
+        return res.status(400).json({
+          success: false,
+          isGoogleAccount: true,
+          error: 'Bu hesap Google ile oluşturulmuştur. Lütfen "Google ile Giriş Yap" butonunu kullanarak oturum açınız.'
+        });
+      }
+
       // Şifre doğrulama: Hem yeni SHA-256 hash hem de geriye dönük düz şifre uyumluluğu
       const inputHash = hashPassword(password);
       const isMatch = account.passwordHash === inputHash || account.passwordHash === password;
@@ -1138,9 +1263,10 @@ async function startServer() {
         users.push(account);
         writeJsonFile(USERS_FILE, users);
       } else {
-        // İsim boşsa güncelle
-        if (!account.name && cleanName) {
+        // İsim verilmişse güncelle
+        if (cleanName) {
           account.name = cleanName;
+          account.full_name = cleanName;
           writeJsonFile(USERS_FILE, users);
         }
       }
@@ -1235,6 +1361,41 @@ async function startServer() {
         addresses: u.addresses || [],
       }));
       return res.json({ success: true, users: sanitized });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 4b. TÜM KULLANICI KAYITLARINI TEMİZLEME
+  app.post('/api/users/purge-all', (req, res) => {
+    try {
+      const adminToken = req.headers['x-admin-token'] || req.body?.adminToken;
+      if (adminToken !== 'akuz_admin_2026') {
+        return res.status(403).json({ success: false, error: 'Yetkisiz erişim.' });
+      }
+      writeJsonFile(USERS_FILE, []);
+      return res.json({ success: true, message: 'Tüm kullanıcı kayıtları silindi.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 4c. KULLANICI SİLME (Admin Yetkisiyle)
+  app.delete('/api/users', (req, res) => {
+    try {
+      const adminToken = req.headers['x-admin-token'] || req.query.adminToken;
+      if (adminToken !== 'akuz_admin_2026') {
+        return res.status(403).json({ success: false, error: 'Yetkisiz erişim.' });
+      }
+      const email = (req.query.email as string || '').trim().toLowerCase();
+      let users: any[] = readJsonFile(USERS_FILE, []);
+      if (email) {
+        users = users.filter((u) => (u.email || '').toLowerCase() !== email);
+      } else {
+        users = [];
+      }
+      writeJsonFile(USERS_FILE, users);
+      return res.json({ success: true, count: users.length });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }
@@ -1535,6 +1696,98 @@ async function startServer() {
       writeJsonFile(SETTINGS_FILE, settings);
       console.log(`[SETTINGS SAVED TO HOST] Site ayarları sunucuya kaydedildi.`);
       return res.json({ success: true, message: 'Ayarlar başarıyla host sunucusuna kaydedildi.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // GOOGLE OAUTH CREDENTIALS JSON İŞLEME VE ENTEGRASYON ROTALARI
+  app.post('/api/admin/google-oauth-json', (req, res) => {
+    try {
+      const { jsonContent } = req.body;
+      let parsed: any;
+      if (typeof jsonContent === 'string') {
+        parsed = JSON.parse(jsonContent);
+      } else {
+        parsed = jsonContent;
+      }
+
+      if (!parsed) {
+        return res.status(400).json({ success: false, error: 'Geçersiz veya boş JSON içeriği.' });
+      }
+
+      // Google JSON formatı { web: { client_id: ... } } veya { installed: { ... } } veya { client_id: ... }
+      const web = parsed.web || parsed.installed || parsed;
+      const clientId = (web.client_id || parsed.client_id || '').trim();
+      const projectId = (web.project_id || parsed.project_id || '').trim();
+      const authUri = (web.auth_uri || parsed.auth_uri || '').trim();
+      const tokenUri = (web.token_uri || parsed.token_uri || '').trim();
+      const clientSecret = (web.client_secret || parsed.client_secret || '').trim();
+      const redirectUris = web.redirect_uris || parsed.redirect_uris || [];
+      const javascriptOrigins = web.javascript_origins || parsed.javascript_origins || [];
+
+      if (!clientId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Yüklenen JSON dosyasında "client_id" (İstemci Kimliği) bulunamadı. Lütfen Google Cloud Console > APIs & Services > Credentials üzerinden indirilen OAuth 2.0 İstemci JSON dosyasını seçin.',
+        });
+      }
+
+      // JSON dosyasını data_storage klasörüne kaydet
+      writeJsonFile(GOOGLE_CREDENTIALS_FILE, {
+        ...parsed,
+        savedAt: new Date().toISOString(),
+      });
+
+      // Settings dosyasında googleClientId'yi de anında güncelle
+      const currentSettings = readJsonFile<any>(SETTINGS_FILE, {});
+      currentSettings.googleClientId = clientId;
+      writeJsonFile(SETTINGS_FILE, currentSettings);
+
+      console.log(`[GOOGLE OAUTH JSON INTEGRATED] Client ID: ${clientId}, Project: ${projectId}`);
+
+      return res.json({
+        success: true,
+        message: 'Google Cloud Console OAuth JSON dosyası başarıyla entegre edildi ve kaydedildi!',
+        config: {
+          clientId,
+          projectId,
+          authUri,
+          tokenUri,
+          clientSecret: clientSecret ? '••••••••' + clientSecret.slice(-4) : '',
+          redirectUris,
+          javascriptOrigins,
+        },
+      });
+    } catch (err: any) {
+      console.error('[GOOGLE JSON PARSE ERROR]', err);
+      return res.status(400).json({
+        success: false,
+        error: 'JSON dosyası çözümlenemedi: ' + (err?.message || 'Geçersiz JSON formatı.'),
+      });
+    }
+  });
+
+  app.get('/api/admin/google-oauth-json', (req, res) => {
+    try {
+      const creds = readJsonFile<any>(GOOGLE_CREDENTIALS_FILE, null);
+      if (!creds) {
+        return res.json({ success: true, hasConfig: false, config: null });
+      }
+      const web = creds.web || creds.installed || creds;
+      return res.json({
+        success: true,
+        hasConfig: true,
+        config: {
+          clientId: web.client_id || '',
+          projectId: web.project_id || '',
+          authUri: web.auth_uri || '',
+          tokenUri: web.token_uri || '',
+          redirectUris: web.redirect_uris || [],
+          javascriptOrigins: web.javascript_origins || [],
+          savedAt: creds.savedAt || '',
+        },
+      });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }

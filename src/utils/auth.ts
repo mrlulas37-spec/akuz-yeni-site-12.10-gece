@@ -3,6 +3,8 @@ import { UserProfile } from '../types';
 export interface RegisteredAccount {
   name: string;
   email: string;
+  full_name?: string;
+  address?: string;
   passwordHash?: string;
   plainPassword?: string;
   phone?: string;
@@ -14,30 +16,51 @@ export interface RegisteredAccount {
 }
 
 const STORAGE_KEY = 'akuz_registered_users';
-const CURRENT_USER_KEY = 'akuz_user';
+const CURRENT_USER_KEY = 'currentUser';
+const LEGACY_USER_KEY = 'akuz_user';
+export const API_AUTH_URL = 'https://akuzstickers.com/api/auth.php';
 
-// Initial preloaded demo account
-const INITIAL_USERS: RegisteredAccount[] = [
-  {
-    name: 'Murat Ulusoy',
-    email: 'mrlulas37@gmail.com',
-    passwordHash: '123456',
-    phone: '+90 546 875 86 71',
-    createdAt: new Date().toISOString(),
-    addresses: [
+// Kullanıcı profil verisini frontend ile %100 uyumlu normalize eder
+export const normalizeUserProfile = (raw: any): UserProfile => {
+  if (!raw) {
+    return { name: '', email: '', phone: '', addresses: [] };
+  }
+  const name = raw.full_name || raw.name || (raw.email ? raw.email.split('@')[0] : '');
+  const email = (raw.email || '').trim().toLowerCase();
+  const phone = raw.phone || '';
+  let addresses = Array.isArray(raw.addresses) ? raw.addresses : [];
+  const addressText = raw.address || raw.fullAddress || raw.full_address || '';
+
+  if (addresses.length === 0 && addressText) {
+    addresses = [
       {
-        id: 'addr-1',
-        title: 'Ev Adresim',
-        recipientName: 'Murat Ulusoy',
-        phone: '+90 546 875 86 71',
-        city: 'Bursa',
-        district: 'Nilüfer',
-        fullAddress: 'Üçevler Mah. 10. Sokak No:17/A',
+        id: 'addr-default',
+        title: 'Kayıtlı Adresim',
+        recipientName: name,
+        phone,
+        city: raw.city || 'Bursa',
+        district: raw.district || 'Nilüfer',
+        fullAddress: addressText,
         isDefault: true,
       },
-    ],
-  },
-];
+    ];
+  }
+
+  return {
+    name,
+    email,
+    phone,
+    addresses,
+    address: addressText || (addresses[0]?.fullAddress ?? ''),
+    full_name: name,
+    cart: raw.cart,
+    favorites: raw.favorites,
+    recentlyViewed: raw.recentlyViewed,
+  };
+};
+
+// Initial preloaded accounts (Tüm kullanıcı kayıtları temizlendi)
+const INITIAL_USERS: RegisteredAccount[] = [];
 
 // Merkezi Sunucu DB'sinden kullanıcıları çek (Admin yetkisiyle)
 export const fetchCentralUsers = async (adminToken = 'akuz_admin_2026'): Promise<RegisteredAccount[]> => {
@@ -50,22 +73,39 @@ export const fetchCentralUsers = async (adminToken = 'akuz_admin_2026'): Promise
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.users)) {
-        // Yerel kullanıcılarla sunucuyu birleştir, hiçbir hesap asla kaybolmasın
-        const local = getRegisteredUsers();
-        const merged = [...data.users];
-        for (const lu of local) {
-          if (!merged.some((m) => m.email.toLowerCase() === lu.email.toLowerCase())) {
-            merged.push(lu);
-          }
-        }
-        saveRegisteredUsers(merged);
-        return merged;
+        // Sunucu tam yetkilidir; sunucudan gelen gerçek kullanıcı listesini kaydet
+        saveRegisteredUsers(data.users);
+        return data.users;
       }
     }
   } catch (err) {
     console.warn('[AUTH] Host DB fetch failed:', err);
   }
   return getRegisteredUsers();
+};
+
+// Tüm kullanıcı kayıtlarını hem sunucudan hem tarayıcıdan tamamen silme
+export const purgeAllRegisteredUsers = async (adminToken = 'akuz_admin_2026'): Promise<boolean> => {
+  try {
+    saveRegisteredUsers([]);
+    localStorage.removeItem('akuz_registered_users');
+    localStorage.removeItem('akuz_google_accounts_list');
+    localStorage.removeItem('akuz_last_google_account');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('akuz_user');
+
+    await fetch('/api/users/purge-all', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': adminToken,
+      },
+      body: JSON.stringify({ adminToken }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 // Kullanıcının kayıtlı sepet ve favorilerini getirir
@@ -148,11 +188,12 @@ export const getRegisteredUsers = (): RegisteredAccount[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return INITIAL_USERS;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return INITIAL_USERS;
+    return [];
   }
 };
 
@@ -279,16 +320,6 @@ export const getStoredGoogleAccountsList = (): GoogleAccountItem[] => {
     accounts.unshift({ email: last.email, name: last.name || last.email.split('@')[0] });
   }
 
-  // Varsayılan / bilinen Google hesapları (Kullanıcının tek tıkla hemen seçebilmesi için)
-  const defaultAccs = [
-    { email: 'mertopro123@gmail.com', name: 'Mert Ulusoy' },
-  ];
-  for (const def of defaultAccs) {
-    if (!accounts.some((a) => a.email.toLowerCase() === def.email.toLowerCase())) {
-      accounts.push(def);
-    }
-  }
-
   return accounts;
 };
 
@@ -304,14 +335,16 @@ export const saveGoogleAccountToList = (email: string, name: string) => {
   } catch {}
 };
 
-// Merkezi Host DB'ye güvenli kayıt
+// MySQL & Host DB ile kullanıcı kaydı
 export const registerUser = async (
-  name: string,
+  fullName: string,
   email: string,
-  password: string
-): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
+  password: string,
+  phone: string = '',
+  address: string = ''
+): Promise<{ success: boolean; message?: string; error?: string; user?: UserProfile }> => {
   const cleanEmail = email.trim().toLowerCase();
-  const cleanName = name.trim();
+  const cleanName = fullName.trim();
 
   if (!cleanName) {
     return { success: false, error: 'Lütfen Ad ve Soyadınızı girin.' };
@@ -323,79 +356,125 @@ export const registerUser = async (
     return { success: false, error: 'Şifreniz en az 6 karakter olmalıdır.' };
   }
 
-  // 1. Önce Host Merkezi API'sine kaydet
+  const payload = {
+    action: 'register',
+    email: cleanEmail,
+    password,
+    full_name: cleanName,
+    phone: phone.trim(),
+    address: address.trim(),
+  };
+
+  // 1. Kullanıcının MySQL veritabanı API'sine POST isteği at (https://akuzstickers.com/api/auth.php)
   try {
-    const response = await fetch('/api/auth/register', {
+    const response = await fetch(API_AUTH_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: cleanName, email: cleanEmail, password }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-      return { success: false, error: data.error || 'Kayıt yapılamadı.' };
+    const data = await response.json().catch((parseErr) => {
+      console.error('[Kayıt API JSON Ayrıştırma Hatası]:', parseErr);
+      return null;
+    });
+
+    if (!response.ok || (data && data.success === false)) {
+      const errorMsg = (data && (data.error || data.message)) || `Kayıt işlemi başarısız (HTTP ${response.status})`;
+      console.error('[Kayıt API Hatası]:', errorMsg, data);
+      return {
+        success: false,
+        error: errorMsg,
+      };
     }
 
-    const profile: UserProfile = data.user || {
-      name: cleanName,
-      email: cleanEmail,
-      phone: '',
-      addresses: [],
-    };
+    console.log('[Kayıt Başarılı]:', data);
 
-    // Yerel önbelleği ve aktif kullanıcıyı güncelle
+    // Dönen kullanıcı verisini normalize et
+    const rawUser = data?.user || {
+      name: cleanName,
+      full_name: cleanName,
+      email: cleanEmail,
+      phone: phone.trim(),
+      address: address.trim(),
+    };
+    const profile = normalizeUserProfile(rawUser);
+
+    // Yerel kullanıcı listesini de güncelle
     const users = getRegisteredUsers();
     if (!users.some((u) => u.email.toLowerCase() === cleanEmail)) {
       users.push({
         name: cleanName,
         email: cleanEmail,
-        phone: '',
+        phone: phone.trim(),
         createdAt: new Date().toISOString(),
-        addresses: [],
+        addresses: profile.addresses,
       });
       saveRegisteredUsers(users);
     }
 
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profile));
-    return { success: true, user: profile };
+    return {
+      success: true,
+      message: data?.message || 'Kayıt başarılı, giriş yapabilirsiniz',
+      user: profile,
+    };
   } catch (err: any) {
-    console.warn('[AUTH] Host API offline fallback to local:', err);
+    console.error('[Kayıt İsteği Bağlantı Hatası - https://akuzstickers.com/api/auth.php]:', err);
 
-    // Çevrimdışı / yerel yedek
+    // Çevrimdışı / yerel fallback
+    try {
+      const fallbackRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: cleanName, email: cleanEmail, password, phone, address }),
+      });
+      const fbData = await fallbackRes.json();
+      if (fbData.success) {
+        return {
+          success: true,
+          message: 'Kayıt başarılı, giriş yapabilirsiniz',
+          user: normalizeUserProfile(fbData.user),
+        };
+      }
+    } catch {}
+
     const users = getRegisteredUsers();
     const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
     if (existing) {
       return { success: false, error: 'Bu e-posta adresiyle kayıtlı bir hesap zaten var. Lütfen giriş yapın.' };
     }
 
-    const newAccount: RegisteredAccount = {
+    const profile: UserProfile = normalizeUserProfile({
+      name: cleanName,
+      full_name: cleanName,
+      email: cleanEmail,
+      phone: phone.trim(),
+      address: address.trim(),
+    });
+
+    users.push({
       name: cleanName,
       email: cleanEmail,
-      phone: '',
+      phone: phone.trim(),
       createdAt: new Date().toISOString(),
-      addresses: [],
-    };
-
-    users.push(newAccount);
+      addresses: profile.addresses,
+    });
     saveRegisteredUsers(users);
 
-    const profile: UserProfile = {
-      name: cleanName,
-      email: cleanEmail,
-      phone: '',
-      addresses: [],
+    return {
+      success: true,
+      message: 'Kayıt başarılı, giriş yapabilirsiniz',
+      user: profile,
     };
-
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profile));
-    return { success: true, user: profile };
   }
 };
 
-// Merkezi Host DB ile güvenli giriş
+// MySQL & Host DB ile kullanıcı girişi
 export const loginUser = async (
   email: string,
   password: string
-): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
+): Promise<{ success: boolean; error?: string; user?: UserProfile; isGoogleAccount?: boolean }> => {
   const cleanEmail = email.trim().toLowerCase();
 
   if (!cleanEmail) {
@@ -405,26 +484,70 @@ export const loginUser = async (
     return { success: false, error: 'Lütfen şifrenizi girin.' };
   }
 
-  // 1. Önce Host Merkezi API'sinde şifreyi güvenle doğrula
+  const payload = {
+    action: 'login',
+    email: cleanEmail,
+    password,
+  };
+
+  // 1. Kullanıcının MySQL API'sine doğrudan POST isteği at
   try {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch(API_AUTH_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, password }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-      return { success: false, error: data.error || 'Hatalı e-posta veya şifre.' };
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data || data.success === false) {
+      return {
+        success: false,
+        isGoogleAccount: data?.isGoogleAccount || false,
+        error: (data && (data.error || data.message)) || 'Hatalı e-posta veya şifre.',
+      };
     }
 
-    const profile: UserProfile = data.user;
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profile));
+    // API'den dönen response.user'ı al
+    const rawUser = data.user || data;
+    const profile = normalizeUserProfile(rawUser);
+
+    // KULLANICI ŞARTI: response.user localStorage.setItem('currentUser', JSON.stringify(response.user)) ile saklanır
+    try {
+      localStorage.setItem('currentUser', JSON.stringify(rawUser));
+      localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(profile));
+    } catch (e) {
+      console.warn('localStorage error:', e);
+    }
+
     return { success: true, user: profile };
   } catch (err) {
-    console.warn('[AUTH] Host login failed, trying local fallback:', err);
+    console.warn('[AUTH] External API login failed, checking fallback:', err);
 
     // Çevrimdışı / yerel fallback
+    try {
+      const fallbackRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password }),
+      });
+      const fbData = await fallbackRes.json();
+      if (fbData.success && fbData.user) {
+        const profile = normalizeUserProfile(fbData.user);
+        localStorage.setItem('currentUser', JSON.stringify(fbData.user));
+        localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(profile));
+        return { success: true, user: profile };
+      } else if (fbData.isGoogleAccount) {
+        return {
+          success: false,
+          isGoogleAccount: true,
+          error: fbData.error || 'Bu hesap Google ile oluşturulmuştur. Lütfen "Google ile Giriş Yap" seçeneğini kullanınız.',
+        };
+      }
+    } catch {}
+
     const users = getRegisteredUsers();
     const account = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
@@ -435,6 +558,14 @@ export const loginUser = async (
       };
     }
 
+    if (account.passwordHash === 'google_oauth_verified') {
+      return {
+        success: false,
+        isGoogleAccount: true,
+        error: 'Bu hesap Google ile oluşturulmuştur. Lütfen "Google ile Giriş Yap" seçeneğini kullanarak oturum açınız.',
+      };
+    }
+
     if (account.passwordHash && account.passwordHash !== password) {
       return {
         success: false,
@@ -442,17 +573,21 @@ export const loginUser = async (
       };
     }
 
-    const profile: UserProfile = {
+    const profile: UserProfile = normalizeUserProfile({
       name: account.name,
+      full_name: account.name,
       email: account.email,
       phone: account.phone || '',
       addresses: account.addresses || [],
-    };
+    });
 
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profile));
+    localStorage.setItem('currentUser', JSON.stringify(profile));
+    localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(profile));
     return { success: true, user: profile };
   }
 };
+
+export const DEFAULT_GOOGLE_CLIENT_ID = '947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com';
 
 export const loginWithGoogleAccount = async (
   googleEmail: string,
@@ -463,6 +598,20 @@ export const loginWithGoogleAccount = async (
 
   let profile: UserProfile;
 
+  // 1. Unified MySQL API'ye (akuzstickers.com/api/auth.php) de Google oturumunu bildir
+  try {
+    fetch(API_AUTH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'google',
+        email: cleanEmail,
+        full_name: cleanName,
+        name: cleanName,
+      }),
+    }).catch(() => {});
+  } catch {}
+
   try {
     const res = await fetch('/api/auth/google', {
       method: 'POST',
@@ -471,25 +620,31 @@ export const loginWithGoogleAccount = async (
     });
     const data = await res.json();
     if (data.success && data.user) {
-      profile = data.user;
+      profile = normalizeUserProfile({
+        ...data.user,
+        name: cleanName || data.user.name,
+        full_name: cleanName || data.user.full_name,
+      });
     } else {
       // Yerel fallback
       const users = getRegisteredUsers();
       const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
       if (existing) {
-        profile = {
-          name: existing.name || cleanName,
+        profile = normalizeUserProfile({
+          name: cleanName || existing.name,
+          full_name: cleanName || existing.full_name,
           email: cleanEmail,
           phone: existing.phone || '',
           addresses: existing.addresses || [],
-        };
+        });
       } else {
-        profile = {
+        profile = normalizeUserProfile({
           name: cleanName,
+          full_name: cleanName,
           email: cleanEmail,
           phone: '',
           addresses: [],
-        };
+        });
       }
     }
   } catch (err) {
@@ -497,19 +652,21 @@ export const loginWithGoogleAccount = async (
     const users = getRegisteredUsers();
     const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
     if (existing) {
-      profile = {
-        name: existing.name || cleanName,
+      profile = normalizeUserProfile({
+        name: cleanName || existing.name,
+        full_name: cleanName || existing.full_name,
         email: cleanEmail,
         phone: existing.phone || '',
         addresses: existing.addresses || [],
-      };
+      });
     } else {
-      profile = {
+      profile = normalizeUserProfile({
         name: cleanName,
+        full_name: cleanName,
         email: cleanEmail,
         phone: '',
         addresses: [],
-      };
+      });
     }
   }
 
@@ -530,10 +687,13 @@ export const loginWithGoogleAccount = async (
   if (idx !== -1 && users[idx].phone && !profile.phone) {
     profile.phone = users[idx].phone;
   }
+  profile.name = cleanName;
+  profile.full_name = cleanName;
 
   if (idx === -1) {
     users.push({
-      name: profile.name,
+      name: cleanName,
+      full_name: cleanName,
       email: cleanEmail,
       phone: profile.phone || '',
       createdAt: new Date().toISOString(),
@@ -541,9 +701,10 @@ export const loginWithGoogleAccount = async (
     });
     saveRegisteredUsers(users);
   } else {
+    users[idx].name = cleanName;
+    users[idx].full_name = cleanName;
     users[idx].addresses = profile.addresses;
     users[idx].phone = profile.phone || users[idx].phone;
-    users[idx].name = profile.name || users[idx].name;
     saveRegisteredUsers(users);
   }
 
@@ -557,7 +718,10 @@ export const loginWithGoogleAccount = async (
     console.warn('Could not store last google account', e);
   }
 
+  // Kullanıcı bilgilerini localStorage'da sakla (currentUser & legacy key)
+  localStorage.setItem('currentUser', JSON.stringify(profile));
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(profile));
+  localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(profile));
 
   // Kullanıcının siparişlerini de hemen arka planda çek ve önbelleğe al
   try {
@@ -574,13 +738,14 @@ export const loginWithGoogleAccount = async (
   return { success: true, user: profile };
 };
 
-// Google resmi hesap seçicisini (Account Picker) anında açar - kullanıcıdan isim ve mail sormaz
+// Google resmi hesap seçicisini (Account Picker) açar
 export const triggerGoogleAccountPicker = async (
   onSuccess: (user: UserProfile) => void,
-  onError: (errorMsg: string) => void
+  onError: (errorMsg: string) => void,
+  onAccountSelect?: (info: { email: string; name: string }) => void
 ): Promise<void> => {
   // Google Client ID'yi ayarlardan veya varsayılandan al
-  let clientId = '660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com';
+  let clientId = DEFAULT_GOOGLE_CLIENT_ID;
   try {
     const raw = localStorage.getItem('akuz_site_settings');
     if (raw) {
@@ -599,11 +764,14 @@ export const triggerGoogleAccountPicker = async (
       });
       const data = await res.json();
       if (data && data.email) {
-        const loginRes = await loginWithGoogleAccount(
-          data.email,
-          data.name || data.given_name || data.email.split('@')[0]
-        );
-        onSuccess(loginRes.user);
+        const email = data.email;
+        const suggestedName = data.name || data.given_name || email.split('@')[0];
+        if (onAccountSelect) {
+          onAccountSelect({ email, name: suggestedName });
+        } else {
+          const loginRes = await loginWithGoogleAccount(email, suggestedName);
+          onSuccess(loginRes.user);
+        }
       } else {
         onError('Google hesap bilgileri alınamadı.');
       }
@@ -644,11 +812,14 @@ export const triggerGoogleAccountPicker = async (
               );
               const payload = JSON.parse(jsonPayload);
               if (payload && payload.email) {
-                const loginRes = await loginWithGoogleAccount(
-                  payload.email,
-                  payload.name || payload.given_name || payload.email.split('@')[0]
-                );
-                onSuccess(loginRes.user);
+                const email = payload.email;
+                const suggestedName = payload.name || payload.given_name || email.split('@')[0];
+                if (onAccountSelect) {
+                  onAccountSelect({ email, name: suggestedName });
+                } else {
+                  const loginRes = await loginWithGoogleAccount(email, suggestedName);
+                  onSuccess(loginRes.user);
+                }
                 return;
               }
             } catch (e) {
@@ -714,6 +885,16 @@ export const triggerGoogleAccountPicker = async (
   onError('Google oturum açma kütüphanesi yüklenemedi. Lütfen sayfayı yenileyip tekrar deneyin.');
 };
 
+export const getCurrentUser = (): UserProfile | null => {
+  try {
+    const raw = localStorage.getItem('currentUser') || localStorage.getItem(LEGACY_USER_KEY);
+    if (!raw) return null;
+    return normalizeUserProfile(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+};
+
 export const updateUserProfileData = (updated: UserProfile): void => {
   // Host API'ye kaydet
   fetch('/api/user/profile', {
@@ -734,11 +915,17 @@ export const updateUserProfileData = (updated: UserProfile): void => {
     };
     saveRegisteredUsers(users);
   }
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+  try {
+    localStorage.setItem('currentUser', JSON.stringify(updated));
+    localStorage.setItem(LEGACY_USER_KEY, JSON.stringify(updated));
+  } catch {}
 };
 
 export const logoutUser = (): void => {
-  localStorage.removeItem(CURRENT_USER_KEY);
+  try {
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem(LEGACY_USER_KEY);
+  } catch {}
 };
 
 // Şifremi Unuttum: Kayıtlı şifreyi e-posta adresine gönder

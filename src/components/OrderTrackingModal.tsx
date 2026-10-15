@@ -143,7 +143,6 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                 <input
                   type="text"
                   required
-                  autoFocus
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Örn: AKUZ1712... veya e-posta@gmail.com"

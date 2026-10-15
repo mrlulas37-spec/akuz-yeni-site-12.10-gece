@@ -30,8 +30,8 @@
   "categories": [
     {
       "id": "all",
-      "titleLine1": "Tüm Ürünler",
-      "titleLine2": "Katalog",
+      "titleLine1": "Tüm",
+      "titleLine2": "Ürünler",
       "bgGradient": "bg-slate-900 text-white"
     },
     {
@@ -44,7 +44,7 @@
       "id": "ataturk",
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
-      "bgGradient": "bg-slate-900 overflow-hidden",
+      "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
       "imageUrl": "/products/IMG_1278.jpeg"
     },
     {
@@ -60,16 +60,22 @@
       "bgGradient": "bg-slate-800 text-orange-400"
     },
     {
+      "id": "custom",
+      "titleLine1": "Kişiye Özel",
+      "titleLine2": "Stickerlar",
+      "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white"
+    },
+    {
       "id": "offroad",
-      "titleLine1": "4x4 Off-Road",
-      "titleLine2": "Çıkartmaları",
+      "titleLine1": "Off-Road",
+      "titleLine2": "Stickerları",
       "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white"
     },
     {
-      "id": "custom",
-      "titleLine1": "Kişiye Özel",
-      "titleLine2": "Yazı & Grafik",
-      "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white"
+      "id": "ayna",
+      "titleLine1": "Ayna",
+      "titleLine2": "Stickerları",
+      "bgGradient": "bg-gradient-to-tr from-cyan-600 to-blue-600 text-white"
     }
   ],
   "availableFoilTypes": [
@@ -107,5 +113,5 @@
   },
   "shippingFee": 89.9,
   "freeShippingThreshold": 400,
-  "googleClientId": "660437230655-lnnq4tut79r9o865iiingv01ot5gvdfg.apps.googleusercontent.com"
+  "googleClientId": "947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com"
 }

@@ -1,10 +1,11 @@
 import { SiteSettings, CategoryCircleItem, WhyAkuzCardItem, ProductColorOption } from '../types';
 
 export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
+  // 1. SATIR (4 Adet)
   {
     id: 'all',
-    titleLine1: 'Tüm Ürünler',
-    titleLine2: 'Katalog',
+    titleLine1: 'Katalog',
+    titleLine2: 'Tüm Ürünler',
     bgGradient: 'bg-slate-900 text-white',
   },
   {
@@ -17,7 +18,7 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     id: 'ataturk',
     titleLine1: 'Atatürk',
     titleLine2: 'Stickerları',
-    bgGradient: 'bg-slate-900 overflow-hidden',
+    bgGradient: 'bg-slate-950 overflow-hidden ring-1 ring-amber-400/40',
     imageUrl: '/products/IMG_1278.jpeg',
   },
   {
@@ -26,6 +27,7 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     titleLine2: 'Stickerları',
     bgGradient: 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white',
   },
+  // 2. SATIR (4 Adet)
   {
     id: 'motosiklet',
     titleLine1: 'Motosiklet',
@@ -33,16 +35,22 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     bgGradient: 'bg-slate-800 text-orange-400',
   },
   {
+    id: 'custom',
+    titleLine1: 'Kişiye Özel',
+    titleLine2: 'Stickerlar',
+    bgGradient: 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white',
+  },
+  {
     id: 'offroad',
-    titleLine1: '4x4 Off-Road',
-    titleLine2: 'Çıkartmaları',
+    titleLine1: 'Off-Road',
+    titleLine2: 'Stickerları',
     bgGradient: 'bg-gradient-to-tr from-emerald-600 to-teal-700 text-white',
   },
   {
-    id: 'custom',
-    titleLine1: 'Kişiye Özel',
-    titleLine2: 'Yazı & Grafik',
-    bgGradient: 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white',
+    id: 'ayna',
+    titleLine1: 'Ayna',
+    titleLine2: 'Stickerları',
+    bgGradient: 'bg-gradient-to-tr from-cyan-600 to-blue-600 text-white',
   },
 ];
 
@@ -114,6 +122,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
   },
   shippingFee: 39.9,
   freeShippingThreshold: 150,
+  googleClientId: '947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com',
 };
 
 // Global varsayılan renk paleti (Stokta var/yok & desteklenen folyo seçenekleri ile)
@@ -140,13 +149,26 @@ export const getStoredSiteSettings = (): SiteSettings => {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return INITIAL_SITE_SETTINGS;
     const parsed: SiteSettings = { ...INITIAL_SITE_SETTINGS, ...JSON.parse(raw) };
+    if (!parsed.googleClientId) {
+      parsed.googleClientId = '947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com';
+    }
     if (!parsed.categories || !Array.isArray(parsed.categories) || parsed.categories.length === 0) {
       parsed.categories = INITIAL_CATEGORY_CIRCLES;
     } else {
-      parsed.categories = parsed.categories.map((c) => ({
-        ...c,
-        imageUrl: c.imageUrl?.startsWith('/IMG_') ? `/products${c.imageUrl}` : c.imageUrl,
-      }));
+      parsed.categories = parsed.categories.map((c) => {
+        let titleLine1 = c.titleLine1;
+        let titleLine2 = c.titleLine2;
+        if (c.id === 'all') {
+          titleLine1 = 'Katalog';
+          titleLine2 = '';
+        }
+        return {
+          ...c,
+          titleLine1,
+          titleLine2,
+          imageUrl: c.imageUrl?.startsWith('/IMG_') ? `/products${c.imageUrl}` : c.imageUrl,
+        };
+      });
     }
     if (!parsed.aboutParagraphs || !Array.isArray(parsed.aboutParagraphs) || parsed.aboutParagraphs.length === 0 || parsed.aboutParagraphs[0]?.includes('tutkulu bir girişimdir')) {
       parsed.aboutParagraphs = INITIAL_SITE_SETTINGS.aboutParagraphs;

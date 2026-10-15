@@ -393,9 +393,9 @@ export const AccountDrawer: React.FC<AccountDrawerProps> = ({
           {activeTab === 'favorites' && (
             <div className="space-y-3">
               {favoriteProducts.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-14 h-14 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Heart size={26} />
+                <div className="text-center py-6 sm:py-8">
+                  <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-2.5">
+                    <Heart size={24} />
                   </div>
                   <h4 className="text-sm font-bold text-slate-800">Henüz Favori Ürününüz Yok</h4>
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">

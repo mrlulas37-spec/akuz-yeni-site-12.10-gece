@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronDown, SlidersHorizontal, ArrowUpDown, Filter, Eye, Heart, ShoppingBag, X } from 'lucide-react';
-import { Product } from '../types';
+import { Product, CategoryCircleItem } from '../types';
 import { ProductCard } from './ProductCard';
+import { CategoryBar } from './CategoryBar';
 
 export type SortOption = 'default' | 'price-asc' | 'price-desc' | 'name-asc' | 'popular';
 
@@ -9,6 +10,7 @@ interface CatalogPageProps {
   products: Product[];
   selectedCategory: Product['category'] | 'all';
   onSelectCategory: (category: Product['category'] | 'all') => void;
+  categoriesConfig?: CategoryCircleItem[];
   searchQuery: string;
   onSearchChange: (q: string) => void;
   favoriteIds: string[];
@@ -25,6 +27,7 @@ const CATEGORY_LIST: { id: Product['category'] | 'all'; label: string }[] = [
   { id: 'motosiklet', label: 'Motosiklet Stickerları' },
   { id: 'offroad', label: '4x4 Off-Road Çıkartmaları' },
   { id: 'custom', label: 'Kişiye Özel Tasarımlar' },
+  { id: 'ayna', label: 'Ayna Stickerları' },
 ];
 
 const SORT_OPTIONS: { id: SortOption; label: string }[] = [
@@ -39,6 +42,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
   products,
   selectedCategory,
   onSelectCategory,
+  categoriesConfig,
   searchQuery,
   onSearchChange,
   favoriteIds,
@@ -116,12 +120,25 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={onGoHome}
-                className="hover:text-[#ff0055] font-semibold transition-colors cursor-pointer"
+                className="hover:text-[#ff6600] font-semibold transition-colors cursor-pointer"
               >
                 Ana Sayfa
               </button>
               <span>/</span>
-              <span className="text-slate-900 font-bold">Katalog</span>
+              <button
+                onClick={() => onSelectCategory('all')}
+                className={`transition-colors cursor-pointer ${
+                  selectedCategory === 'all' ? 'text-slate-900 font-bold' : 'hover:text-[#ff6600] font-semibold'
+                }`}
+              >
+                Katalog
+              </button>
+              {selectedCategory !== 'all' && (
+                <>
+                  <span>/</span>
+                  <span className="text-[#ff6600] font-bold">{activeCategoryLabel}</span>
+                </>
+              )}
             </div>
 
             <span className="font-mono text-xs font-semibold text-slate-600">
@@ -131,17 +148,46 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      {/* 8 Dairesel Kategori Çubuğu (Katalog Sayfasında da Tıklanınca Sadece O Kategori Filtrelenir) */}
+      <CategoryBar
+        selectedCategory={selectedCategory}
+        onSelectCategory={onSelectCategory}
+        categoriesConfig={categoriesConfig}
+      />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
         {/* Title & Filter Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
-              KATALOG
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
+                {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG'}
+              </h1>
+              {selectedCategory !== 'all' && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#ff6600] text-white shadow-2xs">
+                  {displayedProducts.length} Ürün
+                </span>
+              )}
+            </div>
+            {selectedCategory !== 'all' && (
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                Sadece seçilen kategorinin ürünleri gösteriliyor
+              </p>
+            )}
           </div>
 
           {/* SADE FİLTRELEME & SIRALAMA KUTULARI */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            {selectedCategory !== 'all' && (
+              <button
+                type="button"
+                onClick={() => onSelectCategory('all')}
+                className="px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-[#ff6600] hover:bg-orange-100 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                title="Tüm Ürünleri Göster"
+              >
+                <span>✕ Tüm Ürünler</span>
+              </button>
+            )}
             {/* 1. KATEGORİ KUTUSU (Dropdown) */}
             <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
@@ -152,15 +198,15 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                 }}
                 className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
                   isCategoryOpen || selectedCategory !== 'all'
-                    ? 'border-[#ff0055] bg-pink-50/50 text-[#ff0055]'
+                    ? 'border-[#ff6600] bg-orange-50/60 text-[#ff6600]'
                     : 'border-slate-300 bg-white hover:border-slate-400 text-slate-800'
                 }`}
               >
-                <Filter size={15} className={selectedCategory !== 'all' ? 'text-[#ff0055]' : 'text-slate-500'} />
+                <Filter size={15} className={selectedCategory !== 'all' ? 'text-[#ff6600]' : 'text-slate-500'} />
                 <span>Kategori: <strong>{activeCategoryLabel}</strong></span>
                 <ChevronDown
                   size={15}
-                  className={`transition-transform duration-200 ${isCategoryOpen ? 'rotate-180 text-[#ff0055]' : 'text-slate-400'}`}
+                  className={`transition-transform duration-200 ${isCategoryOpen ? 'rotate-180 text-[#ff6600]' : 'text-slate-400'}`}
                 />
               </button>
 
@@ -180,7 +226,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                       }}
                       className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                         selectedCategory === cat.id
-                          ? 'bg-[#ff0055] text-white font-bold'
+                          ? 'bg-[#ff6600] text-white font-bold'
                           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                       }`}
                     >
@@ -202,15 +248,15 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                 }}
                 className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
                   isSortOpen || currentSort !== 'default'
-                    ? 'border-[#ff0055] bg-pink-50/50 text-[#ff0055]'
+                    ? 'border-[#ff6600] bg-orange-50/60 text-[#ff6600]'
                     : 'border-slate-300 bg-white hover:border-slate-400 text-slate-800'
                 }`}
               >
-                <ArrowUpDown size={15} className={currentSort !== 'default' ? 'text-[#ff0055]' : 'text-slate-500'} />
+                <ArrowUpDown size={15} className={currentSort !== 'default' ? 'text-[#ff6600]' : 'text-slate-500'} />
                 <span>Sırala: <strong>{activeSortLabel}</strong></span>
                 <ChevronDown
                   size={15}
-                  className={`transition-transform duration-200 ${isSortOpen ? 'rotate-180 text-[#ff0055]' : 'text-slate-400'}`}
+                  className={`transition-transform duration-200 ${isSortOpen ? 'rotate-180 text-[#ff6600]' : 'text-slate-400'}`}
                 />
               </button>
 
@@ -230,7 +276,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                       }}
                       className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                         currentSort === sort.id
-                          ? 'bg-[#ff0055] text-white font-bold'
+                          ? 'bg-[#ff6600] text-white font-bold'
                           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                       }`}
                     >
@@ -251,7 +297,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                   setCurrentSort('default');
                   onSearchChange('');
                 }}
-                className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-rose-600 bg-slate-200/60 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-[#ff6600] bg-slate-200/60 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
                 title="Filtreleri Sıfırla"
               >
                 <X size={14} />
@@ -261,10 +307,82 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
           </div>
         </div>
 
+        {/* KATEGORİ DİKDÖRTGENLERİ - Sadece Tüm Ürünler görüntülendiğinde gösterilir */}
+        {selectedCategory === 'all' && (
+          <div className="mt-6 mb-8">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 font-display">
+                  ÖNE ÇIKAN KATEGORİLER
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  İncelemek istediğiniz kategoriyi seçin
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-5 max-w-4xl">
+              {/* 1. DİKDÖRTGEN: ATATÜRK STICKERLARI */}
+              <button
+                type="button"
+                onClick={() => onSelectCategory('ataturk')}
+                className="group relative flex flex-col rounded-2xl overflow-hidden border border-slate-200 hover:border-[#ff6600] bg-white transition-all duration-200 text-left cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] bg-slate-900 overflow-hidden">
+                  <img
+                    src="/products/IMG_1278.jpeg"
+                    alt="Atatürk Stickerları"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold tracking-wide">
+                    Sticker
+                  </span>
+                </div>
+                <div className="p-2.5 sm:p-3.5 bg-white flex flex-col justify-between flex-1">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-[#ff6600] transition-colors leading-snug">
+                    Atatürk Stickerları
+                  </h3>
+                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5">
+                    Özel İmza & Portre Çıkartmaları
+                  </span>
+                </div>
+              </button>
+
+              {/* 2. DİKDÖRTGEN: ARABA STICKERLARI */}
+              <button
+                type="button"
+                onClick={() => onSelectCategory('araba')}
+                className="group relative flex flex-col rounded-2xl overflow-hidden border border-slate-200 hover:border-[#ff6600] bg-white transition-all duration-200 text-left cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] bg-slate-900 overflow-hidden">
+                  <img
+                    src="/products/IMG_1141.jpeg"
+                    alt="Araba Stickerları"
+                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold tracking-wide">
+                    Sticker
+                  </span>
+                </div>
+                <div className="p-2.5 sm:p-3.5 bg-white flex flex-col justify-between flex-1">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-[#ff6600] transition-colors leading-snug">
+                    Araba Stickerları
+                  </h3>
+                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5">
+                    Araç Camı & Kaporta Çıkartmaları
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ÜRÜN IZGARASI (GRID) */}
         {displayedProducts.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-xl border border-slate-200 mt-8 shadow-xs">
-            <div className="w-16 h-16 bg-pink-50 text-[#ff0055] rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-orange-50 text-[#ff6600] rounded-full flex items-center justify-center mx-auto mb-4">
               <SlidersHorizontal size={28} />
             </div>
             <h3 className="text-base font-black text-slate-900 uppercase">
@@ -278,7 +396,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                 onSelectCategory('all');
                 onSearchChange('');
               }}
-              className="mt-5 px-5 py-2.5 bg-[#ff0055] hover:bg-[#d90048] text-white rounded-md text-xs font-bold transition-colors cursor-pointer shadow-md"
+              className="mt-5 px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white rounded-md text-xs font-bold transition-colors cursor-pointer shadow-md"
             >
               Tüm Kataloğu Görüntüle
             </button>

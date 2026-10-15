@@ -643,6 +643,82 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
+  app.post(["/api/auth.php", "/auth.php"], (req, res) => {
+    try {
+      const { action, email, password, full_name, name, phone, address } = req.body;
+      const cleanEmail = (email || "").trim().toLowerCase();
+      if (action === "register") {
+        const cleanName = (full_name || name || "").trim();
+        if (!cleanName) return res.status(400).json({ success: false, error: "L\xFCtfen Ad ve Soyad\u0131n\u0131z\u0131 girin." });
+        if (!cleanEmail || !cleanEmail.includes("@")) return res.status(400).json({ success: false, error: "Ge\xE7erli bir e-posta adresi girin." });
+        if (!password || password.length < 6) return res.status(400).json({ success: false, error: "\u015Eifreniz en az 6 karakter olmal\u0131d\u0131r." });
+        const users = readJsonFile(USERS_FILE, []);
+        const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (existing) {
+          return res.status(400).json({ success: false, error: "Bu e-posta adresiyle kay\u0131tl\u0131 bir hesap zaten var. L\xFCtfen giri\u015F yap\u0131n." });
+        }
+        const addresses = address ? [{
+          id: "addr-1",
+          title: "Kay\u0131tl\u0131 Adresim",
+          recipientName: cleanName,
+          phone: phone || "",
+          city: "Bursa",
+          district: "Nil\xFCfer",
+          fullAddress: address,
+          isDefault: true
+        }] : [];
+        const newAccount = {
+          name: cleanName,
+          full_name: cleanName,
+          email: cleanEmail,
+          passwordHash: hashPassword(password),
+          plainPassword: password,
+          phone: phone || "",
+          address: address || "",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          addresses
+        };
+        users.push(newAccount);
+        writeJsonFile(USERS_FILE, users);
+        return res.json({
+          success: true,
+          message: "Kay\u0131t ba\u015Far\u0131l\u0131, giri\u015F yapabilirsiniz",
+          user: {
+            full_name: cleanName,
+            name: cleanName,
+            email: cleanEmail,
+            phone: phone || "",
+            address: address || "",
+            addresses
+          }
+        });
+      }
+      if (action === "login") {
+        if (!cleanEmail || !password) return res.status(400).json({ success: false, error: "E-posta ve \u015Fifre gereklidir." });
+        const users = readJsonFile(USERS_FILE, []);
+        const account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (!account) return res.status(404).json({ success: false, error: "Bu e-posta adresine ait hesap bulunamad\u0131." });
+        const inputHash = hashPassword(password);
+        const isMatch = account.passwordHash === inputHash || account.passwordHash === password || account.plainPassword === password;
+        if (!isMatch) return res.status(401).json({ success: false, error: "Hatal\u0131 \u015Fifre girdiniz. L\xFCtfen tekrar deneyin." });
+        return res.json({
+          success: true,
+          message: "Giri\u015F ba\u015Far\u0131l\u0131",
+          user: {
+            full_name: account.full_name || account.name,
+            name: account.name || account.full_name,
+            email: account.email,
+            phone: account.phone || "",
+            address: account.address || (account.addresses?.[0]?.fullAddress || ""),
+            addresses: account.addresses || []
+          }
+        });
+      }
+      return res.json({ success: true, message: "AKUZ Stickers Auth API Aktif" });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
   app.post("/api/auth/register", (req, res) => {
     try {
       const { name, email, password } = req.body;

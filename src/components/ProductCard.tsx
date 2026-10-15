@@ -152,14 +152,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         )}
 
-        {/* Tıklama Anı Yumuşak Onay Rozeti (Müşteri neye tıkladığını net anlar) */}
+        {/* Tıklama Anı Yumuşak Turuncu Çerçeve (Kullanıcı telefonda neye dokunduğunu net anlar) */}
         {isSelecting && (
-          <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px] pointer-events-none z-20 flex items-center justify-center transition-all animate-fade-in">
-            <span className="px-3.5 py-1.5 rounded-full bg-slate-900/95 text-white text-[11px] font-black uppercase tracking-wider shadow-xl flex items-center gap-1.5 scale-105 transition-transform">
-              <span className="w-2 h-2 rounded-full bg-[#ff0055] animate-ping" />
-              <span>Açılıyor…</span>
-            </span>
-          </div>
+          <div className="absolute inset-0 bg-orange-500/10 pointer-events-none z-20 transition-all animate-fade-in ring-2 ring-[#ff6600] shadow-[0_0_18px_rgba(255,102,0,0.5)]" />
         )}
 
         {/* Top Right Heart Favorite Icon Button */}
@@ -167,7 +162,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           type="button"
           onClick={handleHeartClick}
           className={`absolute top-2 right-2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/95 hover:bg-white flex items-center justify-center transition-all duration-150 z-20 shadow-xs cursor-pointer active:scale-90 ${
-            isHeartBursting ? 'ring-3 ring-rose-400/40 scale-110' : ''
+            isHeartBursting ? 'ring-2 ring-rose-400 scale-110 shadow-[0_0_12px_rgba(244,63,94,0.6)]' : ''
           }`}
           title={isFav ? 'Favorilerden Çıkar' : 'Favorilere Ekle'}
         >
@@ -175,24 +170,24 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             size={15}
             className={`transition-all duration-200 ${
               isHeartBursting
-                ? 'animate-heart-burst text-[#ff0055] fill-[#ff0055]'
+                ? 'animate-heart-burst text-rose-500 fill-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.8)]'
                 : isFav
                 ? 'text-rose-500 fill-rose-500'
-                : 'text-slate-400 hover:text-rose-400'
+                : 'text-slate-400 hover:text-[#ff6600]'
             }`}
           />
           {isHeartBursting && (
             <span className="absolute inset-0 pointer-events-none">
               <span
-                className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-[#ff0055] animate-heart-sparkle"
+                className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_6px_#f43f5e] animate-heart-sparkle"
                 style={{ '--tw-sparkle-x': '14px', '--tw-sparkle-y': '-14px' } as any}
               />
               <span
-                className="absolute top-0 left-0 w-1.5 h-1.5 rounded-full bg-rose-400 animate-heart-sparkle"
+                className="absolute top-0 left-0 w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_#fbbf24] animate-heart-sparkle"
                 style={{ '--tw-sparkle-x': '-14px', '--tw-sparkle-y': '-14px' } as any}
               />
               <span
-                className="absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full bg-amber-400 animate-heart-sparkle"
+                className="absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_6px_#fb923c] animate-heart-sparkle"
                 style={{ '--tw-sparkle-x': '12px', '--tw-sparkle-y': '10px' } as any}
               />
             </span>

@@ -136,6 +136,26 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
+  // Kullanıcı İsteği: Tıklanan simgelerin turuncu olup 175ms sonra açılması (nereye tıklandığının telefonda net anlaşılması)
+  const [activeOrangeIcon, setActiveOrangeIcon] = useState<string | null>(null);
+  const triggerOrangeAction = (iconName: string, action?: () => void) => {
+    setActiveOrangeIcon(iconName);
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate?.(18);
+      }
+    } catch {}
+    if (action) {
+      // 175ms: Kullanıcı telefonda nereye dokunduğunu net anlar, ardından sayfa/panel açılır
+      setTimeout(() => {
+        action();
+      }, 175);
+    }
+    setTimeout(() => {
+      setActiveOrangeIcon((cur) => (cur === iconName ? null : cur));
+    }, 450);
+  };
+
   const freeThreshold = typeof siteSettings?.freeShippingThreshold === 'number'
     ? siteSettings.freeShippingThreshold
     : (siteSettings?.freeShippingThreshold !== undefined && !isNaN(Number(siteSettings.freeShippingThreshold)) ? Number(siteSettings.freeShippingThreshold) : 150);
@@ -150,12 +170,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     : `${freeThreshold.toFixed(0)} TL ve Üzeri Ücretsiz Kargo!`;
 
   const TOP_TICKER_ITEMS = [
-    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 FIRSAT' },
-    { text: shippingTickerText, badge: '🚚 KARGO BEDAVA' },
-    { text: 'Suya ve Güneşe Dayanıklı Özel Tasarım Çıkartmalar', badge: '⭐ DAYANIKLI' },
-    { text: shippingTickerText, badge: '🚚 KARGO BEDAVA' },
-    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 FIRSAT' },
-    { text: shippingTickerText, badge: '🚚 KARGO BEDAVA' },
+    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 AÇILIŞA ÖZEL' },
+    { text: shippingTickerText, badge: '🚚 ÜCRETSİZ KARGO' },
+    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 AÇILIŞA ÖZEL' },
+    { text: shippingTickerText, badge: '🚚 ÜCRETSİZ KARGO' },
+    { text: 'Açılışa Özel Tüm Ürünlerde %35 İndirim!', badge: '🎉 AÇILIŞA ÖZEL' },
+    { text: shippingTickerText, badge: '🚚 ÜCRETSİZ KARGO' },
   ];
 
   return (
@@ -184,8 +204,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           
           {/* 1. Sol: Büyütülmüş Logo */}
           <div
-            onClick={handleLogoClick}
-            className="flex items-center cursor-pointer shrink-0 group select-none relative active:scale-95 transition-transform pl-0.5 sm:pl-1"
+            onClick={() => triggerOrangeAction('logo', handleLogoClick)}
+            className={`flex items-center cursor-pointer shrink-0 group select-none relative active:scale-95 transition-all pl-0.5 sm:pl-1 ${
+              activeOrangeIcon === 'logo' ? 'drop-shadow-[0_0_16px_rgba(255,102,0,0.7)] scale-105' : ''
+            }`}
             title="Sayfayı Yenile & Ana Sayfa"
           >
             <AkuzLogo className="w-[62px] h-[62px] sm:w-[78px] sm:h-[78px] md:w-[94px] md:h-[94px] lg:w-[104px] lg:h-[104px] drop-shadow-sm transition-transform duration-200 group-hover:scale-105" />
@@ -203,21 +225,33 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.innerWidth >= 1024) {
-                      setIsAccountMenuOpen((prev) => !prev);
-                    } else {
-                      onOpenAccount();
-                    }
+                    triggerOrangeAction('account', () => {
+                      if (window.innerWidth >= 1024) {
+                        setIsAccountMenuOpen((prev) => !prev);
+                      } else {
+                        onOpenAccount();
+                      }
+                    });
                   }}
-                  className="flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 transition-colors group cursor-pointer text-xs sm:text-sm font-semibold"
+                  className={`flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 transition-all group cursor-pointer text-xs sm:text-sm font-semibold ${
+                    activeOrangeIcon === 'account'
+                      ? 'ring-2 ring-[#ff6600] bg-orange-50/80 shadow-md scale-105 text-[#ff6600]'
+                      : ''
+                  }`}
                   title="Hesap Paneli & Menüsü"
                 >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#ff6600] to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                  <div className={`w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs shadow-sm transition-all ${
+                    activeOrangeIcon === 'account'
+                      ? 'bg-[#ff6600] shadow-[0_0_12px_rgba(255,102,0,0.8)] scale-110'
+                      : 'bg-gradient-to-tr from-[#ff6600] to-orange-500'
+                  }`}>
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="hidden lg:flex flex-col text-left leading-tight">
                     <span className="text-[10px] text-slate-400 font-medium">Hesabım</span>
-                    <span className="text-xs font-bold text-slate-800 group-hover:text-[#ff6600] truncate max-w-[90px]">{currentUser.name.split(' ')[0]}</span>
+                    <span className={`text-xs font-bold truncate max-w-[90px] transition-colors ${
+                      activeOrangeIcon === 'account' ? 'text-[#ff6600]' : 'text-slate-800 group-hover:text-[#ff6600]'
+                    }`}>{currentUser.name.split(' ')[0]}</span>
                   </div>
                 </button>
 
@@ -328,58 +362,94 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             ) : (
               <button
-                onClick={onOpenAuth}
-                className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 transition-colors group cursor-pointer"
+                onClick={() => triggerOrangeAction('auth', onOpenAuth)}
+                className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70 transition-all group cursor-pointer ${
+                  activeOrangeIcon === 'auth'
+                    ? 'ring-2 ring-[#ff6600] bg-orange-50/90 shadow-[0_0_15px_rgba(255,102,0,0.6)] scale-105 text-[#ff6600]'
+                    : ''
+                }`}
                 title="Giriş Yap / Üye Ol"
               >
-                <UserIcon size={21} className="text-slate-600 group-hover:text-[#ff6600] transition-colors" />
-                <span className="hidden md:inline-block text-xs sm:text-sm font-semibold group-hover:text-[#ff6600] transition-colors">
+                <UserIcon
+                  size={21}
+                  className={`transition-all ${
+                    activeOrangeIcon === 'auth'
+                      ? 'text-[#ff6600] drop-shadow-[0_0_10px_rgba(255,102,0,0.8)] scale-110'
+                      : 'text-slate-600 group-hover:text-[#ff6600]'
+                  }`}
+                />
+                <span className={`hidden md:inline-block text-xs sm:text-sm font-semibold transition-colors ${
+                  activeOrangeIcon === 'auth' ? 'text-[#ff6600]' : 'group-hover:text-[#ff6600]'
+                }`}>
                   Giriş Yap
                 </span>
               </button>
             )}
 
-            {/* Favoriler (Kalp) İkonu ve Yazısı */}
+            {/* Favoriler (Kalp) İkonu ve Yazısı - Turuncu Tıklama Etkileşimi */}
             <button
-              onClick={onOpenFavorites}
-              className="relative flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 transition-colors group cursor-pointer"
+              onClick={() => triggerOrangeAction('favorites', onOpenFavorites)}
+              className={`relative flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70 transition-all group cursor-pointer ${
+                activeOrangeIcon === 'favorites'
+                  ? 'ring-2 ring-[#ff6600] bg-orange-50/90 shadow-[0_0_15px_rgba(255,102,0,0.6)] scale-105 text-[#ff6600]'
+                  : ''
+              }`}
               title="Favorilerim"
             >
               <div className="relative flex items-center justify-center">
                 <Heart
                   size={21}
-                  className={`transition-all ${favoritesCount > 0 ? 'text-rose-500 fill-rose-500' : 'text-slate-600 group-hover:text-[#ff6600]'}`}
+                  className={`transition-all ${
+                    activeOrangeIcon === 'favorites'
+                      ? 'text-[#ff6600] fill-[#ff6600] drop-shadow-[0_0_12px_rgba(255,102,0,0.9)] scale-120'
+                      : favoritesCount > 0
+                      ? 'text-rose-500 fill-rose-500'
+                      : 'text-slate-600 group-hover:text-[#ff6600]'
+                  }`}
                 />
                 {favoritesCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm animate-scale">
+                  <span className={`absolute -top-1.5 -right-2 w-4 h-4 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm animate-scale transition-colors ${
+                    activeOrangeIcon === 'favorites' ? 'bg-[#ff6600]' : 'bg-rose-500'
+                  }`}>
                     {favoritesCount}
                   </span>
                 )}
               </div>
-              <span className="hidden md:inline-block text-xs sm:text-sm font-semibold group-hover:text-[#ff6600] transition-colors">
+              <span className={`hidden md:inline-block text-xs sm:text-sm font-semibold transition-colors ${
+                activeOrangeIcon === 'favorites' ? 'text-[#ff6600]' : 'group-hover:text-[#ff6600]'
+              }`}>
                 Favoriler
               </span>
             </button>
 
-            {/* Sepet İkonu ve Yazısı - Neon Turuncu */}
+            {/* Sepet İkonu ve Yazısı - Turuncu Tıklama Etkileşimi */}
             <button
-              onClick={onOpenCart}
-              className="relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70 transition-all group cursor-pointer"
+              onClick={() => triggerOrangeAction('cart', onOpenCart)}
+              className={`relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70 transition-all group cursor-pointer ${
+                activeOrangeIcon === 'cart'
+                  ? 'ring-2 ring-[#ff6600] bg-orange-50/90 shadow-[0_0_18px_rgba(255,102,0,0.7)] scale-105 text-[#ff6600]'
+                  : ''
+              }`}
               title="Sepetim"
             >
               <div className="relative flex items-center justify-center">
-                {/* Parlayan Neon Turuncu Sepet İkonu */}
                 <ShoppingBag
                   size={23}
-                  className="text-[#ff6600] drop-shadow-[0_0_8px_rgba(255,102,0,0.65)] group-hover:drop-shadow-[0_0_12px_rgba(255,102,0,0.9)] group-hover:scale-110 transition-all stroke-[2.3]"
+                  className={`transition-all stroke-[2.3] ${
+                    activeOrangeIcon === 'cart'
+                      ? 'text-[#ff6600] drop-shadow-[0_0_14px_rgba(255,102,0,0.95)] scale-120'
+                      : 'text-[#ff6600] drop-shadow-[0_0_8px_rgba(255,102,0,0.65)] group-hover:drop-shadow-[0_0_12px_rgba(255,102,0,0.9)] group-hover:scale-110'
+                  }`}
                 />
                 {cartCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 bg-[#ff6600] text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md shadow-orange-500/50 animate-scale">
+                  <span className={`absolute -top-1.5 -right-2 min-w-4 h-4 px-1 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-scale transition-colors bg-[#ff6600] shadow-orange-500/50`}>
                     {cartCount}
                   </span>
                 )}
               </div>
-              <span className="hidden md:inline-block text-xs sm:text-sm font-bold text-slate-800 group-hover:text-[#ff6600] transition-colors">
+              <span className={`hidden md:inline-block text-xs sm:text-sm font-bold transition-colors ${
+                activeOrangeIcon === 'cart' ? 'text-[#ff6600]' : 'text-slate-800 group-hover:text-[#ff6600]'
+              }`}>
                 Sepetim
               </span>
             </button>
@@ -389,16 +459,29 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* 2. ALT SATIR: ARAMA ÇUBUĞU VE SOLUNDA 3 ÇİZGİLİ MENÜ SEMBOLÜ */}
         <div className="pb-3 pt-0.5 sm:pb-3.5 max-w-3xl mx-auto w-full px-1 sm:px-0">
           <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* Arama çubuğunun solundaki 3 Çizgili Menü Butonu */}
+            {/* Arama çubuğunun solundaki 3 Çizgili Menü Butonu - Turuncu Etkileşim */}
             <button
               type="button"
-              onClick={() => setIsSideMenuOpen(true)}
-              className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-3 rounded-full text-slate-800 bg-[#eeece3] hover:bg-[#eae7dc] active:bg-[#dbd8cc] border border-[#dbd8cc] hover:border-[#cfcbc0] shadow-xs active:scale-95 transition-all cursor-pointer group"
+              onClick={() => triggerOrangeAction('menu', () => setIsSideMenuOpen(true))}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-3 rounded-full text-slate-800 bg-[#eeece3] hover:bg-[#eae7dc] active:bg-[#dbd8cc] border shadow-xs active:scale-95 transition-all cursor-pointer group ${
+                activeOrangeIcon === 'menu'
+                  ? 'border-[#ff6600] ring-2 ring-[#ff6600] bg-orange-50 shadow-[0_0_16px_rgba(255,102,0,0.6)] text-[#ff6600]'
+                  : 'border-[#dbd8cc] hover:border-[#cfcbc0]'
+              }`}
               title="Kategoriler, Hesabım, Favorilerim, Sepet"
               aria-label="Hızlı Menüyü Aç"
             >
-              <Menu size={18} className="text-slate-800 group-hover:text-[#ff6600] transition-colors" />
-              <span className="text-xs font-bold text-slate-700 group-hover:text-[#ff6600] transition-colors hidden sm:inline">
+              <Menu
+                size={18}
+                className={`transition-all ${
+                  activeOrangeIcon === 'menu'
+                    ? 'text-[#ff6600] drop-shadow-[0_0_10px_rgba(255,102,0,0.8)] scale-110'
+                    : 'text-slate-800 group-hover:text-[#ff6600]'
+                }`}
+              />
+              <span className={`text-xs font-bold transition-colors hidden sm:inline ${
+                activeOrangeIcon === 'menu' ? 'text-[#ff6600]' : 'text-slate-700 group-hover:text-[#ff6600]'
+              }`}>
                 Menü
               </span>
             </button>

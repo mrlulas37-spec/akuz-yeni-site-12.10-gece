@@ -67,7 +67,7 @@ import {
   INITIAL_WHY_AKUZ_CARDS,
 } from '../utils/adminStore';
 import { processAndUploadProductImage } from '../utils/imageOptimizer';
-import { RegisteredAccount } from '../utils/auth';
+import { RegisteredAccount, purgeAllRegisteredUsers } from '../utils/auth';
 import {
   testSmtpConnection,
   sendWelcomeEmail,
@@ -91,6 +91,7 @@ interface AdminPanelProps {
   orders: Order[];
   onUpdateOrders: (orders: Order[]) => void;
   users: RegisteredAccount[];
+  onUpdateUsers?: (users: RegisteredAccount[]) => void;
   onNavigateHome: () => void;
   onNavigateToCatalog: () => void;
 }
@@ -119,12 +120,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   orders,
   onUpdateOrders,
   users,
+  onUpdateUsers,
   onNavigateHome,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('products');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [isPurgingUsers, setIsPurgingUsers] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
+
+  const handlePurgeAllUsersClick = async () => {
+    if (!window.confirm('Kayıtlı TÜM kullanıcıları, adreslerini ve hesap bilgilerini kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) {
+      return;
+    }
+    setIsPurgingUsers(true);
+    try {
+      await purgeAllRegisteredUsers('akuz_admin_2026');
+      if (onUpdateUsers) {
+        onUpdateUsers([]);
+      }
+      setSaveSuccessMsg('Tüm kullanıcı kayıtları başarıyla silindi ve sıfırlandı.');
+      setTimeout(() => setSaveSuccessMsg(null), 3000);
+    } catch {
+      alert('Kullanıcı kayıtları silinirken bir hata oluştu.');
+    } finally {
+      setIsPurgingUsers(false);
+    }
+  };
+
+  const handleDeleteUserClick = async (emailToDelete: string) => {
+    if (!window.confirm(`${emailToDelete} kullanıcısını silmek istediğinize emin misiniz?`)) {
+      return;
+    }
+    try {
+      await fetch(`/api/users?email=${encodeURIComponent(emailToDelete)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': 'akuz_admin_2026' },
+      });
+      const filtered = users.filter((u) => (u.email || '').toLowerCase() !== emailToDelete.toLowerCase());
+      if (onUpdateUsers) {
+        onUpdateUsers(filtered);
+      }
+      setSaveSuccessMsg(`${emailToDelete} kullanıcısı silindi.`);
+      setTimeout(() => setSaveSuccessMsg(null), 3000);
+    } catch {
+      alert('Kullanıcı silinemedi.');
+    }
+  };
 
   // Güvenli Kategori ve İçerik Listeleri (Asla undefined olamaz, çökme engellendi)
   const safeCategories: CategoryCircleItem[] =
@@ -891,6 +933,106 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const [googleClientId, setGoogleClientId] = useState(siteSettings.googleClientId || '');
   const [copiedOrigin, setCopiedOrigin] = useState(false);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [googleJsonInput, setGoogleJsonInput] = useState('');
+  const [googleJsonInfo, setGoogleJsonInfo] = useState<{
+    clientId?: string;
+    projectId?: string;
+    redirectUris?: string[];
+    javascriptOrigins?: string[];
+    savedAt?: string;
+  } | null>(null);
+  const [isProcessingGoogleJson, setIsProcessingGoogleJson] = useState(false);
+  const [googleJsonStatus, setGoogleJsonStatus] = useState<{ success: boolean; msg: string } | null>(null);
+  const googleJsonFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/google-oauth-json')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.hasConfig && d.config) {
+          setGoogleJsonInfo(d.config);
+          if (d.config.clientId && !googleClientId) {
+            setGoogleClientId(d.config.clientId);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleParseAndApplyGoogleJson = async (content: string) => {
+    setIsProcessingGoogleJson(true);
+    setGoogleJsonStatus(null);
+    try {
+      const parsed = JSON.parse(content);
+      const web = parsed.web || parsed.installed || parsed;
+      const cid = (web.client_id || parsed.client_id || '').trim();
+      const pid = (web.project_id || parsed.project_id || '').trim();
+      const rUris = web.redirect_uris || parsed.redirect_uris || [];
+      const origins = web.javascript_origins || parsed.javascript_origins || [];
+
+      if (!cid) {
+        throw new Error('JSON dosyasında "client_id" (İstemci Kimliği) bulunamadı. Lütfen Google Cloud Console > APIs & Services > Credentials üzerinden indirilen OAuth 2.0 İstemci JSON dosyasını kullanın.');
+      }
+
+      setGoogleClientId(cid);
+      setGoogleJsonInfo({
+        clientId: cid,
+        projectId: pid,
+        redirectUris: rUris,
+        javascriptOrigins: origins,
+      });
+
+      // Tarayıcı ve yerel ayarlara uygula
+      onUpdateSiteSettings({
+        ...siteSettings,
+        googleClientId: cid,
+      });
+
+      // Host sunucusuna kaydet
+      const res = await fetch('/api/admin/google-oauth-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonContent: parsed }),
+      });
+      const data = await res.json();
+
+      setIsProcessingGoogleJson(false);
+      if (data.success) {
+        setGoogleJsonStatus({
+          success: true,
+          msg: `Google Cloud Console JSON başarıyla entegre edildi! İstemci Kimliği (Client ID): ${cid}`,
+        });
+        showNotification('Google Cloud Console JSON dosyası başarıyla entegre edildi ve kaydedildi!');
+      } else {
+        setGoogleJsonStatus({
+          success: false,
+          msg: data.error || 'Sunucuya kaydedilemedi fakat tarayıcı ayarlarınıza başarıyla uygulandı.',
+        });
+      }
+    } catch (err: any) {
+      setIsProcessingGoogleJson(false);
+      setGoogleJsonStatus({
+        success: false,
+        msg: 'JSON Okuma Hatası: ' + (err?.message || 'Geçersiz JSON'),
+      });
+    }
+  };
+
+  const handleGoogleJsonFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        setGoogleJsonInput(text);
+        handleParseAndApplyGoogleJson(text);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const handleSaveGoogleOAuth = () => {
     onUpdateSiteSettings({
@@ -2465,57 +2607,96 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* ========================================================= */}
           {activeTab === 'users' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="p-4 sm:p-5 border-b border-slate-100">
-                <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
-                  <Users size={16} className="text-[#ff0055]" />
-                  <span>Kayıtlı Kullanıcılar ({users.length})</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Sitenize kayıt olan müşterilerin isimleri, e-posta adresleri ve kayıt tarihleri.
-                </p>
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+                    <Users size={16} className="text-[#ff0055]" />
+                    <span>Kayıtlı Kullanıcılar ({users.length})</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Sitenize kayıt olan müşterilerin isimleri, e-posta adresleri ve kayıt tarihleri.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {users.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handlePurgeAllUsersClick}
+                      disabled={isPurgingUsers}
+                      className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                      <span>{isPurgingUsers ? 'Siliniyor...' : 'Tüm Kullanıcıları Temizle'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[11px] tracking-wider">
-                    <tr>
-                      <th className="py-3 px-4">Kullanıcı</th>
-                      <th className="py-3 px-4">E-posta</th>
-                      <th className="py-3 px-4">Telefon</th>
-                      <th className="py-3 px-4">Kayıtlı Adresler</th>
-                      <th className="py-3 px-4">Kayıt Tarihi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {users.map((u, i) => (
-                      <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-slate-800 text-white font-black flex items-center justify-center text-xs">
-                              {u.name.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="font-extrabold text-slate-900">{u.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-slate-700 font-semibold">{u.email}</td>
-                        <td className="py-3 px-4 text-slate-600">{u.phone || 'Girilmedi'}</td>
-                        <td className="py-3 px-4 text-slate-600">
-                          {u.addresses && u.addresses.length > 0 ? (
-                            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-xs">
-                              {u.addresses.length} Adres Kayıtlı
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">Adres Yok</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-slate-400 text-xs">
-                          {new Date(u.createdAt).toLocaleDateString('tr-TR')}
-                        </td>
+              {users.length === 0 ? (
+                <div className="py-14 px-4 text-center">
+                  <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                    <Users size={26} />
+                  </div>
+                  <h4 className="text-base font-black text-slate-800">Kayıtlı Kullanıcı Bulunmuyor</h4>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                    Sistemdeki tüm kayıtlı kullanıcılar başarıyla temizlendi (0 kullanıcı). Yeni müşteriler kayıt oldukça bu listede gerçek zamanlı olarak görüntülenecektir.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[11px] tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Kullanıcı</th>
+                        <th className="py-3 px-4">E-posta</th>
+                        <th className="py-3 px-4">Telefon</th>
+                        <th className="py-3 px-4">Kayıtlı Adresler</th>
+                        <th className="py-3 px-4">Kayıt Tarihi</th>
+                        <th className="py-3 px-4 text-right">İşlem</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {users.map((u, i) => (
+                        <tr key={i} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-slate-800 text-white font-black flex items-center justify-center text-xs">
+                                {u.name.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="font-extrabold text-slate-900">{u.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-slate-700 font-semibold">{u.email}</td>
+                          <td className="py-3 px-4 text-slate-600">{u.phone || 'Girilmedi'}</td>
+                          <td className="py-3 px-4 text-slate-600">
+                            {u.addresses && u.addresses.length > 0 ? (
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-xs">
+                                {u.addresses.length} Adres Kayıtlı
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Adres Yok</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-slate-400 text-xs">
+                            {new Date(u.createdAt).toLocaleDateString('tr-TR')}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUserClick(u.email)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Kullanıcıyı Sil"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -3061,21 +3242,213 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
-                {/* Bilgilendirme ve Origin Mismatch Çözüm Rehberi */}
-                <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200/80 space-y-2">
-                  <div className="flex items-center gap-2 text-blue-950 font-bold text-xs">
-                    <CheckCircle size={16} className="text-blue-600 shrink-0" />
-                    <span>Akıllı Google Girişi devrededir (Error 400: origin_mismatch engeli kaldırılmıştır)</span>
+                {/* Google Cloud Console JSON Entegrasyonu ve Hata Önleme Kartı */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 text-white space-y-4 shadow-lg border border-slate-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white">
+                        <Upload size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black uppercase tracking-tight text-white">
+                          Google Cloud Console JSON Dosyası Entegrasyonu
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Google Console'dan indirdiğiniz <code>client_secret_...json</code> dosyasını seçin veya yapıştırın
+                        </p>
+                      </div>
+                    </div>
+                    {googleClientId && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <CheckCircle size={14} /> Aktif Entegre
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-blue-800 leading-relaxed">
-                    Sistemimizde müşterileriniz için <strong>Yerleşik Kesintisiz Google Girişi</strong> mevcuttur. Kullanıcılar Google e-postalarını seçtiğinde ya da girdiğinde sistem hesabını otomatik hatırlar, kayıtlı teslimat adreslerini ve geçmiş tüm siparişlerini eksiksiz yükler.
-                  </p>
+
+                  {/* Dosya Yükleme ve Yapıştırma Alanı */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                    {/* Yöntem A: Dosya Yükleme */}
+                    <div
+                      onClick={() => googleJsonFileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-700 hover:border-[#ff0055] rounded-xl p-4 text-center cursor-pointer transition-colors bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center min-h-[120px] group"
+                    >
+                      <input
+                        ref={googleJsonFileInputRef}
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={handleGoogleJsonFileChange}
+                        className="hidden"
+                      />
+                      <HardDrive size={24} className="text-slate-400 group-hover:text-[#ff0055] mb-2 transition-colors" />
+                      <span className="text-xs font-bold text-white group-hover:text-[#ff0055] transition-colors">
+                        JSON Dosyasını Seç (.json)
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-0.5">
+                        İndirdiğiniz Google Cloud kimlik dosyasını buraya tıklayarak yükleyin
+                      </span>
+                    </div>
+
+                    {/* Yöntem B: JSON Yapıştırma */}
+                    <div className="space-y-2">
+                      <textarea
+                        value={googleJsonInput}
+                        onChange={(e) => setGoogleJsonInput(e.target.value)}
+                        placeholder='Google Console JSON içeriğini buraya yapıştırın: {"web":{"client_id":"947652767285-..."}}'
+                        rows={3}
+                        className="w-full p-2.5 text-[11px] bg-slate-900/90 text-slate-200 rounded-xl border border-slate-700 focus:outline-none focus:ring-1 focus:ring-[#ff0055] font-mono resize-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={isProcessingGoogleJson || !googleJsonInput.trim()}
+                        onClick={() => handleParseAndApplyGoogleJson(googleJsonInput)}
+                        className="w-full py-2 px-3 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {isProcessingGoogleJson ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>Çözümleniyor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={14} />
+                            <span>Yapıştırılan JSON'u Entegre Et</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Durum Bildirimi */}
+                  {googleJsonStatus && (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                        googleJsonStatus.success
+                          ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-200'
+                          : 'bg-rose-950/60 border border-rose-500/40 text-rose-200'
+                      }`}
+                    >
+                      {googleJsonStatus.success ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+                      <span>{googleJsonStatus.msg}</span>
+                    </div>
+                  )}
+
+                  {/* Entegre Edilmiş Bilgiler Özeti */}
+                  {googleJsonInfo && (
+                    <div className="p-3 bg-white/5 rounded-xl border border-white/10 text-xs font-mono space-y-1">
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span className="text-slate-400 font-sans">Tanımlı İstemci (Client ID):</span>
+                        <span className="text-emerald-400 font-bold truncate max-w-[280px]">
+                          {googleJsonInfo.clientId || googleClientId}
+                        </span>
+                      </div>
+                      {googleJsonInfo.projectId && (
+                        <div className="flex items-center justify-between text-slate-300">
+                          <span className="text-slate-400 font-sans">Google Proje ID:</span>
+                          <span className="text-white">{googleJsonInfo.projectId}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
+                {/* OAuth 2.0 Engellenme Hatasını Önleme Rehberi */}
+                <div className="p-5 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-4">
+                  <div className="flex items-center gap-2 text-amber-950 font-black text-sm">
+                    <ShieldAlert size={18} className="text-amber-600 shrink-0" />
+                    <span>Google OAuth 2.0 Engellenme Hatası (Error 400 / 403) Nasıl Önlenir?</span>
+                  </div>
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    Google Cloud Console'da güvenlik kısıtlamaları nedeniyle oturum açmanın engellenmemesi için aşağıdaki 3 adımı konsolunuzda kontrol ediniz:
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    {/* Kural 1: Authorized JavaScript origins */}
+                    <div className="p-3.5 bg-white rounded-xl border border-amber-200/80 space-y-2">
+                      <span className="font-bold text-slate-900 block">
+                        1. Yetkili JavaScript Kaynakları (Authorized JavaScript origins)
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        Google Cloud Console &gt; Credentials &gt; OAuth 2.0 Client &gt; Web Application düzenleyip şu adresleri ekleyin:
+                      </p>
+                      <div className="space-y-1 font-mono text-[11px]">
+                        {[
+                          'https://akuzstickers.com',
+                          'https://www.akuzstickers.com',
+                          'http://localhost:3000',
+                          typeof window !== 'undefined' ? window.location.origin : '',
+                        ]
+                          .filter((v, idx, arr) => v && arr.indexOf(v) === idx)
+                          .map((orig) => (
+                            <div key={orig} className="flex items-center justify-between bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                              <span className="truncate text-slate-700">{orig}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (navigator.clipboard) {
+                                    navigator.clipboard.writeText(orig);
+                                    setCopiedText(orig);
+                                    setTimeout(() => setCopiedText(null), 1500);
+                                  }
+                                }}
+                                className="px-2 py-0.5 text-[10px] font-bold bg-slate-800 text-white rounded hover:bg-slate-700 shrink-0 cursor-pointer"
+                              >
+                                {copiedText === orig ? 'Kopyalandı' : 'Kopyala'}
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+
+                    {/* Kural 2: Authorized redirect URIs */}
+                    <div className="p-3.5 bg-white rounded-xl border border-amber-200/80 space-y-2">
+                      <span className="font-bold text-slate-900 block">
+                        2. Yetkili Yönlendirme URI'leri (Authorized redirect URIs)
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        Yönlendirme URI'leri listesine tam adresleri ekleyin:
+                      </p>
+                      <div className="space-y-1 font-mono text-[11px]">
+                        {[
+                          'https://akuzstickers.com',
+                          'https://akuzstickers.com/api/auth.php',
+                          'https://www.akuzstickers.com',
+                        ].map((uri) => (
+                          <div key={uri} className="flex items-center justify-between bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                            <span className="truncate text-slate-700">{uri}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (navigator.clipboard) {
+                                  navigator.clipboard.writeText(uri);
+                                  setCopiedText(uri);
+                                  setTimeout(() => setCopiedText(null), 1500);
+                                }
+                              }}
+                              className="px-2 py-0.5 text-[10px] font-bold bg-slate-800 text-white rounded hover:bg-slate-700 shrink-0 cursor-pointer"
+                            >
+                              {copiedText === uri ? 'Kopyalandı' : 'Kopyala'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100">
+                        <span className="font-bold text-slate-900 block text-[11px]">
+                          3. OAuth İzin Ekranı (OAuth consent screen):
+                        </span>
+                        <p className="text-[11px] text-slate-600 mt-0.5">
+                          Yayınlama durumu "Testing" ise yalnızca eklediğiniz Test Kullanıcıları girebilir. Tüm müşteriler için <strong>"Publish App" (Uygulamayı Yayınla)</strong> butonuna basınız.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manuel Client ID ve Ayarlar */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Sitenizin JavaScript Kaynağı (Origin URL)
+                      Sitenizin Geçerli JavaScript Kaynağı (Origin URL)
                     </label>
                     <div className="flex items-center gap-2">
                       <input
@@ -3098,24 +3471,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {copiedOrigin ? 'Kopyalandı!' : 'Kopyala'}
                       </button>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Google Cloud Console'da <em>"Authorized JavaScript origins"</em> alanına bu adresi ekleyin.
-                    </p>
                   </div>
 
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Google OAuth Client ID (İsteğe Bağlı)
+                      Google OAuth Client ID (Aktif İstemci Kimliği)
                     </label>
                     <input
                       type="text"
                       value={googleClientId}
                       onChange={(e) => setGoogleClientId(e.target.value)}
-                      placeholder="660437230655-...apps.googleusercontent.com"
+                      placeholder="947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com"
                       className="w-full px-3.5 py-2.5 text-xs bg-slate-50 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#ff0055] font-mono text-slate-800"
                     />
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Google Cloud Console'dan aldığınız Web İstemci Kimliği (Client ID).
+                      Varsayılan: <code>947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com</code>
                     </p>
                   </div>
                 </div>

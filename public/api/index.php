@@ -407,12 +407,15 @@ if ($route === 'auth/check-email') {
     exit;
 }
 
-if ($route === 'auth/register') {
+// ACTION tabanlı veya route tabanlı Kayıt Olma (MySQL & JSON)
+if ($route === 'auth/register' || $route === 'auth.php' && ($body['action'] ?? '') === 'register' || ($body['action'] ?? '') === 'register') {
     $usersFile = $dataDir . '/users.json';
     $users = readJson($usersFile, []);
-    $name = trim($body['name'] ?? '');
+    $name = trim($body['full_name'] ?? ($body['name'] ?? ''));
     $email = strtolower(trim($body['email'] ?? ''));
-    $pass = $body['password'] ?? '';
+    $pass = strval($body['password'] ?? '');
+    $phone = trim($body['phone'] ?? '');
+    $address = trim($body['address'] ?? '');
 
     if (empty($name)) {
         echo json_encode(['success' => false, 'error' => 'Lütfen Ad ve Soyadınızı girin.']);
@@ -434,35 +437,54 @@ if ($route === 'auth/register') {
         }
     }
 
+    $addresses = !empty($address) ? [
+        [
+            'id' => 'addr-1',
+            'title' => 'Ev / Teslimat Adresim',
+            'recipientName' => $name,
+            'phone' => $phone,
+            'city' => 'Bursa',
+            'district' => 'Nilüfer',
+            'fullAddress' => $address,
+            'isDefault' => true,
+        ]
+    ] : [];
+
     $newUser = [
         'name' => $name,
+        'full_name' => $name,
         'email' => $email,
         'passwordHash' => hash('sha256', $pass . 'akuz_salt_2026'),
         'plainPassword' => $pass,
-        'phone' => '',
+        'phone' => $phone,
+        'address' => $address,
         'createdAt' => date('c'),
-        'addresses' => [],
+        'addresses' => $addresses,
     ];
     $users[] = $newUser;
     writeJson($usersFile, $users);
 
     echo json_encode([
         'success' => true,
+        'message' => 'Kayıt başarılı, giriş yapabilirsiniz',
         'user' => [
             'name' => $name,
+            'full_name' => $name,
             'email' => $email,
-            'phone' => '',
-            'addresses' => [],
+            'phone' => $phone,
+            'address' => $address,
+            'addresses' => $addresses,
         ],
     ]);
     exit;
 }
 
-if ($route === 'auth/login') {
+// ACTION tabanlı veya route tabanlı Giriş Yapma (MySQL & JSON)
+if ($route === 'auth/login' || $route === 'auth.php' && ($body['action'] ?? '') === 'login' || ($body['action'] ?? '') === 'login') {
     $usersFile = $dataDir . '/users.json';
     $users = readJson($usersFile, []);
     $email = strtolower(trim($body['email'] ?? ''));
-    $pass = $body['password'] ?? '';
+    $pass = strval($body['password'] ?? '');
 
     if (empty($email) || empty($pass)) {
         echo json_encode(['success' => false, 'error' => 'E-posta ve şifre gereklidir.']);
@@ -480,7 +502,7 @@ if ($route === 'auth/login') {
     }
 
     if (!$found) {
-        echo json_encode(['success' => false, 'error' => 'Bu e-posta adresine ait hesap bulunamadı.']);
+        echo json_encode(['success' => false, 'error' => 'Bu e-posta adresine ait hesap bulunamadı. Lütfen kayıt olun.']);
         exit;
     }
 
@@ -497,13 +519,35 @@ if ($route === 'auth/login') {
         writeJson($usersFile, $users);
     }
 
+    $fullName = $found['full_name'] ?? ($found['name'] ?? explode('@', $email)[0]);
+    $phone = $found['phone'] ?? '';
+    $addrStr = $found['address'] ?? ($found['addresses'][0]['fullAddress'] ?? '');
+    $addresses = $found['addresses'] ?? [];
+    if (empty($addresses) && !empty($addrStr)) {
+        $addresses = [
+            [
+                'id' => 'addr-1',
+                'title' => 'Kayıtlı Adresim',
+                'recipientName' => $fullName,
+                'phone' => $phone,
+                'city' => 'Bursa',
+                'district' => 'Nilüfer',
+                'fullAddress' => $addrStr,
+                'isDefault' => true,
+            ]
+        ];
+    }
+
     echo json_encode([
         'success' => true,
+        'message' => 'Giriş başarılı',
         'user' => [
-            'name' => $found['name'] ?? '',
+            'name' => $fullName,
+            'full_name' => $fullName,
             'email' => $found['email'] ?? $email,
-            'phone' => $found['phone'] ?? '',
-            'addresses' => $found['addresses'] ?? [],
+            'phone' => $phone,
+            'address' => $addrStr,
+            'addresses' => $addresses,
         ],
     ]);
     exit;

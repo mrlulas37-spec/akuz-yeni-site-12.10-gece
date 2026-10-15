@@ -106,18 +106,7 @@ button, a {
   animation: heartSparkle 0.55s ease-out forwards;
 }
 
-/* 2. Distinctive Category Circle Rubber Pop */
-@keyframes rubberSquish {
-  0% { transform: scale(1); }
-  25% { transform: scale(0.84, 0.84); }
-  55% { transform: scale(1.18, 1.18); }
-  80% { transform: scale(0.95, 0.95); }
-  100% { transform: scale(1.05, 1.05); }
-}
-
-.animate-rubber-pop {
-  animation: rubberSquish 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-}
+/* 2. Category Circle Feedback */
 
 /* 3. Distinctive Cart Add Spring Squish */
 @keyframes cartSpring {
@@ -420,53 +409,79 @@ button, a {
   will-change: transform;
 }
 
-/* 9. WhatsApp 3 Saniyede Bir Çalma/Arama Titreme Efekti */
-@keyframes whatsappCallPulse {
+/* 9. WhatsApp 2.5 Saniyede Bir Çalma/Zil Titreme Efekti (Phone Ringing Shake & Sound Waves) */
+@keyframes whatsappRingShake {
   0%, 100% {
     transform: rotate(0deg) scale(1);
   }
   3% {
-    transform: rotate(-16deg) scale(1.15);
+    transform: rotate(-18deg) scale(1.22);
   }
   6% {
-    transform: rotate(16deg) scale(1.15);
+    transform: rotate(18deg) scale(1.22);
   }
   9% {
-    transform: rotate(-14deg) scale(1.15);
+    transform: rotate(-18deg) scale(1.25);
   }
   12% {
-    transform: rotate(14deg) scale(1.15);
+    transform: rotate(18deg) scale(1.25);
   }
   15% {
-    transform: rotate(-10deg) scale(1.1);
+    transform: rotate(-14deg) scale(1.18);
   }
   18% {
-    transform: rotate(10deg) scale(1.1);
+    transform: rotate(14deg) scale(1.18);
   }
   21% {
-    transform: rotate(-4deg) scale(1.05);
+    transform: rotate(-8deg) scale(1.1);
   }
   24% {
+    transform: rotate(8deg) scale(1.05);
+  }
+  27% {
     transform: rotate(0deg) scale(1);
   }
 }
 
-.animate-whatsapp-call {
-  animation: whatsappCallPulse 2.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
+@keyframes whatsappWavePulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+  40% {
+    opacity: 0.5;
+  }
+  80%, 100% {
+    transform: scale(1.28);
+    opacity: 0;
+  }
+}
+
+.animate-whatsapp-call,
+.animate-whatsapp-ring {
+  animation: whatsappRingShake 2.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
   transform-origin: center center;
 }
 
-/* 10. Konum Simgesinden Yayılan Dairesel Radar Dalgaları (Kullanıcı İsteği: Daireleri Daha Büyük) */
+.animate-whatsapp-wave-1 {
+  animation: whatsappWavePulse 2.5s cubic-bezier(0.1, 0.5, 0.3, 1) infinite;
+}
+
+.animate-whatsapp-wave-2 {
+  animation: whatsappWavePulse 2.5s cubic-bezier(0.1, 0.5, 0.3, 1) infinite 0.25s;
+}
+
+/* 10. Konum Simgesinden Yayılan Dairesel Radar Dalgaları (Kutudan Taşmayan Zarif Radar) */
 @keyframes locationPingRing {
   0% {
-    transform: scale(0.85);
-    opacity: 0.9;
+    transform: scale(0.92);
+    opacity: 0.8;
   }
   45% {
-    opacity: 0.55;
+    opacity: 0.45;
   }
   100% {
-    transform: scale(2.25);
+    transform: scale(1.32);
     opacity: 0;
   }
 }
@@ -537,4 +552,78 @@ button, a {
 .animate-logout-progress {
   animation: logoutProgress 2s linear forwards;
 }
+
+/* ==========================================================================
+   12. TURUNCU TIKLAMA VE ETKİLEŞİM GERİ BİLDİRİMİ (Kullanıcı İsteği)
+   "tıklama animasyonu sadece tıklayınca turuncu olsun ve tıkladığım yere gideyim,
+    telefonda nereye tıkladığımı anlayabileyim"
+   ========================================================================== */
+
+/* Tıklanan / Dokunulan Simgeler ve Butonlar Şık Turuncu Olur (Kullanıcı İsteği: "sadece tıklayınca turuncu olsun") */
+button:active svg,
+a:active svg,
+[role="button"]:active svg,
+.cursor-pointer:active svg,
+[data-orange-active="true"] svg,
+.orange-active svg {
+  color: #ff6600 !important;
+  stroke: #ff6600 !important;
+  transition: color 0.12s ease-out, stroke 0.12s ease-out !important;
+}
+
+button:active,
+a:active,
+[role="button"]:active,
+[data-orange-active="true"] {
+  border-color: #ff6600 !important;
+}
+
+button:active span,
+button:active p,
+a:active span,
+a:active p,
+[data-orange-active="true"] span,
+[data-orange-active="true"] p {
+  color: #ff6600 !important;
+}
+
+/* ==========================================================================
+   13. ATATÜRK YAZISI BAŞTAN SONA AKAN YAVAŞ VE ZARİF PARILTI DÖNGÜSÜ
+   "atatürk parlama animasyonu yavaş zarif bir şekilde olsun"
+   ========================================================================== */
+@keyframes ataturkGoldSweep {
+  0% {
+    background-position: 240% center;
+  }
+  100% {
+    background-position: -240% center;
+  }
+}
+
+.animate-ataturk-gold-shimmer {
+  background: linear-gradient(
+    115deg,
+    #b45309 0%,
+    #d97706 18%,
+    #f59e0b 34%,
+    #fffbeb 48%,
+    #ffffff 50%,
+    #fef08a 54%,
+    #f59e0b 66%,
+    #d97706 82%,
+    #b45309 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: ataturkGoldSweep 4.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.6));
+  font-weight: 900;
+  display: inline-block;
+  letter-spacing: 0.02em;
+}
+
+
 

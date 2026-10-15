@@ -70,11 +70,11 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({
   }, [favoriteProducts, sortOption]);
 
   return (
-    <div className="bg-[#fcfbf9] min-h-[80vh] py-8 sm:py-12 text-slate-800">
+    <div className={`bg-[#fcfbf9] min-h-[80vh] ${favoriteProducts.length === 0 ? 'pt-1 sm:pt-1.5 pb-6' : 'pt-3 sm:pt-4 pb-8 sm:pb-12'} text-slate-800`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Breadcrumb / Geri Dön */}
-        <div className="flex items-center gap-2 text-xs text-slate-500 mb-6 font-medium">
+        <div className={`flex items-center gap-2 text-xs text-slate-500 ${favoriteProducts.length === 0 ? 'mb-1 sm:mb-1.5' : 'mb-2.5 sm:mb-3'} font-medium`}>
           <button
             onClick={onGoHome}
             className="hover:text-slate-900 transition-colors flex items-center gap-1 cursor-pointer"
@@ -87,17 +87,17 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({
         </div>
 
         {/* Başlık ve İstatistik Çubuğu */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-8 border-b border-slate-200">
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${favoriteProducts.length === 0 ? 'pb-1.5 sm:pb-2 mb-1.5 sm:mb-2' : 'pb-3 sm:pb-4 mb-4 sm:mb-5'} border-b border-slate-200/80`}>
           <div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 shadow-xs">
-                <Heart size={24} className="fill-rose-500" />
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 shadow-2xs">
+                <Heart size={18} className="fill-rose-500" />
               </div>
               <div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-tight">
                   Favorilerim
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
                   {favoriteProducts.length > 0
                     ? `Listenizde toplam ${favoriteProducts.length} adet beğendiğiniz ürün bulunuyor.`
                     : 'Beğendiğiniz ürünleri burada saklayıp dilediğiniz an inceleyebilirsiniz.'}
@@ -151,28 +151,28 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({
 
         {/* İÇERİK: BOŞ DURUM VEYA ÜRÜN KARTLARI LİSTESİ */}
         {favoriteProducts.length === 0 ? (
-          <div className="max-w-lg mx-auto text-center py-16 px-4 bg-white rounded-3xl border border-slate-200/90 shadow-sm">
-            <div className="w-20 h-20 rounded-full bg-rose-50 text-rose-400 flex items-center justify-center mx-auto mb-5 shadow-xs">
-              <Heart size={38} strokeWidth={1.75} />
+          <div className="max-w-lg mx-auto text-center py-4 sm:py-5 px-4 sm:px-6 bg-white rounded-2xl border border-slate-200/90 shadow-2xs mt-0 animate-fadeIn">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto mb-2 shadow-2xs">
+              <Heart size={22} className="fill-rose-500" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
+            <h2 className="text-base sm:text-lg font-black text-slate-900 mb-1">
               Favori Listeniz Henüz Boş
             </h2>
-            <p className="text-sm text-slate-500 mb-8 max-w-sm mx-auto leading-relaxed">
+            <p className="text-xs sm:text-[13px] text-slate-500 mb-4 max-w-sm mx-auto leading-relaxed">
               Koleksiyonumuzdaki Atatürk, araba, motosiklet ve özel tasarım stickerları keşfedin; beğendiklerinizi kalp butonuna tıklayarak buraya kaydedin.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
               <button
                 type="button"
                 onClick={onNavigateToCatalog}
-                className="w-full sm:w-auto px-6 py-3 bg-[#ff0055] hover:bg-[#e0004c] text-white rounded-xl text-sm font-bold shadow-md shadow-pink-500/20 transition-all cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 bg-[#ff0055] hover:bg-[#e0004c] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-pink-500/20 transition-all cursor-pointer active:scale-95"
               >
                 Kataloğu İncele
               </button>
               <button
                 type="button"
                 onClick={onGoHome}
-                className="w-full sm:w-auto px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95"
               >
                 Ana Sayfaya Dön
               </button>

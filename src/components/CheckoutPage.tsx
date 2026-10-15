@@ -278,10 +278,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       }
     }
 
-    if (!cleanEmail) {
-      errors.email = 'E-posta adresi alanı zorunludur.';
-      missingFields.push('E-Posta');
-    } else if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+    // E-posta isteğe bağlıdır; ancak girilmişse geçerli format kontrolü yapılır
+    if (cleanEmail && (!cleanEmail.includes('@') || !cleanEmail.includes('.'))) {
       errors.email = 'Lütfen geçerli bir e-posta adresi giriniz (Örn: ad@gmail.com).';
       missingFields.push('Geçerli E-Posta Adresi');
     }
@@ -945,7 +943,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Mail size={13} className="text-slate-400" />
-                    <span>E-posta Adresi <span className="text-[#ff0055]">*</span></span>
+                    <span>E-posta Adresi <span className="text-slate-400 font-normal text-[11px]">(İsteğe Bağlı)</span></span>
                   </span>
                   {fieldErrors.email && (
                     <span className="text-[11px] font-bold text-rose-600">{fieldErrors.email}</span>
@@ -958,7 +956,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                     setEmail(e.target.value);
                     if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
                   }}
-                  placeholder="ornek@email.com"
+                  placeholder="ornek@email.com (isteğe bağlı)"
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm text-slate-800 focus:outline-none transition-all font-medium ${
                     fieldErrors.email
                       ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-400'

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, User, AlertCircle, CheckCircle2, ArrowLeft, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Mail, Lock, User, Phone, MapPin, AlertCircle, CheckCircle2, ArrowLeft, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { AkuzLogo } from './AkuzLogo';
 import { UserProfile } from '../types';
 import {
@@ -20,7 +20,7 @@ interface LoginPageProps {
   returnPath?: string;
 }
 
-type AuthStep = 'email' | 'existing_password' | 'google_account_confirm' | 'new_register';
+type AuthStep = 'email' | 'existing_password' | 'google_account_confirm' | 'google_name_prompt' | 'new_register';
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   onLoginSuccess,
@@ -45,10 +45,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Registration fields
+  // Registration fields ({ action: 'register', email, password, full_name, phone, address })
   const [registerName, setRegisterName] = useState('');
+  const [registerPhone, setRegisterPhone] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
+
+  // Google ile giriş doğrulama & isim-soyisim isteme state'leri
+  const [googleAuthData, setGoogleAuthData] = useState<{ email: string; name: string } | null>(null);
+  const [googleFullName, setGoogleFullName] = useState('');
 
   // Status & validation states
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -66,14 +71,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setIsLoading(false);
     setErrorMessage(null);
     setSuccessUser(user);
-    // Kısa süre (700ms) "GİRİŞ BAŞARILI" mesajını gösterip soru sormadan ana sayfaya git
+    // Kısa süre (700ms) "GİRİŞ BAŞARILI" mesajını gösterip ana sayfaya git
     setTimeout(() => {
       onLoginSuccess(user);
       onGoHome();
     }, 700);
   };
-
-
 
   // Doğrudan gerçek Google açılır penceresini ve hesap seçicisini başlatır
   const handleLaunchGooglePicker = async () => {
@@ -90,12 +93,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       await triggerGoogleAccountPicker(
         (user) => {
           clearTimeout(safetyTimer);
-          triggerSuccessfulLogin(user);
+          // İsim soyisim adımına yönlendir
+          setGoogleAuthData({ email: user.email, name: user.name });
+          setGoogleFullName(user.name || '');
+          setStep('google_name_prompt');
+          setIsLoading(false);
         },
         (errorMsg) => {
           clearTimeout(safetyTimer);
           setIsLoading(false);
           setErrorMessage(errorMsg);
+        },
+        (info) => {
+          // Google hesabı seçildi -> Kullanıcıdan isim soyisim iste
+          clearTimeout(safetyTimer);
+          setIsLoading(false);
+          setErrorMessage(null);
+          setGoogleAuthData(info);
+          setGoogleFullName(info.name || '');
+          setStep('google_name_prompt');
         }
       );
     } catch (err: any) {
@@ -105,19 +121,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   };
 
-  // Google hesabı sitemizde zaten tanımlı olan kullanıcı için tek tıkla doğrudan siteye giriş
-  const handleDirectGoogleConfirm = async () => {
+  // Google Girişi: Kullanıcı isim ve soyismini girdiğinde oturumu tamamla
+  const handleGoogleNameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsLoading(true);
+    const trimmed = googleFullName.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setErrorMessage('Lütfen Ad ve Soyadınızı giriniz.');
+      return;
+    }
 
+    const cleanEmail = (googleAuthData?.email || email).trim().toLowerCase();
+    if (!cleanEmail) {
+      setErrorMessage('Google hesabı bulunamadı. Lütfen tekrar deneyin.');
+      setStep('email');
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const cleanEmail = email.trim().toLowerCase();
-      const loginRes = await loginWithGoogleAccount(cleanEmail, accountName || cleanEmail.split('@')[0]);
+      const loginRes = await loginWithGoogleAccount(cleanEmail, trimmed);
       triggerSuccessfulLogin(loginRes.user);
     } catch (err: any) {
       setIsLoading(false);
-      setErrorMessage(err?.message || 'Giriş yapılırken bir hata oluştu.');
+      setErrorMessage(err?.message || 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
     }
   };
 
@@ -141,8 +168,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       if (result.exists) {
         if (result.name) setAccountName(result.name);
         if (result.isGoogleUser) {
+          // Google ile kayıtlıysa Google ile giriş yapmasını rica et
           setStep('google_account_confirm');
         } else {
+          // E-posta ile kayıtlıysa mutlaka şifre sor
           setStep('existing_password');
         }
       } else {
@@ -154,7 +183,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   };
 
-  // 2. Şifreli Giriş
+  // 2. Şifreli Giriş (Güvenlik Korumalı - Şifre Doğrulaması Şart)
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -170,13 +199,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setIsLoading(false);
 
     if (!res.success || !res.user) {
+      if ((res as any).isGoogleAccount || res.error?.includes('Google')) {
+        setStep('google_account_confirm');
+      }
       setErrorMessage(res.error || 'Giriş yapılamadı.');
     } else {
       triggerSuccessfulLogin(res.user);
     }
   };
 
-  // 3. Yeni Kayıt
+  // 3. Yeni Kayıt ({ action: 'register', email, password, full_name, phone, address })
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -184,6 +216,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     if (!registerName.trim()) {
       setErrorMessage('Lütfen Ad ve Soyadınızı girin.');
+      return;
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      setErrorMessage('Lütfen geçerli bir e-posta adresi girin.');
       return;
     }
 
@@ -198,13 +235,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
 
     setIsLoading(true);
-    const res = await registerUser(registerName, email, registerPassword);
-    setIsLoading(false);
+    console.log('[Kayıt Formu Gönderiliyor -> https://akuzstickers.com/api/auth.php]', {
+      email,
+      full_name: registerName,
+      phone: registerPhone,
+    });
 
-    if (!res.success || !res.user) {
-      setErrorMessage(res.error || 'Kayıt işlemi başarısız.');
-    } else {
-      triggerSuccessfulLogin(res.user);
+    try {
+      const res = await registerUser(
+        registerName,
+        email,
+        registerPassword,
+        registerPhone,
+        '' // Adres kayıt esnasında istenmiyor, sipariş esnasında veya hesap panelinden girilecek
+      );
+      setIsLoading(false);
+
+      if (!res.success) {
+        console.error('[Kayıt Hatası]:', res.error);
+        setErrorMessage(res.error || 'Kayıt işlemi başarısız.');
+      } else {
+        console.log('[Kayıt Başarılı]:', res.message || res);
+        // Kullanıcıyı bilgilendir ve giriş ekranına yönlendir
+        setSuccessMessage(res.message || 'Kayıt başarılı, giriş yapabilirsiniz');
+        setLoginPassword('');
+        setStep('existing_password');
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      console.error('[Kayıt Formu İstek Hatası]:', err);
+      setErrorMessage(err?.message || 'Kayıt işlemi sırasında bir bağlantı hatası oluştu.');
     }
   };
 
@@ -274,6 +334,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             {step === 'email' && 'GİRİŞ YAP VEYA KAYIT OL'}
             {step === 'existing_password' && 'HESABINIZA GİRİŞ YAPIN'}
             {step === 'google_account_confirm' && 'GOOGLE İLE GİRİŞ YAP'}
+            {step === 'google_name_prompt' && 'İSİM & SOYİSİM DOĞRULAMA'}
             {step === 'new_register' && 'HESAP OLUŞTUR'}
           </h1>
           <p className="text-xs text-slate-500 mt-1.5 max-w-xs">
@@ -283,9 +344,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               (accountName ? `Hoş geldiniz, ${accountName}! Şifrenizi girerek hesabınıza erişin.` : 'Kayıtlı hesabınız bulundu. Şifrenizi girerek giriş yapın.')}
             {step === 'google_account_confirm' &&
               'Bu e-posta adresi Google ile kayıtlıdır. Tek tıkla hesabınıza giriş yapabilirsiniz.'}
+            {step === 'google_name_prompt' &&
+              'Google ile oturum açarken sipariş ve etiket işlemleriniz için lütfen Ad ve Soyadınızı girin.'}
             {step === 'new_register' && 'Yeni hesap oluşturmak için bilgilerinizi tamamlayın.'}
           </p>
         </div>
+
+        {/* Giriş Yap / Kayıt Ol Sekmeleri */}
+        {step !== 'google_name_prompt' && (
+          <div className="flex bg-slate-100 p-1 rounded-xl mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                setErrorMessage(null);
+                setSuccessMessage(null);
+                setStep(email.trim() ? 'existing_password' : 'email');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                step !== 'new_register'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Giriş Yap
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setErrorMessage(null);
+                setSuccessMessage(null);
+                setStep('new_register');
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                step === 'new_register'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Kayıt Ol
+            </button>
+          </div>
+        )}
 
         {/* Alert Messages */}
         {errorMessage && (
@@ -314,7 +413,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   <input
                     type="email"
                     required
-                    autoFocus
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="ornek@gmail.com"
@@ -389,38 +487,46 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </>
         )}
 
-        {/* 2. ADIM (GOOGLE HESABI TESPİT EDİLDİ): 1-TIKLA GOOGLE GİRİŞİ */}
+        {/* 2. ADIM (GOOGLE HESABI TESPİT EDİLDİ): KULLANICIDAN GOOGLE İLE GİRİŞ YAPMASINI RİCA ET */}
         {step === 'google_account_confirm' && (
-          <div className="space-y-4">
-            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200/80 text-center">
-              <div className="w-12 h-12 bg-white rounded-full shadow-xs flex items-center justify-center mx-auto mb-2 text-emerald-600">
-                <Sparkles size={24} />
+          <div className="space-y-4 animate-fadeIn">
+            <div className="p-4 bg-sky-50 rounded-2xl border border-sky-200/80 text-center">
+              <div className="w-12 h-12 bg-white rounded-full shadow-xs flex items-center justify-center mx-auto mb-2 text-sky-600">
+                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
               </div>
-              <h3 className="font-bold text-emerald-950 text-sm">
-                {accountName ? `Merhaba, ${accountName}!` : 'Kayıtlı Google Hesabı'}
+              <h3 className="font-bold text-slate-900 text-sm">
+                {accountName ? `Merhaba, ${accountName}!` : 'Google ile Kayıtlı Hesap'}
               </h3>
-              <p className="text-xs text-emerald-700 mt-1">
-                <span className="font-semibold">{email}</span> e-posta adresiniz sitemizde kayıtlıdır. Tüm adresleriniz ve geçmiş siparişleriniz korunmaktadır.
+              <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                Sayın kullanıcımız, <span className="font-bold text-slate-900">{email}</span> e-posta adresi ile daha önce <strong>Google üzerinden kayıt olunmuştur</strong>. Hesap güvenliğiniz için lütfen aşağıdaki <strong>Google ile Giriş Yap</strong> butonunu kullanarak oturum açınız.
               </p>
             </div>
 
-            {/* Tek Tıkla Giriş Yap */}
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={handleDirectGoogleConfirm}
-              className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-70 text-white font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98"
-            >
-              <span>{isLoading ? 'Giriş Yapılıyor...' : 'Hesabımla Giriş Yap'}</span>
-            </button>
-
+            {/* Gerçek Google Doğrulama Butonu (Güvenlik Korumalı) */}
             <button
               type="button"
               disabled={isLoading}
               onClick={handleLaunchGooglePicker}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-xs hover:shadow-sm cursor-pointer active:scale-98 disabled:opacity-70"
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-slate-400 text-slate-800 font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98 disabled:opacity-70"
             >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -438,19 +544,96 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{isLoading ? 'Google ile Bağlanılıyor...' : 'Google Hesap Seçici ile Aç'}</span>
+              <span>{isLoading ? 'Google ile Bağlanılıyor...' : 'Google ile Giriş Yap'}</span>
+            </button>
+
+            <div className="flex items-center justify-center pt-1">
+              <button
+                type="button"
+                onClick={handleBackToEmail}
+                className="text-xs text-slate-500 hover:text-slate-800 font-semibold transition-colors cursor-pointer"
+              >
+                ← Farklı bir e-posta ile giriş yap
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* GOOGLE İLE GİRİŞ: İSİM VE SOYİSİM İSTEME ADIMI */}
+        {step === 'google_name_prompt' && (
+          <form onSubmit={handleGoogleNameSubmit} className="space-y-4 animate-fadeIn">
+            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200/80 text-left">
+              <div className="flex items-center gap-2 mb-1.5">
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span className="text-xs font-bold text-emerald-800">Google Hesabı Doğrulandı</span>
+              </div>
+              <p className="text-xs font-bold text-emerald-950 truncate">
+                {googleAuthData?.email || email}
+              </p>
+              <p className="text-[11px] text-emerald-700 mt-1">
+                Sipariş paketiniz, kargo teslimatı ve fatura işlemleriniz için lütfen ad ve soyadınızı belirtin.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Ad Soyad (İsim Soyisim) <span className="text-[#ff0055]">*</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  required
+                  value={googleFullName}
+                  onChange={(e) => setGoogleFullName(e.target.value)}
+                  placeholder="Örn: Mert Yılmaz"
+                  className="w-full pl-10 pr-3.5 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
+                />
+                <User size={18} className="absolute left-3.5 text-slate-400" />
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Lütfen sipariş ve teslimat için geçerli ad ve soyadınızı yazın.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || !googleFullName.trim()}
+              className="w-full py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-60 text-white font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98"
+            >
+              {isLoading ? 'Giriş Yapılıyor...' : 'Girişi Tamamla'}
             </button>
 
             <div className="text-center pt-2">
               <button
                 type="button"
-                onClick={() => setStep('existing_password')}
-                className="text-xs text-slate-500 hover:text-[#ff0055] font-semibold transition-colors cursor-pointer"
+                onClick={() => {
+                  setStep('email');
+                  setGoogleAuthData(null);
+                  setErrorMessage(null);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors cursor-pointer"
               >
-                Şifre ile giriş yapmak istiyorum
+                ← Farklı bir hesapla giriş yap
               </button>
             </div>
-          </div>
+          </form>
         )}
 
         {/* 3. ADIM: ŞİFRELİ GİRİŞ */}
@@ -491,7 +674,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  autoFocus
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••"
@@ -556,130 +738,176 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* 4. ADIM: YENİ KAYIT */}
         {step === 'new_register' && (
-          <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  E-Posta Adresi
-                </label>
-                <button
-                  type="button"
-                  onClick={handleBackToEmail}
-                  className="text-[11px] text-[#ff0055] hover:underline font-semibold cursor-pointer"
-                >
-                  Değiştir
-                </button>
-              </div>
-              <div className="relative flex items-center">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
-                />
-                <Mail size={18} className="absolute left-3.5 text-slate-400" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Ad Soyad
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={registerName}
-                  onChange={(e) => setRegisterName(e.target.value)}
-                  placeholder="Adınız ve Soyadınız"
-                  className="w-full pl-10 pr-3.5 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
-                />
-                <User size={18} className="absolute left-3.5 text-slate-400" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Şifre
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={6}
-                  value={registerPassword}
-                  onChange={(e) => setRegisterPassword(e.target.value)}
-                  placeholder="En az 6 karakter"
-                  className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
-                />
-                <Lock size={18} className="absolute left-3.5 text-slate-400" />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                  title={showPassword ? 'Şifreyi Gizle' : 'Şifreyi Göster'}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Şifre Tekrar
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={6}
-                  value={registerConfirmPassword}
-                  onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                  placeholder="Şifrenizi tekrar girin"
-                  className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
-                />
-                <Lock size={18} className="absolute left-3.5 text-slate-400" />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                  title={showPassword ? 'Şifreyi Gizle' : 'Şifreyi Göster'}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
+          <div className="space-y-4 animate-fadeIn">
+            {/* Google ile Hızlı Kayıt Ol Butonu */}
             <button
-              type="submit"
+              type="button"
               disabled={isLoading}
-              className="w-full mt-2 py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-70 text-white font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98"
+              onClick={handleLaunchGooglePicker}
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 text-slate-700 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer active:scale-98 disabled:opacity-70"
             >
-              {isLoading ? 'Hesap Oluşturuluyor...' : 'Kayıt Ol'}
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>{isLoading ? 'Google ile Bağlanılıyor...' : 'Google ile Kayıt Ol'}</span>
             </button>
 
-            <div className="text-center pt-2 border-t border-slate-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={handleLaunchGooglePicker}
-                className="text-xs text-slate-600 hover:text-slate-900 font-semibold transition-colors cursor-pointer"
-              >
-                Google ile Giriş
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('existing_password');
-                  setErrorMessage(null);
-                }}
-                className="text-xs text-slate-500 hover:text-[#ff0055] font-semibold transition-colors cursor-pointer"
-              >
-                Giriş Yap
-              </button>
+            {/* ya da / veya Ayracı */}
+            <div className="relative flex items-center justify-center my-3.5">
+              <div className="border-t border-slate-200 w-full" />
+              <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
+                ya da e-posta ile kayıt olun
+              </span>
+              <div className="border-t border-slate-200 w-full" />
             </div>
-          </form>
+
+            {/* E-posta ile Kayıt Formu */}
+            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Ad Soyad
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    required
+                    value={registerName}
+                    onChange={(e) => setRegisterName(e.target.value)}
+                    placeholder="Adınız ve Soyadınız"
+                    className="w-full pl-10 pr-3.5 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
+                  />
+                  <User size={18} className="absolute left-3.5 text-slate-400" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    E-Posta Adresi
+                  </label>
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ornek@gmail.com"
+                    className="w-full pl-10 pr-3.5 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
+                  />
+                  <Mail size={18} className="absolute left-3.5 text-slate-400" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Telefon Numarası
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="tel"
+                    value={registerPhone}
+                    onChange={(e) => setRegisterPhone(e.target.value)}
+                    placeholder="05XX XXX XX XX (İsteğe Bağlı)"
+                    className="w-full pl-10 pr-3.5 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
+                  />
+                  <Phone size={18} className="absolute left-3.5 text-slate-400" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Şifre
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    placeholder="En az 6 karakter"
+                    className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
+                  />
+                  <Lock size={18} className="absolute left-3.5 text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                    title={showPassword ? 'Şifreyi Gizle' : 'Şifreyi Göster'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Şifre Tekrar
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={registerConfirmPassword}
+                    onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                    placeholder="Şifrenizi tekrar girin"
+                    className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff0055] focus:bg-white transition-colors"
+                  />
+                  <Lock size={18} className="absolute left-3.5 text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                    title={showPassword ? 'Şifreyi Gizle' : 'Şifreyi Göster'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-2 py-3.5 px-4 bg-[#ff0055] hover:bg-[#d90048] disabled:opacity-70 text-white font-extrabold text-sm rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer active:scale-98"
+              >
+                {isLoading ? 'Hesap Oluşturuluyor...' : 'Hesap Oluştur'}
+              </button>
+
+              {/* Alt Bilgi: Temiz Giriş Yap Bağlantısı */}
+              <div className="text-center pt-3 border-t border-slate-100">
+                <p className="text-xs text-slate-500">
+                  Zaten bir hesabınız var mı?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('email');
+                      setErrorMessage(null);
+                    }}
+                    className="text-[#ff0055] font-bold hover:underline cursor-pointer"
+                  >
+                    Giriş Yapın
+                  </button>
+                </p>
+              </div>
+            </form>
+          </div>
         )}
       </div>
     </div>

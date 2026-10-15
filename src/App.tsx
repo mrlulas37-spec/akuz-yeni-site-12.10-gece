@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { CategoryBar } from './components/CategoryBar';
 import { PopularProducts } from './components/PopularProducts';
+import { ProductCard } from './components/ProductCard';
 import { CatalogPage } from './components/CatalogPage';
 import { ProductDetailPage } from './components/ProductDetailPage';
 import { WhyAkuzSection } from './components/WhyAkuzSection';
@@ -26,11 +27,13 @@ import { PageLoader } from './components/PageLoader';
 import { FastAkuzLoader } from './components/FastAkuzLoader';
 import { OrderTrackingPage } from './components/OrderTrackingPage';
 import { PRODUCTS as INITIAL_PRODUCTS } from './data/products';
-import { LogOut } from 'lucide-react';
+import { LogOut, Check, ShoppingBag, X } from 'lucide-react';
 import { Product, CartItem, UserProfile, Order, Review, SiteSettings, ProductColorOption } from './types';
 import {
   updateUserProfileData,
   logoutUser,
+  normalizeUserProfile,
+  RegisteredAccount,
   getRegisteredUsers,
   fetchCentralUsers,
   getUserSavedState,
@@ -98,30 +101,44 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
 }
 
 export default function App() {
-  // "reload attığında ana sayfaya gelsin"
-  // Kullanıcı adres çubuğuna /admin yazdığında doğrudan Admin Paneline girer
-  // Normal sayfalarda sayfa yenilendiğinde (F5 veya reload) doğrudan ana sayfaya ('/') gelir
+  // Kullanıcı İsteği: Kayıt dataları, favoriler ve sepete eklemeleri tamamen sıfırlama
+  (() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('akuz_registered_users');
+        localStorage.removeItem('akuz_favorites');
+        localStorage.removeItem('akuz_cart');
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('akuz_user');
+        localStorage.removeItem('akuz_google_accounts_list');
+        localStorage.removeItem('akuz_last_google_account');
+
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (
+            k &&
+            (k.startsWith('akuz_user_') ||
+              k.startsWith('akuz_cart') ||
+              k.startsWith('akuz_fav') ||
+              k.startsWith('akuz_registered') ||
+              k.startsWith('akuz_google') ||
+              k.includes('mertopro') ||
+              k.includes('mrlulas'))
+          ) {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch {}
+    }
+  })();
+
+  // Kullanıcı İsteği: Yukarıdan aşağı kaydırınca veya reload atıldığında ana sayfaya atmasın, bulunulan sayfayı yenilesin
   const [currentPath, setCurrentPath] = useState<string>(() => {
     try {
-      const pathname = window.location.pathname || '/';
-      // Eğer kullanıcı /admin adresindeyse doğrudan Admin Paneline girsin (asla ana sayfaya zorlamaz)
-      if (pathname === '/admin') {
-        return '/admin';
-      }
-
-      const navEntries = performance.getEntriesByType('navigation');
-      const isReload = (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload')
-        || Boolean(sessionStorage.getItem('akuz_force_home_reload'));
-
-      if (isReload) {
-        sessionStorage.removeItem('akuz_force_home_reload');
-        if (pathname !== '/') {
-          window.history.replaceState({}, '', '/');
-        }
-        return '/';
-      }
-    } catch {}
-    return window.location.pathname || '/';
+      return window.location.pathname || '/';
+    } catch {
+      return '/';
+    }
   });
 
   // Global Site Settings (Neden Akuz 4 kutu, Hakkımızda metni, İletişim, Kategori yuvarlakları)
@@ -159,9 +176,9 @@ export default function App() {
     }
   });
 
-  // Registered Users for Admin View
-  const [registeredUsers, setRegisteredUsers] = useState(() => {
-    return getRegisteredUsers();
+  // Registered Users for Admin View (Başlangıçta tamamen boş)
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredAccount[]>(() => {
+    return [];
   });
 
   // Reviews state (persisted in localStorage, initially empty so all products start at 0)
@@ -238,8 +255,8 @@ export default function App() {
   // User Authentication state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     try {
-      const saved = localStorage.getItem('akuz_user');
-      return saved ? JSON.parse(saved) : null;
+      const saved = localStorage.getItem('currentUser') || localStorage.getItem('akuz_user');
+      return saved ? normalizeUserProfile(JSON.parse(saved)) : null;
     } catch {
       return null;
     }
@@ -261,8 +278,8 @@ export default function App() {
 
     if (currentPath === '/admin') {
       fetchCentralUsers('akuz_admin_2026').then((hostUsers) => {
-        if (!isCancelled && hostUsers && hostUsers.length > 0) {
-          setRegisteredUsers(hostUsers);
+        if (!isCancelled) {
+          setRegisteredUsers(hostUsers || []);
         }
       });
 
@@ -464,6 +481,12 @@ export default function App() {
   const [isFastLoading, setIsFastLoading] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggingOutRef = useRef(false);
+  const [cartToast, setCartToast] = useState<{
+    productName: string;
+    productPrice: number;
+    quantity: number;
+  } | null>(null);
+  const cartToastTimerRef = useRef<any>(null);
 
   // Sync state to localStorage
   useEffect(() => {
@@ -476,8 +499,10 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser && !isLoggingOutRef.current) {
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
       localStorage.setItem('akuz_user', JSON.stringify(currentUser));
-    } else {
+    } else if (!currentUser && isLoggingOutRef.current) {
+      localStorage.removeItem('currentUser');
       localStorage.removeItem('akuz_user');
     }
   }, [currentUser]);
@@ -503,9 +528,14 @@ export default function App() {
 
   // Giriş yapan kullanıcının önceki kayıtlı sepet ve favorilerini yükle ve birleştir
   const handleUserLoggedIn = (user: UserProfile) => {
-    setCurrentUser(user);
+    const normalized = normalizeUserProfile(user);
+    setCurrentUser(normalized);
+    try {
+      localStorage.setItem('currentUser', JSON.stringify(normalized));
+      localStorage.setItem('akuz_user', JSON.stringify(normalized));
+    } catch {}
 
-    const savedData = getUserSavedState(user.email);
+    const savedData = getUserSavedState(normalized.email);
 
     // Sepet birleştirme (Kullanıcı giriş yapmadan önce sepete ürün eklediyse onları korur)
     setCartItems((prevGuestCart) => {
@@ -546,7 +576,7 @@ export default function App() {
     }
 
     // Siparişleri sunucudan çek
-    fetch('/api/orders?email=' + encodeURIComponent(user.email))
+    fetch('/api/orders?email=' + encodeURIComponent(normalized.email))
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.orders)) {
@@ -577,9 +607,10 @@ export default function App() {
       saveUserSavedState(userEmail, cartItems, favoriteIds, recentlyViewedIds);
     }
 
-    // Hemen yerel depolamadaki aktif oturumu temizle (arka plan istekleri canlandıramasın)
+    // Hemen yerel depolamadaki aktif oturumu temizle (currentUser ve akuz_user sıfırla)
     logoutUser();
     try {
+      localStorage.removeItem('currentUser');
       localStorage.removeItem('akuz_user');
       localStorage.removeItem('akuz_orders');
     } catch {}
@@ -588,6 +619,7 @@ export default function App() {
     setTimeout(() => {
       logoutUser();
       try {
+        localStorage.removeItem('currentUser');
         localStorage.removeItem('akuz_user');
         localStorage.removeItem('akuz_orders');
       } catch {}
@@ -810,8 +842,19 @@ export default function App() {
       }
     });
 
-    // Open Cart Drawer
-    setIsCartDrawerOpen(true);
+    // Sepete ürün eklenince yandaki panel otomatik açılmaz (kullanıcı isteği)
+    // Bunun yerine sepete eklendiğine dair zarif bir bildirim gösterilir
+    if (cartToastTimerRef.current) {
+      clearTimeout(cartToastTimerRef.current);
+    }
+    setCartToast({
+      productName: product.name,
+      productPrice: calculatedPrice * quantity,
+      quantity,
+    });
+    cartToastTimerRef.current = setTimeout(() => {
+      setCartToast(null);
+    }, 3500);
   };
 
   const handleUpdateCartQty = (index: number, newQty: number) => {
@@ -858,6 +901,24 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
+  const categoryTitles: Record<string, string> = {
+    all: 'TÜM ÜRÜNLER',
+    discount: 'İNDİRİMLİ FIRSATLAR',
+    ataturk: 'ATATÜRK STİCKERLARI',
+    araba: 'ARABA STİCKERLARI',
+    motosiklet: 'MOTOSİKLET STİCKERLARI',
+    custom: 'KİŞİYE ÖZEL STİCKERLAR',
+    offroad: '4x4 OFF-ROAD STİCKERLARI',
+    ayna: 'AYNA STİCKERLARI',
+  };
+
+  // Kullanıcı İsteği: Yuvarlakların hangisine tıklandıysa ayrı bir sayfada sadece onun ürünleri gözüksün (anasayfada altta çıkmasın)
+  const handleSelectCategory = (cat: Product['category'] | 'all') => {
+    setSelectedCategory(cat);
+    navigateTo('/katalog');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+
   // When clicking categories in header or "Tümünü Gör", redirect to /katalog instantly
   const handleSelectCategoryAndNavigate = (cat: Product['category'] | 'all') => {
     setSelectedCategory(cat);
@@ -866,7 +927,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f5f3ec] text-slate-800 font-sans selection:bg-[#ff0055] selection:text-white overflow-x-clip w-full">
+    <div className="min-h-screen flex flex-col bg-[#f5f3ec] text-slate-800 font-sans selection:bg-[#ff6600] selection:text-white overflow-x-clip w-full">
       
       {/* 0. GİRİŞ YÜKLENME ANİMASYONU (Renksizden su dolar gibi renklenen logo animasyonu) */}
       <PageLoader />
@@ -926,7 +987,7 @@ export default function App() {
           products={products}
           recentlyViewedProducts={recentlyViewedProducts}
           onSelectProduct={handleSelectProduct}
-          onSelectCategory={handleSelectCategoryAndNavigate}
+          onSelectCategory={handleSelectCategory}
           siteSettings={siteSettings}
         />
       )}
@@ -944,6 +1005,7 @@ export default function App() {
             orders={orders}
             onUpdateOrders={(updated) => setOrders(updated)}
             users={registeredUsers}
+            onUpdateUsers={(updated) => setRegisteredUsers(updated)}
             onNavigateHome={() => navigateTo('/')}
             onNavigateToCatalog={() => navigateTo('/katalog')}
           />
@@ -1133,6 +1195,7 @@ export default function App() {
             onSelectCategory={(cat) => {
               setSelectedCategory(cat);
             }}
+            categoriesConfig={siteSettings.categories}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             favoriteIds={favoriteIds}
@@ -1162,14 +1225,14 @@ export default function App() {
         </main>
       ) : (
         <main className="flex-1">
-          {/* KATEGORİLER VE KAMPANYALAR ÇUBUĞU */}
+          {/* KATEGORİLER VE KAMPANYALAR ÇUBUĞU (8 Adet Dairesel Kategori - Tıklanınca Ayrı Sayfada Gösterir) */}
           <CategoryBar
             selectedCategory={selectedCategory}
             onSelectCategory={(cat) => handleSelectCategoryAndNavigate(cat)}
             categoriesConfig={siteSettings.categories}
           />
 
-          {/* POPÜLER ÜRÜNLER ALANI - Her zaman Popüler Ürünler Listesi */}
+          {/* POPÜLER ÜRÜNLER ALANI - Ana Sayfa Vitrini */}
           <PopularProducts
             products={popularProducts}
             favoriteIds={favoriteIds}
@@ -1272,6 +1335,58 @@ export default function App() {
             <div className="flex items-center justify-center gap-2 mt-4 text-[11px] font-bold text-slate-400">
               <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" />
               <span>Oturum sonlandırılıyor</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SEPETE EKLENDİ BİLDİRİMİ (Yandaki panel otomatik açılmaz, zarif floating bildirim gösterilir) */}
+      {cartToast && (
+        <div className="fixed bottom-5 right-4 left-4 sm:left-auto sm:right-6 z-[9990] max-w-sm w-full bg-slate-900/95 text-white rounded-2xl shadow-2xl border border-slate-800 p-3.5 backdrop-blur-md animate-slideUp">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/25">
+                <Check size={18} className="stroke-[3]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
+                    Sepete Eklendi
+                  </span>
+                  {cartToast.quantity > 1 && (
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded font-bold">
+                      {cartToast.quantity} Adet
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-bold text-white truncate max-w-[190px] sm:max-w-[210px] mt-0.5">
+                  {cartToast.productName}
+                </p>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  ₺{cartToast.productPrice.toFixed(2).replace('.', ',')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCartToast(null);
+                  setIsCartDrawerOpen(true);
+                }}
+                className="px-3 py-1.5 bg-[#ff6600] hover:bg-[#e65c00] active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+              >
+                <ShoppingBag size={13} />
+                <span>Sepet</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCartToast(null)}
+                className="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={15} />
+              </button>
             </div>
           </div>
         </div>

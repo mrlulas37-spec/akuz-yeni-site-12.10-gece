@@ -116,12 +116,15 @@ export const ContactPage: React.FC<ContactPageProps> = ({
               href={`https://wa.me/${cleanWhatsAppNumber}?text=${encodeURIComponent('Merhaba, AKUZ Stickers ürünleri hakkında bilgi almak istiyorum.')}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="group block bg-slate-50/60 border border-slate-200 rounded-2xl p-6 text-center transition-all hover:border-emerald-400 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer select-none"
+              className="group block bg-slate-50/60 border border-slate-200 rounded-2xl p-6 text-center transition-all hover:border-emerald-400 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer select-none relative overflow-hidden"
               title="WhatsApp ile Hemen Mesaj Gönder"
             >
               <div className="flex flex-col items-center">
-                <div className="relative w-14 h-14 rounded-2xl bg-emerald-100/70 border border-emerald-200 flex items-center justify-center text-[#25D366] mb-3 group-hover:bg-[#25D366] group-hover:text-white transition-all shadow-xs">
-                  <div className="animate-whatsapp-call flex items-center justify-center">
+                <div className="relative w-14 h-14 rounded-2xl bg-emerald-100/70 border border-emerald-200 flex items-center justify-center text-[#25D366] mb-3 group-hover:bg-[#25D366] group-hover:text-white transition-all shadow-xs overflow-hidden">
+                  {/* 2.5 saniyede bir çalan ses dalgası halkaları (Kutudan taşmaz) */}
+                  <span className="absolute inset-0 rounded-2xl border-2 border-[#25D366] pointer-events-none animate-whatsapp-wave-1" />
+                  <span className="absolute inset-0 rounded-2xl border-2 border-[#25D366]/70 pointer-events-none animate-whatsapp-wave-2" />
+                  <div className="animate-whatsapp-ring flex items-center justify-center relative z-10">
                     <WhatsAppOfficialIcon size={28} />
                   </div>
                 </div>

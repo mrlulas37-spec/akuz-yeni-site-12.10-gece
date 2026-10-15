@@ -9,7 +9,7 @@ export interface Product {
   id: string;
   name: string;
   slug: string;
-  category: 'all' | 'discount' | 'ataturk' | 'araba' | 'motosiklet' | 'offroad' | 'custom' | 'akuz';
+  category: 'all' | 'discount' | 'ataturk' | 'araba' | 'motosiklet' | 'offroad' | 'custom' | 'akuz' | 'ayna';
   currentPrice: number;
   oldPrice: number;
   rating: number;
@@ -147,6 +147,8 @@ export interface UserProfile {
   email: string;
   phone: string;
   addresses: Address[];
+  address?: string;
+  full_name?: string;
   cart?: CartItem[];
   favorites?: string[];
   recentlyViewed?: string[];

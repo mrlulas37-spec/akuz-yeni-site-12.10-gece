@@ -25,7 +25,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenLegal, onScrollToTop, onNa
 
         {/* Subtitle in spaced magenta tracking-widest uppercase matching image */}
         <p className="text-xs sm:text-sm font-extrabold uppercase tracking-[0.25em] text-slate-500 mb-10">
-          PREMİUM ARABA & MOTOSİKLET STİCKERLARI
+          PREMİUM STİCKERLAR
         </p>
 
         {/* "YASAL" Title matching Image 6 */}
