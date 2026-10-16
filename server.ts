@@ -152,7 +152,13 @@ async function startServer() {
     }
   });
 
-  app.use(express.static(path.resolve(__dirname, 'public')));
+  // Statik dosyaları sun (ancak /api/ ve .php isteklerini Express API rotalarına devret)
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.endsWith('.php')) {
+      return next();
+    }
+    express.static(path.resolve(__dirname, 'public'))(req, res, next);
+  });
 
   // ==========================================
   // SMTP / E-POSTA GÖNDERİM API
@@ -1235,7 +1241,7 @@ async function startServer() {
   });
 
   // 3. GOOGLE İLE GİRİŞ / OAUTH (Hesap varsa tüm adres ve telefon verilerini korur ve döner)
-  app.post('/api/auth/google', (req, res) => {
+  app.post(['/api/auth/google', '/api/google_auth.php', '/api/google-auth.php', '/google_auth.php'], (req, res) => {
     try {
       const { email, name } = req.body;
       const cleanEmail = (email || '').trim().toLowerCase();
@@ -1249,8 +1255,12 @@ async function startServer() {
       let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
 
       if (!account) {
+        const userId = 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
         account = {
+          id: userId,
+          user_id: userId,
           name: cleanName,
+          full_name: cleanName,
           email: cleanEmail,
           passwordHash: 'google_oauth_verified',
           phone: '',
@@ -1263,7 +1273,10 @@ async function startServer() {
         users.push(account);
         writeJsonFile(USERS_FILE, users);
       } else {
-        // İsim verilmişse güncelle
+        if (!account.id) {
+          account.id = 'usr_' + Date.now();
+          account.user_id = account.id;
+        }
         if (cleanName) {
           account.name = cleanName;
           account.full_name = cleanName;
@@ -1271,8 +1284,13 @@ async function startServer() {
         }
       }
 
+      const userId = account.id || account.user_id || ('usr_' + Date.now());
+
       const userProfile = {
+        id: userId,
+        user_id: userId,
         name: account.name || cleanName,
+        full_name: account.full_name || account.name || cleanName,
         email: account.email,
         phone: account.phone || '',
         addresses: account.addresses || [],
@@ -1283,7 +1301,13 @@ async function startServer() {
         recentlyViewed: account.recentlyViewed || [],
       };
 
-      return res.json({ success: true, user: userProfile });
+      return res.json({
+        success: true,
+        message: 'Google ile giriş başarılı',
+        user_id: userId,
+        id: userId,
+        user: userProfile,
+      });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message || 'Google girişinde hata.' });
     }
@@ -1320,9 +1344,24 @@ async function startServer() {
     }
   });
 
-  // 3c. KULLANICI SEPETİ, FAVORİLERİ VE BAKTIĞI ÜRÜNLERİ SENKRONİZE ETME
-  app.post('/api/user/sync-data', (req, res) => {
+  // 3c. KULLANICI SEPETİ, FAVORİLERİ VE BAKTIĞI ÜRÜNLERİ SENKRONİZE ETME (/api/cart.php)
+  app.all(['/api/cart.php', '/cart.php', '/api/user/sync-data', '/api/cart'], (req, res) => {
     try {
+      if (req.method === 'GET') {
+        const cleanEmail = ((req.query.email as string) || '').trim().toLowerCase();
+        if (!cleanEmail) {
+          return res.status(400).json({ success: false, error: 'E-posta adresi gereklidir.' });
+        }
+        const users: any[] = readJsonFile(USERS_FILE, []);
+        const account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        return res.json({
+          success: true,
+          cart: account?.cart || [],
+          favorites: account?.favorites || [],
+          recentlyViewed: account?.recentlyViewed || [],
+        });
+      }
+
       const { email, cart, favorites, recentlyViewed } = req.body;
       const cleanEmail = (email || '').trim().toLowerCase();
       if (!cleanEmail) {
@@ -1337,7 +1376,12 @@ async function startServer() {
         if (Array.isArray(recentlyViewed)) account.recentlyViewed = recentlyViewed;
         writeJsonFile(USERS_FILE, users);
       }
-      return res.json({ success: true });
+      return res.json({
+        success: true,
+        message: 'Sepet ve kullanıcı verileri senkronize edildi.',
+        cart: account?.cart || cart || [],
+        favorites: account?.favorites || favorites || [],
+      });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }
@@ -1402,28 +1446,57 @@ async function startServer() {
   });
 
   // 5. KULLANICI PROFİL GÜNCELLEME (Adres, Telefon, İsim)
-  app.put('/api/user/profile', (req, res) => {
+  // 5. KULLANICI PROFİL GÜNCELLEME (Adres, Telefon, İsim - MySQL ve Local senkronizasyonu)
+  app.all(['/api/user/profile', '/api/auth.php'], (req, res, next) => {
+    // Eğer auth.php'ye register veya login veya change_password isteği gelmişse sonraki route'a bırak
+    const action = req.body?.action || req.query?.action;
+    if (req.path.includes('auth.php')) {
+      if (action === 'change_password' || action === 'update_password') {
+        return next();
+      }
+      if (action === 'login' || action === 'register') {
+        return next();
+      }
+    }
+
     try {
-      const { email, name, phone, addresses } = req.body;
+      const { email, name, fullname, phone, addresses } = req.body;
       const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanName = (name || fullname || '').trim();
 
-      const users: any[] = readJsonFile(USERS_FILE, []);
-      const index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
-
-      if (index === -1) {
-        return res.status(404).json({ success: false, error: 'Kullanıcı bulunamadı.' });
+      if (!cleanEmail) {
+        return res.status(400).json({ success: false, error: 'E-posta adresi eksik.' });
       }
 
-      users[index].name = name || users[index].name;
-      users[index].phone = phone !== undefined ? phone : users[index].phone;
-      users[index].addresses = addresses || users[index].addresses;
+      const users: any[] = readJsonFile(USERS_FILE, []);
+      let index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (index === -1) {
+        // Kullanıcı henüz yoksa oluştur
+        const newUser = {
+          name: cleanName || cleanEmail.split('@')[0],
+          email: cleanEmail,
+          phone: phone || '',
+          addresses: addresses || [],
+          createdAt: new Date().toISOString(),
+        };
+        users.push(newUser);
+        index = users.length - 1;
+      } else {
+        if (cleanName) users[index].name = cleanName;
+        if (phone !== undefined) users[index].phone = phone;
+        if (addresses !== undefined) users[index].addresses = addresses;
+      }
 
       writeJsonFile(USERS_FILE, users);
 
       return res.json({
         success: true,
+        status: 'success',
+        message: 'Hesap bilgileri başarıyla güncellendi.',
         user: {
           name: users[index].name,
+          fullname: users[index].name,
           email: users[index].email,
           phone: users[index].phone,
           addresses: users[index].addresses,
@@ -1435,7 +1508,7 @@ async function startServer() {
   });
 
   // 5b. KULLANICI ŞİFRE GÜNCELLEME (Hesap Bilgilerinden Şifre Değiştirme)
-  app.put('/api/user/password', (req, res) => {
+  app.all(['/api/user/password'], (req, res) => {
     try {
       const { email, currentPassword, newPassword } = req.body;
       const cleanEmail = (email || '').trim().toLowerCase();
@@ -1484,6 +1557,7 @@ async function startServer() {
       console.log(`[PASSWORD CHANGED ON HOST] ${cleanEmail}`);
       return res.json({
         success: true,
+        status: 'success',
         message: 'Şifreniz başarıyla güncellendi.',
       });
     } catch (err: any) {
@@ -1677,6 +1751,28 @@ async function startServer() {
     }
   });
 
+  // Ürün Silme API (DELETE /api/products/:id, DELETE /api/products?id=... veya POST /api/products/delete)
+  const deleteProductHandler = (req: express.Request, res: express.Response) => {
+    try {
+      const id = req.params.id || (req.query.id as string) || req.body?.id;
+      if (!id) {
+        return res.status(400).json({ success: false, error: 'Ürün ID belirtilmedi.' });
+      }
+      let products: any[] = readJsonFile(PRODUCTS_FILE, []);
+      const beforeCount = products.length;
+      products = products.filter((p) => p.id !== id && p.slug !== id);
+      writeJsonFile(PRODUCTS_FILE, products);
+      console.log(`[PRODUCT DELETED ON HOST] ID: ${id}. Kalan ürün: ${products.length} (Önceki: ${beforeCount})`);
+      return res.json({ success: true, count: products.length, deletedId: id });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  };
+
+  app.delete('/api/products/:id', deleteProductHandler);
+  app.delete('/api/products', deleteProductHandler);
+  app.post('/api/products/delete', deleteProductHandler);
+
   // 8. MERKEZİ AYARLAR (SMTP, Kargonomi, İletişim, Folyo vb.)
   app.get('/api/settings', (_req, res) => {
     try {
@@ -1804,6 +1900,7 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: false,
+        allowedHosts: true,
       },
       appType: 'spa',
     });

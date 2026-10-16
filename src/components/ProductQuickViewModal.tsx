@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Heart, ShoppingBag, MessageCircle, Check, Star, Shield, Droplets, SunMedium, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Heart, ShoppingBag, MessageCircle, Check, Star, Shield, Droplets, SunMedium, ChevronLeft, ChevronRight, Truck, Zap } from 'lucide-react';
 import { Product } from '../types';
 import { StickerGraphic } from './StickerGraphic';
 import { ImageIndicatorPill } from './ImageIndicatorPill';
@@ -194,7 +194,7 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
             </h2>
 
             {/* Price Box */}
-            <div className="flex items-baseline gap-2.5 mt-2 mb-4">
+            <div className="flex flex-wrap items-center gap-2.5 mt-2 mb-4">
               <span className="text-2xl font-black text-[#ff0055] font-mono">
                 ₺{product.currentPrice.toFixed(2).replace('.', ',')}
               </span>
@@ -204,6 +204,19 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
               <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                 %50 İNDİRİM
               </span>
+
+              {/* Stoktaki ürünler için 'Aynı Gün Kargo' veya 'Hızlı Teslimat' rozeti */}
+              {(product.inStock !== false && (!product.colors || product.colors.some(c => c.inStock !== false))) && (
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-black bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs">
+                  <Truck size={12} className="shrink-0 text-white stroke-[2.5]" />
+                  <span>Aynı Gün Kargo</span>
+                  <span className="text-white/60 font-normal">|</span>
+                  <span className="flex items-center gap-0.5 text-amber-300">
+                    <Zap size={10} className="fill-amber-300 shrink-0" />
+                    Hızlı Teslimat
+                  </span>
+                </div>
+              )}
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed mb-5">

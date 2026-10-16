@@ -17,6 +17,7 @@ export interface Product {
   isPopular?: boolean;
   isDiscounted?: boolean;
   isCustomText?: boolean;
+  inStock?: boolean;
   freeLetterCount?: number; // Ücretsiz harf/karakter sayısı (örn: 10 harf bedava)
   extraLetterPrice?: number; // Ücretsiz harften sonra harf/karakter başı ek ücret (örn: 5 TL)
   dimensionPrices?: Record<string, number>; // Her boyut için özel fiyat (örn: {'15x10 cm': 49, '20x13 cm': 79})
@@ -36,6 +37,8 @@ export interface CategoryCircleItem {
   titleLine2: string;
   bgGradient: string;
   imageUrl?: string;
+  cardImageUrl?: string; // Katalog sayfasındaki dikdörtgen kategori vitrin kartı görseli
+  subtitle?: string; // Kategori alt başlığı/açıklaması
 }
 
 export interface WhyAkuzCardItem {

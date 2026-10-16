@@ -15,6 +15,7 @@ const USERS_FILE = path.join(DATA_DIR, "users.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const GOOGLE_CREDENTIALS_FILE = path.join(DATA_DIR, "google_credentials.json");
 function readJsonFile(filePath, fallback) {
   try {
     if (!fs.existsSync(filePath)) return fallback;
@@ -36,29 +37,7 @@ function hashPassword(password) {
   return crypto.createHash("sha256").update(password + "_akuz_salt_secret").digest("hex");
 }
 if (!fs.existsSync(USERS_FILE)) {
-  const initialUsers = [
-    {
-      name: "Murat Ulusoy",
-      email: "mrlulas37@gmail.com",
-      passwordHash: hashPassword("123456"),
-      plainPassword: "123456",
-      phone: "+90 546 875 86 71",
-      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-      addresses: [
-        {
-          id: "addr-1",
-          title: "Ev Adresim",
-          recipientName: "Murat Ulusoy",
-          phone: "+90 546 875 86 71",
-          city: "Bursa",
-          district: "Nil\xFCfer",
-          fullAddress: "\xDC\xE7evler Mah. 10. Sokak No:17/A",
-          isDefault: true
-        }
-      ]
-    }
-  ];
-  writeJsonFile(USERS_FILE, initialUsers);
+  writeJsonFile(USERS_FILE, []);
 }
 async function startServer() {
   const app = express();
@@ -144,7 +123,12 @@ async function startServer() {
       res.status(500).json({ success: false, error: err.message });
     }
   });
-  app.use(express.static(path.resolve(__dirname, "public")));
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.endsWith(".php")) {
+      return next();
+    }
+    express.static(path.resolve(__dirname, "public"))(req, res, next);
+  });
   app.post("/api/send-email", async (req, res) => {
     let currentHost = "";
     let currentPort = 465;
@@ -698,6 +682,14 @@ async function startServer() {
         const users = readJsonFile(USERS_FILE, []);
         const account = users.find((u) => u.email.toLowerCase() === cleanEmail);
         if (!account) return res.status(404).json({ success: false, error: "Bu e-posta adresine ait hesap bulunamad\u0131." });
+        const isGoogleAccount = account.passwordHash === "google_oauth_verified" || account.auth_provider === "google";
+        if (isGoogleAccount) {
+          return res.status(400).json({
+            success: false,
+            isGoogleAccount: true,
+            error: 'Bu hesap Google ile olu\u015Fturulmu\u015Ftur. L\xFCtfen "Google ile Giri\u015F Yap" butonunu kullanarak oturum a\xE7\u0131n\u0131z.'
+          });
+        }
         const inputHash = hashPassword(password);
         const isMatch = account.passwordHash === inputHash || account.passwordHash === password || account.plainPassword === password;
         if (!isMatch) return res.status(401).json({ success: false, error: "Hatal\u0131 \u015Fifre girdiniz. L\xFCtfen tekrar deneyin." });
@@ -707,6 +699,40 @@ async function startServer() {
           user: {
             full_name: account.full_name || account.name,
             name: account.name || account.full_name,
+            email: account.email,
+            phone: account.phone || "",
+            address: account.address || (account.addresses?.[0]?.fullAddress || ""),
+            addresses: account.addresses || []
+          }
+        });
+      }
+      if (action === "google") {
+        const cleanName = (full_name || name || "").trim() || cleanEmail.split("@")[0];
+        if (!cleanEmail) return res.status(400).json({ success: false, error: "E-posta gereklidir." });
+        const users = readJsonFile(USERS_FILE, []);
+        let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (!account) {
+          account = {
+            name: cleanName,
+            full_name: cleanName,
+            email: cleanEmail,
+            phone: phone || "",
+            address: address || "",
+            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+            addresses: []
+          };
+          users.push(account);
+        } else {
+          account.name = cleanName;
+          account.full_name = cleanName;
+        }
+        writeJsonFile(USERS_FILE, users);
+        return res.json({
+          success: true,
+          message: "Google ile giri\u015F ba\u015Far\u0131l\u0131",
+          user: {
+            full_name: cleanName,
+            name: cleanName,
             email: account.email,
             phone: account.phone || "",
             address: account.address || (account.addresses?.[0]?.fullAddress || ""),
@@ -945,6 +971,14 @@ async function startServer() {
       if (!account) {
         return res.status(404).json({ success: false, error: "Bu e-posta adresine ait hesap bulunamad\u0131." });
       }
+      const isGoogleAccount = account.passwordHash === "google_oauth_verified" || account.auth_provider === "google";
+      if (isGoogleAccount) {
+        return res.status(400).json({
+          success: false,
+          isGoogleAccount: true,
+          error: 'Bu hesap Google ile olu\u015Fturulmu\u015Ftur. L\xFCtfen "Google ile Giri\u015F Yap" butonunu kullanarak oturum a\xE7\u0131n\u0131z.'
+        });
+      }
       const inputHash = hashPassword(password);
       const isMatch = account.passwordHash === inputHash || account.passwordHash === password;
       if (!isMatch) {
@@ -976,7 +1010,7 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message || "Giri\u015F s\u0131ras\u0131nda sunucu hatas\u0131." });
     }
   });
-  app.post("/api/auth/google", (req, res) => {
+  app.post(["/api/auth/google", "/api/google_auth.php", "/api/google-auth.php", "/google_auth.php"], (req, res) => {
     try {
       const { email, name } = req.body;
       const cleanEmail = (email || "").trim().toLowerCase();
@@ -987,8 +1021,12 @@ async function startServer() {
       const users = readJsonFile(USERS_FILE, []);
       let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
       if (!account) {
+        const userId2 = "usr_" + Date.now() + "_" + Math.floor(Math.random() * 1e3);
         account = {
+          id: userId2,
+          user_id: userId2,
           name: cleanName,
+          full_name: cleanName,
           email: cleanEmail,
           passwordHash: "google_oauth_verified",
           phone: "",
@@ -1001,13 +1039,22 @@ async function startServer() {
         users.push(account);
         writeJsonFile(USERS_FILE, users);
       } else {
-        if (!account.name && cleanName) {
+        if (!account.id) {
+          account.id = "usr_" + Date.now();
+          account.user_id = account.id;
+        }
+        if (cleanName) {
           account.name = cleanName;
+          account.full_name = cleanName;
           writeJsonFile(USERS_FILE, users);
         }
       }
+      const userId = account.id || account.user_id || "usr_" + Date.now();
       const userProfile = {
+        id: userId,
+        user_id: userId,
         name: account.name || cleanName,
+        full_name: account.full_name || account.name || cleanName,
         email: account.email,
         phone: account.phone || "",
         addresses: account.addresses || [],
@@ -1017,7 +1064,13 @@ async function startServer() {
         favorites: account.favorites || [],
         recentlyViewed: account.recentlyViewed || []
       };
-      return res.json({ success: true, user: userProfile });
+      return res.json({
+        success: true,
+        message: "Google ile giri\u015F ba\u015Far\u0131l\u0131",
+        user_id: userId,
+        id: userId,
+        user: userProfile
+      });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message || "Google giri\u015Finde hata." });
     }
@@ -1051,8 +1104,22 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
-  app.post("/api/user/sync-data", (req, res) => {
+  app.all(["/api/cart.php", "/cart.php", "/api/user/sync-data", "/api/cart"], (req, res) => {
     try {
+      if (req.method === "GET") {
+        const cleanEmail2 = (req.query.email || "").trim().toLowerCase();
+        if (!cleanEmail2) {
+          return res.status(400).json({ success: false, error: "E-posta adresi gereklidir." });
+        }
+        const users2 = readJsonFile(USERS_FILE, []);
+        const account2 = users2.find((u) => u.email.toLowerCase() === cleanEmail2);
+        return res.json({
+          success: true,
+          cart: account2?.cart || [],
+          favorites: account2?.favorites || [],
+          recentlyViewed: account2?.recentlyViewed || []
+        });
+      }
       const { email, cart, favorites, recentlyViewed } = req.body;
       const cleanEmail = (email || "").trim().toLowerCase();
       if (!cleanEmail) {
@@ -1066,7 +1133,12 @@ async function startServer() {
         if (Array.isArray(recentlyViewed)) account.recentlyViewed = recentlyViewed;
         writeJsonFile(USERS_FILE, users);
       }
-      return res.json({ success: true });
+      return res.json({
+        success: true,
+        message: "Sepet ve kullan\u0131c\u0131 verileri senkronize edildi.",
+        cart: account?.cart || cart || [],
+        favorites: account?.favorites || favorites || []
+      });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
     }
@@ -1090,23 +1162,79 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
-  app.put("/api/user/profile", (req, res) => {
+  app.post("/api/users/purge-all", (req, res) => {
     try {
-      const { email, name, phone, addresses } = req.body;
-      const cleanEmail = (email || "").trim().toLowerCase();
-      const users = readJsonFile(USERS_FILE, []);
-      const index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
-      if (index === -1) {
-        return res.status(404).json({ success: false, error: "Kullan\u0131c\u0131 bulunamad\u0131." });
+      const adminToken = req.headers["x-admin-token"] || req.body?.adminToken;
+      if (adminToken !== "akuz_admin_2026") {
+        return res.status(403).json({ success: false, error: "Yetkisiz eri\u015Fim." });
       }
-      users[index].name = name || users[index].name;
-      users[index].phone = phone !== void 0 ? phone : users[index].phone;
-      users[index].addresses = addresses || users[index].addresses;
+      writeJsonFile(USERS_FILE, []);
+      return res.json({ success: true, message: "T\xFCm kullan\u0131c\u0131 kay\u0131tlar\u0131 silindi." });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  app.delete("/api/users", (req, res) => {
+    try {
+      const adminToken = req.headers["x-admin-token"] || req.query.adminToken;
+      if (adminToken !== "akuz_admin_2026") {
+        return res.status(403).json({ success: false, error: "Yetkisiz eri\u015Fim." });
+      }
+      const email = (req.query.email || "").trim().toLowerCase();
+      let users = readJsonFile(USERS_FILE, []);
+      if (email) {
+        users = users.filter((u) => (u.email || "").toLowerCase() !== email);
+      } else {
+        users = [];
+      }
+      writeJsonFile(USERS_FILE, users);
+      return res.json({ success: true, count: users.length });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  app.all(["/api/user/profile", "/api/auth.php"], (req, res, next) => {
+    const action = req.body?.action || req.query?.action;
+    if (req.path.includes("auth.php")) {
+      if (action === "change_password" || action === "update_password") {
+        return next();
+      }
+      if (action === "login" || action === "register") {
+        return next();
+      }
+    }
+    try {
+      const { email, name, fullname, phone, addresses } = req.body;
+      const cleanEmail = (email || "").trim().toLowerCase();
+      const cleanName = (name || fullname || "").trim();
+      if (!cleanEmail) {
+        return res.status(400).json({ success: false, error: "E-posta adresi eksik." });
+      }
+      const users = readJsonFile(USERS_FILE, []);
+      let index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+      if (index === -1) {
+        const newUser = {
+          name: cleanName || cleanEmail.split("@")[0],
+          email: cleanEmail,
+          phone: phone || "",
+          addresses: addresses || [],
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        users.push(newUser);
+        index = users.length - 1;
+      } else {
+        if (cleanName) users[index].name = cleanName;
+        if (phone !== void 0) users[index].phone = phone;
+        if (addresses !== void 0) users[index].addresses = addresses;
+      }
       writeJsonFile(USERS_FILE, users);
       return res.json({
         success: true,
+        status: "success",
+        message: "Hesap bilgileri ba\u015Far\u0131yla g\xFCncellendi.",
         user: {
           name: users[index].name,
+          fullname: users[index].name,
           email: users[index].email,
           phone: users[index].phone,
           addresses: users[index].addresses
@@ -1116,7 +1244,7 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
-  app.put("/api/user/password", (req, res) => {
+  app.all(["/api/user/password"], (req, res) => {
     try {
       const { email, currentPassword, newPassword } = req.body;
       const cleanEmail = (email || "").trim().toLowerCase();
@@ -1151,6 +1279,7 @@ async function startServer() {
       console.log(`[PASSWORD CHANGED ON HOST] ${cleanEmail}`);
       return res.json({
         success: true,
+        status: "success",
         message: "\u015Eifreniz ba\u015Far\u0131yla g\xFCncellendi."
       });
     } catch (err) {
@@ -1315,6 +1444,25 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
+  const deleteProductHandler = (req, res) => {
+    try {
+      const id = req.params.id || req.query.id || req.body?.id;
+      if (!id) {
+        return res.status(400).json({ success: false, error: "\xDCr\xFCn ID belirtilmedi." });
+      }
+      let products = readJsonFile(PRODUCTS_FILE, []);
+      const beforeCount = products.length;
+      products = products.filter((p) => p.id !== id && p.slug !== id);
+      writeJsonFile(PRODUCTS_FILE, products);
+      console.log(`[PRODUCT DELETED ON HOST] ID: ${id}. Kalan \xFCr\xFCn: ${products.length} (\xD6nceki: ${beforeCount})`);
+      return res.json({ success: true, count: products.length, deletedId: id });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  };
+  app.delete("/api/products/:id", deleteProductHandler);
+  app.delete("/api/products", deleteProductHandler);
+  app.post("/api/products/delete", deleteProductHandler);
   app.get("/api/settings", (_req, res) => {
     try {
       const settings = readJsonFile(SETTINGS_FILE, null);
@@ -1336,13 +1484,93 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
+  app.post("/api/admin/google-oauth-json", (req, res) => {
+    try {
+      const { jsonContent } = req.body;
+      let parsed;
+      if (typeof jsonContent === "string") {
+        parsed = JSON.parse(jsonContent);
+      } else {
+        parsed = jsonContent;
+      }
+      if (!parsed) {
+        return res.status(400).json({ success: false, error: "Ge\xE7ersiz veya bo\u015F JSON i\xE7eri\u011Fi." });
+      }
+      const web = parsed.web || parsed.installed || parsed;
+      const clientId = (web.client_id || parsed.client_id || "").trim();
+      const projectId = (web.project_id || parsed.project_id || "").trim();
+      const authUri = (web.auth_uri || parsed.auth_uri || "").trim();
+      const tokenUri = (web.token_uri || parsed.token_uri || "").trim();
+      const clientSecret = (web.client_secret || parsed.client_secret || "").trim();
+      const redirectUris = web.redirect_uris || parsed.redirect_uris || [];
+      const javascriptOrigins = web.javascript_origins || parsed.javascript_origins || [];
+      if (!clientId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Y\xFCklenen JSON dosyas\u0131nda "client_id" (\u0130stemci Kimli\u011Fi) bulunamad\u0131. L\xFCtfen Google Cloud Console > APIs & Services > Credentials \xFCzerinden indirilen OAuth 2.0 \u0130stemci JSON dosyas\u0131n\u0131 se\xE7in.'
+        });
+      }
+      writeJsonFile(GOOGLE_CREDENTIALS_FILE, {
+        ...parsed,
+        savedAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      const currentSettings = readJsonFile(SETTINGS_FILE, {});
+      currentSettings.googleClientId = clientId;
+      writeJsonFile(SETTINGS_FILE, currentSettings);
+      console.log(`[GOOGLE OAUTH JSON INTEGRATED] Client ID: ${clientId}, Project: ${projectId}`);
+      return res.json({
+        success: true,
+        message: "Google Cloud Console OAuth JSON dosyas\u0131 ba\u015Far\u0131yla entegre edildi ve kaydedildi!",
+        config: {
+          clientId,
+          projectId,
+          authUri,
+          tokenUri,
+          clientSecret: clientSecret ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" + clientSecret.slice(-4) : "",
+          redirectUris,
+          javascriptOrigins
+        }
+      });
+    } catch (err) {
+      console.error("[GOOGLE JSON PARSE ERROR]", err);
+      return res.status(400).json({
+        success: false,
+        error: "JSON dosyas\u0131 \xE7\xF6z\xFCmlenemedi: " + (err?.message || "Ge\xE7ersiz JSON format\u0131.")
+      });
+    }
+  });
+  app.get("/api/admin/google-oauth-json", (req, res) => {
+    try {
+      const creds = readJsonFile(GOOGLE_CREDENTIALS_FILE, null);
+      if (!creds) {
+        return res.json({ success: true, hasConfig: false, config: null });
+      }
+      const web = creds.web || creds.installed || creds;
+      return res.json({
+        success: true,
+        hasConfig: true,
+        config: {
+          clientId: web.client_id || "",
+          projectId: web.project_id || "",
+          authUri: web.auth_uri || "",
+          tokenUri: web.token_uri || "",
+          redirectUris: web.redirect_uris || [],
+          javascriptOrigins: web.javascript_origins || [],
+          savedAt: creds.savedAt || ""
+        }
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
   const isProd = process.env.NODE_ENV === "production" || !fs.existsSync(path.resolve(__dirname, "src"));
   if (!isProd) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: false
+        hmr: false,
+        allowedHosts: true
       },
       appType: "spa"
     });

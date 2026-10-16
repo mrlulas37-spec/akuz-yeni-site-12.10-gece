@@ -18,7 +18,9 @@ export interface RegisteredAccount {
 const STORAGE_KEY = 'akuz_registered_users';
 const CURRENT_USER_KEY = 'currentUser';
 const LEGACY_USER_KEY = 'akuz_user';
-export const API_AUTH_URL = 'https://akuzstickers.com/api/auth.php';
+export const API_AUTH_URL = '/api/auth.php';
+export const API_GOOGLE_AUTH_URL = '/api/google_auth.php';
+export const API_CART_URL = '/api/cart.php';
 
 // Kullanıcı profil verisini frontend ile %100 uyumlu normalize eder
 export const normalizeUserProfile = (raw: any): UserProfile => {
@@ -174,9 +176,9 @@ export const saveUserSavedState = (
     saveRegisteredUsers(users);
   }
 
-  // Sunucuya da arka planda gönder
+  // Sunucuya da arka planda gönder (/api/cart.php)
   try {
-    fetch('/api/user/sync-data', {
+    fetch(API_CART_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cleanEmail, cart, favorites, recentlyViewed }),
@@ -589,6 +591,54 @@ export const loginUser = async (
 
 export const DEFAULT_GOOGLE_CLIENT_ID = '947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com';
 
+/**
+ * Google login başarılı olduğunda (onSuccess veya callback fonksiyonu içinde),
+ * gelen kullanıcı adı ve e-postasını fetch ile cPanel'deki /api/google_auth.php adresine POST atan
+ * ve dönen kullanıcı ID'sini (user_id) tarayıcıda localStorage'a kaydeden fonksiyon.
+ */
+export const saveGoogleUserToCpanel = async (
+  name: string,
+  email: string
+): Promise<{ user_id: string | null; data?: any }> => {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanName = (name || '').trim() || cleanEmail.split('@')[0];
+
+  if (!cleanEmail) {
+    return { user_id: null };
+  }
+
+  try {
+    const res = await fetch(API_GOOGLE_AUTH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: cleanName,
+        email: cleanEmail,
+        full_name: cleanName,
+      }),
+    });
+
+    const data = await res.json();
+    const userId = data?.user_id || data?.id || data?.user?.id || data?.user?.user_id;
+    if (userId) {
+      const idStr = String(userId);
+      localStorage.setItem('user_id', idStr);
+      console.log('[Google Auth] cPanel veritabanına kaydedildi, user_id:', idStr);
+      return { user_id: idStr, data };
+    }
+    return { user_id: null, data };
+  } catch (err) {
+    console.warn('[Google Auth] cPanel POST hatası:', err);
+    return { user_id: null };
+  }
+};
+
+// Global erişim için window nesnesine de bağla
+if (typeof window !== 'undefined') {
+  (window as any).saveGoogleUserToCpanel = saveGoogleUserToCpanel;
+  (window as any).onGoogleLoginSuccess = saveGoogleUserToCpanel;
+}
+
 export const loginWithGoogleAccount = async (
   googleEmail: string,
   googleName: string
@@ -598,7 +648,10 @@ export const loginWithGoogleAccount = async (
 
   let profile: UserProfile;
 
-  // 1. Unified MySQL API'ye (akuzstickers.com/api/auth.php) de Google oturumunu bildir
+  // 1. Google login başarılı olduğunda cPanel'deki google_auth.php adresine POST at ve user_id'yi localStorage'a kaydet
+  const { user_id: receivedUserId, data } = await saveGoogleUserToCpanel(cleanName, cleanEmail);
+
+  // 2. Unified auth.php API'ye de bildirim gönder
   try {
     fetch(API_AUTH_URL, {
       method: 'POST',
@@ -613,15 +666,11 @@ export const loginWithGoogleAccount = async (
   } catch {}
 
   try {
-    const res = await fetch('/api/auth/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, name: cleanName }),
-    });
-    const data = await res.json();
-    if (data.success && data.user) {
+    if (data?.success && data?.user) {
       profile = normalizeUserProfile({
         ...data.user,
+        id: receivedUserId || data.user.id,
+        user_id: receivedUserId || data.user.user_id,
         name: cleanName || data.user.name,
         full_name: cleanName || data.user.full_name,
       });
@@ -766,6 +815,10 @@ export const triggerGoogleAccountPicker = async (
       if (data && data.email) {
         const email = data.email;
         const suggestedName = data.name || data.given_name || email.split('@')[0];
+
+        // Google login başarılı olduğunda cPanel'deki google_auth.php adresine POST atıp user_id'yi kaydet
+        await saveGoogleUserToCpanel(suggestedName, email);
+
         if (onAccountSelect) {
           onAccountSelect({ email, name: suggestedName });
         } else {
@@ -814,6 +867,10 @@ export const triggerGoogleAccountPicker = async (
               if (payload && payload.email) {
                 const email = payload.email;
                 const suggestedName = payload.name || payload.given_name || email.split('@')[0];
+
+                // Google login başarılı olduğunda cPanel'deki google_auth.php adresine POST atıp user_id'yi kaydet
+                await saveGoogleUserToCpanel(suggestedName, email);
+
                 if (onAccountSelect) {
                   onAccountSelect({ email, name: suggestedName });
                 } else {
@@ -896,14 +953,30 @@ export const getCurrentUser = (): UserProfile | null => {
 };
 
 export const updateUserProfileData = (updated: UserProfile): void => {
-  // Host API'ye kaydet
+  const payload = {
+    ...updated,
+    action: 'update_profile',
+    fullname: updated.name,
+    name: updated.name,
+    phone: updated.phone,
+    addresses: updated.addresses,
+  };
+
+  // 1. Host API ve cPanel endpoint'ine güncelleme isteği gönder
   fetch('/api/user/profile', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updated),
-  }).catch((e) => console.warn('[AUTH] Profile sync error:', e));
+    body: JSON.stringify(payload),
+  }).catch((e) => console.warn('[AUTH] Profile sync error (/api/user/profile):', e));
 
-  // Local storage'a da yaz
+  // 2. cPanel PHP auth.php endpoint'ine de gönder (MySQL veritabanında fullname, phone, addresses güncellensin)
+  fetch('/api/auth.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch((e) => console.warn('[AUTH] Profile sync error (/api/auth.php):', e));
+
+  // 3. Local storage'a da yaz
   const users = getRegisteredUsers();
   const index = users.findIndex((u) => u.email.toLowerCase() === updated.email.toLowerCase());
   if (index !== -1) {
@@ -961,7 +1034,7 @@ export const requestPasswordRecovery = async (
   }
 };
 
-// Şifre Değiştirme (Hesap Bilgileri panelinden)
+// Şifre Değiştirme (Hesap Bilgileri panelinden - MySQL veritabanında da güncellenir)
 export const changeUserPassword = async (
   email: string,
   currentPassword: string,
@@ -970,15 +1043,36 @@ export const changeUserPassword = async (
   const cleanEmail = email.trim().toLowerCase();
 
   try {
-    const res = await fetch('/api/user/password', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, currentPassword, newPassword }),
-    });
+    const payload = {
+      action: 'change_password',
+      email: cleanEmail,
+      currentPassword,
+      newPassword,
+    };
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      return { success: false, error: data.error || 'Şifre güncellenemedi.' };
+    // cPanel MySQL ve API endpoint'lerine paralel istek at
+    const [res1, res2] = await Promise.allSettled([
+      fetch('/api/user/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+      fetch('/api/auth.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    ]);
+
+    let data: any = null;
+    if (res1.status === 'fulfilled' && res1.value.ok) {
+      data = await res1.value.json();
+    } else if (res2.status === 'fulfilled' && res2.value.ok) {
+      data = await res2.value.json();
+    }
+
+    if (!data || (!data.success && data.status !== 'success')) {
+      return { success: false, error: data?.error || data?.message || 'Şifre güncellenemedi.' };
     }
 
     return { success: true, message: data.message || 'Şifreniz başarıyla değiştirildi.' };

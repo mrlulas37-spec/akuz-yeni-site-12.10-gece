@@ -1,5 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, SlidersHorizontal, ArrowUpDown, Filter, Eye, Heart, ShoppingBag, X } from 'lucide-react';
+import {
+  ChevronDown,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Filter,
+  Eye,
+  Heart,
+  ShoppingBag,
+  X,
+  ArrowLeft,
+  Layers,
+  Sparkles,
+} from 'lucide-react';
 import { Product, CategoryCircleItem } from '../types';
 import { ProductCard } from './ProductCard';
 import { CategoryBar } from './CategoryBar';
@@ -106,6 +118,89 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
     return result;
   }, [products, selectedCategory, searchQuery, currentSort]);
 
+  // Trendyol Tarzı Kategori Vitrini (Katalog tıklandığında gösterilecek ürün boyutunda dikdörtgen kategori bölmeleri)
+  const showcaseCategories = useMemo(() => {
+    const defaultList: CategoryCircleItem[] = [
+      {
+        id: 'ataturk',
+        titleLine1: 'Atatürk',
+        titleLine2: 'Stickerları',
+        bgGradient: 'bg-slate-900',
+        imageUrl: '/products/IMG_1278.jpeg',
+        cardImageUrl: '/products/IMG_1278.jpeg',
+        subtitle: 'İmza, Portre & Özel Tasarımlar',
+      },
+      {
+        id: 'araba',
+        titleLine1: 'Araba',
+        titleLine2: 'Stickerları',
+        bgGradient: 'bg-slate-900',
+        cardImageUrl: '/products/AkuzStickers_LaFamilia.jpg',
+        subtitle: 'Cam, Kaporta & Tampon Vinilleri',
+      },
+      {
+        id: 'motosiklet',
+        titleLine1: 'Motosiklet',
+        titleLine2: 'Stickerları',
+        bgGradient: 'bg-slate-800',
+        cardImageUrl: '/products/IMG_1143.webp',
+        subtitle: 'Kask, Depo, Maşa & Jant Çıkartmaları',
+      },
+      {
+        id: 'offroad',
+        titleLine1: 'Off-Road',
+        titleLine2: 'Stickerları',
+        bgGradient: 'bg-slate-900',
+        cardImageUrl: '/products/IMG_1140.jpeg',
+        subtitle: '4x4 Arazi, Dağ & Macera Çıkartmaları',
+      },
+      {
+        id: 'custom',
+        titleLine1: 'Kişiye Özel',
+        titleLine2: 'Stickerlar',
+        bgGradient: 'bg-slate-900',
+        cardImageUrl: '/products/phonto.jpeg',
+        subtitle: 'Kendi Yazını & Fontunu Tasarla',
+      },
+      {
+        id: 'ayna',
+        titleLine1: 'Ayna',
+        titleLine2: 'Stickerları',
+        bgGradient: 'bg-slate-900',
+        cardImageUrl: '/products/IMG_1142.jpeg',
+        subtitle: 'Yan Ayna & Dikiz Çıkartmaları',
+      },
+      {
+        id: 'discount',
+        titleLine1: 'İndirimli',
+        titleLine2: 'Fırsatlar',
+        bgGradient: 'bg-slate-900',
+        cardImageUrl: '/products/IMG_1147.webp',
+        subtitle: 'Avantajlı Paketler & İndirimler',
+      },
+    ];
+
+    const source: CategoryCircleItem[] =
+      categoriesConfig && categoriesConfig.length > 0
+        ? categoriesConfig.filter((c) => c.id !== 'all')
+        : defaultList;
+
+    return source.map((c) => {
+      const def = defaultList.find((d) => d.id === c.id);
+      let img = c.cardImageUrl || c.imageUrl || def?.cardImageUrl;
+      if (!img) {
+        const prod = products.find((p) => (c.id === 'discount' ? p.isDiscounted : p.category === c.id));
+        if (prod?.imageUrl) img = prod.imageUrl;
+      }
+      return {
+        ...c,
+        cardImageUrl: img || '/products/IMG_1141.jpeg',
+        subtitle: c.subtitle || def?.subtitle || 'Özel Tasarım Döküm Vinil',
+        fullTitle: `${c.titleLine1} ${c.titleLine2}`.trim(),
+      };
+    });
+  }, [categoriesConfig, products]);
+
   const activeCategoryLabel =
     CATEGORY_LIST.find((c) => c.id === selectedCategory)?.label || 'Tüm Kategoriler';
   const activeSortLabel =
@@ -161,17 +256,25 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
-                {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG'}
+                {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG & KATEGORİLER'}
               </h1>
-              {selectedCategory !== 'all' && (
+              {selectedCategory !== 'all' ? (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#ff6600] text-white shadow-2xs">
                   {displayedProducts.length} Ürün
                 </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-900 text-white shadow-2xs">
+                  {showcaseCategories.length} Kategori
+                </span>
               )}
             </div>
-            {selectedCategory !== 'all' && (
+            {selectedCategory !== 'all' ? (
               <p className="text-xs text-slate-500 font-medium mt-1">
                 Sadece seçilen kategorinin ürünleri gösteriliyor
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                İncelemek istediğiniz kategoriyi seçebilir veya tüm ürünleri listeleyebilirsiniz
               </p>
             )}
           </div>
@@ -182,10 +285,11 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectCategory('all')}
-                className="px-3 py-2 rounded-lg bg-orange-50 border border-orange-200 text-[#ff6600] hover:bg-orange-100 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shrink-0"
-                title="Tüm Ürünleri Göster"
+                className="px-3 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+                title="Tüm Kategorilere Dön"
               >
-                <span>✕ Tüm Ürünler</span>
+                <ArrowLeft size={14} />
+                <span>Kategorilere Dön</span>
               </button>
             )}
             {/* 1. KATEGORİ KUTUSU (Dropdown) */}
@@ -196,7 +300,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                   setIsCategoryOpen(!isCategoryOpen);
                   setIsSortOpen(false);
                 }}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
                   isCategoryOpen || selectedCategory !== 'all'
                     ? 'border-[#ff6600] bg-orange-50/60 text-[#ff6600]'
                     : 'border-slate-300 bg-white hover:border-slate-400 text-slate-800'
@@ -212,7 +316,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
 
               {/* Kategori Açılır Menü */}
               {isCategoryOpen && (
-                <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-64 bg-white rounded-lg border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-3 py-1.5 text-[11px] font-black uppercase text-slate-400 tracking-wider">
                     Kategori Seçin
                   </div>
@@ -246,7 +350,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                   setIsSortOpen(!isSortOpen);
                   setIsCategoryOpen(false);
                 }}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
                   isSortOpen || currentSort !== 'default'
                     ? 'border-[#ff6600] bg-orange-50/60 text-[#ff6600]'
                     : 'border-slate-300 bg-white hover:border-slate-400 text-slate-800'
@@ -262,7 +366,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
 
               {/* Sıralama Açılır Menü */}
               {isSortOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-3 py-1.5 text-[11px] font-black uppercase text-slate-400 tracking-wider">
                     Sıralama Ölçütü
                   </div>
@@ -297,7 +401,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                   setCurrentSort('default');
                   onSearchChange('');
                 }}
-                className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-[#ff6600] bg-slate-200/60 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-[#ff6600] bg-slate-200/60 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
                 title="Filtreleri Sıfırla"
               >
                 <X size={14} />
@@ -307,81 +411,101 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
           </div>
         </div>
 
-        {/* KATEGORİ DİKDÖRTGENLERİ - Sadece Tüm Ürünler görüntülendiğinde gösterilir */}
+        {/* KULLANICI İSTEĞİ: KATALOG BUTONUNA TIKLANDIĞINDA KATEGORİ SEÇME ALANI (TRENDYOL VİTRİNİ) */}
         {selectedCategory === 'all' && (
-          <div className="mt-6 mb-8">
-            <div className="flex items-center justify-between mb-3 px-1">
+          <div className="mt-6 mb-12">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 px-1">
               <div>
-                <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 font-display">
-                  ÖNE ÇIKAN KATEGORİLER
+                <span className="text-[11px] font-black tracking-widest text-[#ff6600] uppercase block">
+                  KATEGORİ VİTRİNİ
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 font-display tracking-tight uppercase mt-0.5">
+                  KATEGORİ SEÇİN
                 </h2>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  İncelemek istediğiniz kategoriyi seçin
+                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
+                  Fotoğraflı bölmelerden dilediğiniz kategoriye dokunarak özel tasarımları keşfedin
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-5 max-w-4xl">
-              {/* 1. DİKDÖRTGEN: ATATÜRK STICKERLARI */}
-              <button
-                type="button"
-                onClick={() => onSelectCategory('ataturk')}
-                className="group relative flex flex-col rounded-2xl overflow-hidden border border-slate-200 hover:border-[#ff6600] bg-white transition-all duration-200 text-left cursor-pointer shadow-xs hover:shadow-md"
-              >
-                <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] bg-slate-900 overflow-hidden">
-                  <img
-                    src="/products/IMG_1278.jpeg"
-                    alt="Atatürk Stickerları"
-                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold tracking-wide">
-                    Sticker
-                  </span>
-                </div>
-                <div className="p-2.5 sm:p-3.5 bg-white flex flex-col justify-between flex-1">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-[#ff6600] transition-colors leading-snug">
-                    Atatürk Stickerları
-                  </h3>
-                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5">
-                    Özel İmza & Portre Çıkartmaları
-                  </span>
-                </div>
-              </button>
+            {/* ÜRÜN GİBİ BÖLMELER (DİKDÖRTGEN KARTLAR) - FİYATSIZ, SADECE RESİM KAPLAYAN, KATEGORİYE AÇILAN */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5">
+              {showcaseCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    onSelectCategory(cat.id);
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                  }}
+                  className="group relative flex flex-col rounded-2xl overflow-hidden border border-slate-200/90 hover:border-[#ff6600] bg-slate-950 transition-all duration-300 text-left cursor-pointer shadow-xs hover:shadow-xl hover:-translate-y-1 active:scale-[0.98]"
+                >
+                  {/* Sadece Resim Kaplayan Ürün Boyutunda Dikdörtgen */}
+                  <div className="relative w-full aspect-[3/4] sm:aspect-[4/5] bg-slate-900 overflow-hidden">
+                    <img
+                      src={cat.cardImageUrl}
+                      alt={cat.fullTitle}
+                      className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 ease-out"
+                      loading="lazy"
+                    />
 
-              {/* 2. DİKDÖRTGEN: ARABA STICKERLARI */}
-              <button
-                type="button"
-                onClick={() => onSelectCategory('araba')}
-                className="group relative flex flex-col rounded-2xl overflow-hidden border border-slate-200 hover:border-[#ff6600] bg-white transition-all duration-200 text-left cursor-pointer shadow-xs hover:shadow-md"
-              >
-                <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] bg-slate-900 overflow-hidden">
-                  <img
-                    src="/products/IMG_1141.jpeg"
-                    alt="Araba Stickerları"
-                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold tracking-wide">
-                    Sticker
-                  </span>
-                </div>
-                <div className="p-2.5 sm:p-3.5 bg-white flex flex-col justify-between flex-1">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-[#ff6600] transition-colors leading-snug">
-                    Araba Stickerları
-                  </h3>
-                  <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5">
-                    Araç Camı & Kaporta Çıkartmaları
-                  </span>
-                </div>
-              </button>
+                    {/* Zarif Kategori Aydınlatma Gradyanı */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent flex flex-col justify-end p-3.5 sm:p-4 transition-opacity" />
+
+                    {/* Kategori Başlığı ve Keşfet Göstergesi */}
+                    <div className="absolute inset-x-0 bottom-0 p-3.5 sm:p-4 flex flex-col justify-end z-10 pointer-events-none">
+                      <span className="text-white font-black text-sm sm:text-base tracking-wide uppercase drop-shadow-md leading-snug group-hover:text-orange-400 transition-colors">
+                        {cat.fullTitle}
+                      </span>
+                      {cat.subtitle && (
+                        <span className="text-slate-300 text-[10px] sm:text-[11px] font-medium mt-0.5 line-clamp-1 drop-shadow-sm">
+                          {cat.subtitle}
+                        </span>
+                      )}
+                      <div className="mt-2.5 flex items-center gap-1.5 text-[#ff6600] text-[11px] sm:text-xs font-black tracking-wider uppercase drop-shadow-sm">
+                        <span>Kategoriye Git</span>
+                        <span className="transition-transform duration-200 group-hover:translate-x-1 font-bold">→</span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
+
+            {/* TÜM ÜRÜNLER AYRACI / LİSTELEME BAŞLIĞI */}
+            <div className="mt-12 pt-8 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-black tracking-widest text-[#ff6600] uppercase block">
+                  DOĞRUDAN LİSTELEME
+                </span>
+                <h3 className="text-lg sm:text-xl font-black uppercase text-slate-900 font-display">
+                  TÜM STICKER KOLEKSİYONU
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Kategori seçmeden tüm ürünleri doğrudan listeleyin ({displayedProducts.length} Ürün)
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* KATEGORİ İÇİNDEYKEN: KATEGORİLERE GERİ DÖN BUTONU */}
+        {selectedCategory !== 'all' && (
+          <div className="mt-4 mb-6">
+            <button
+              type="button"
+              onClick={() => onSelectCategory('all')}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:border-[#ff6600] hover:text-[#ff6600] text-xs font-bold text-slate-700 transition-all shadow-xs cursor-pointer group"
+            >
+              <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform text-[#ff6600]" />
+              <span>← Tüm Kategorilere Dön (Kategori Vitrini)</span>
+            </button>
           </div>
         )}
 
         {/* ÜRÜN IZGARASI (GRID) */}
         {displayedProducts.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl border border-slate-200 mt-8 shadow-xs">
+          <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 mt-6 shadow-xs">
             <div className="w-16 h-16 bg-orange-50 text-[#ff6600] rounded-full flex items-center justify-center mx-auto mb-4">
               <SlidersHorizontal size={28} />
             </div>
@@ -396,13 +520,13 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                 onSelectCategory('all');
                 onSearchChange('');
               }}
-              className="mt-5 px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white rounded-md text-xs font-bold transition-colors cursor-pointer shadow-md"
+              className="mt-5 px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md"
             >
               Tüm Kataloğu Görüntüle
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 md:gap-5 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 md:gap-5 mt-4">
             {displayedProducts.map((product) => (
               <ProductCard
                 key={product.id}

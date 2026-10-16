@@ -125,17 +125,16 @@ with zipfile.ZipFile(dist_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.write(root_index_php, 'index.php')
         added.add('index.php')
 
-    # Ensure api/index.php is included
-    api_php = os.path.join(PUBLIC_DIR, 'api', 'index.php')
-    if os.path.exists(api_php) and 'api/index.php' not in added:
-        zf.write(api_php, 'api/index.php')
-        added.add('api/index.php')
-
-    # Ensure api/auth.php is included
-    auth_php = os.path.join(PUBLIC_DIR, 'api', 'auth.php')
-    if os.path.exists(auth_php) and 'api/auth.php' not in added:
-        zf.write(auth_php, 'api/auth.php')
-        added.add('api/auth.php')
+    # Ensure all api/*.php files (index.php, auth.php, google_auth.php, cart.php) are included
+    api_dir = os.path.join(PUBLIC_DIR, 'api')
+    if os.path.exists(api_dir):
+        for root, dirs, files in os.walk(api_dir):
+            for file in files:
+                full_path = os.path.join(root, file)
+                rel_path = os.path.join('api', os.path.relpath(full_path, api_dir))
+                if rel_path not in added:
+                    zf.write(full_path, rel_path)
+                    added.add(rel_path)
 
     # Ensure paytr-callback.php is included
     callback_php = os.path.join(PUBLIC_DIR, 'paytr-callback.php')

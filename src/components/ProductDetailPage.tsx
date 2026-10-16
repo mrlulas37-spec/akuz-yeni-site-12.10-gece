@@ -15,6 +15,8 @@ import {
   Type,
   Eye,
   Sliders,
+  Truck,
+  Zap,
 } from 'lucide-react';
 import { Product, Review, UserProfile, ProductColorOption } from '../types';
 import { CUSTOM_FONTS, CustomFontOption } from '../data/customFonts';
@@ -66,6 +68,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   const availableColors: ProductColorOption[] = useMemo(() => {
     return product.colors.filter((c: ProductColorOption) => c.inStock !== false);
   }, [product.colors]);
+
+  // Stok Durumu: Ürün ve renk stok kontrolü (stokta ürünler için teslimat rozetleri aktif olur)
+  const isProductInStock: boolean = useMemo(() => {
+    if (product.inStock === false) return false;
+    if (product.colors && product.colors.length > 0) {
+      return availableColors.length > 0;
+    }
+    return true;
+  }, [product.inStock, product.colors, availableColors.length]);
 
   const [selectedColor, setSelectedColor] = useState(
     availableColors[0]?.name || product.colors[0]?.name || 'Siyah'
@@ -456,8 +467,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               </h1>
 
               {/* Price Banner */}
-              <div className="flex flex-col gap-1.5 mt-4">
-                <div className="flex items-baseline gap-3">
+              <div className="flex flex-col gap-2 mt-4">
+                <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
                   <span className="text-3xl sm:text-4xl font-extrabold text-red-600 font-price tracking-tight">
                     ₺{currentUnitPrice.toFixed(2).replace('.', ',')}
                   </span>
@@ -466,10 +477,40 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                       ₺{product.oldPrice.toFixed(2).replace('.', ',')}
                     </span>
                   )}
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-sm">
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-sm border border-emerald-200/60">
                     KDV Dahil
                   </span>
+
+                  {/* KULLANICI İSTEĞİ: Fiyat bilgisinin yanına stoktaki ürünler için 'Aynı Gün Kargo' veya 'Hızlı Teslimat' rozeti */}
+                  {isProductInStock ? (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs tracking-tight">
+                      <Truck size={13} className="shrink-0 text-white stroke-[2.5]" />
+                      <span>Aynı Gün Kargo</span>
+                      <span className="text-white/60 font-normal">|</span>
+                      <span className="flex items-center gap-0.5 text-amber-300">
+                        <Zap size={11} className="fill-amber-300 shrink-0" />
+                        Hızlı Teslimat
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                      <span>Tükendi</span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Stokta olan ürünler için Aynı Gün Kargo teslimat süresi bilgilendirmesi */}
+                {isProductInStock && (
+                  <div className="flex items-center gap-2 text-[11px] text-emerald-800 font-semibold bg-emerald-50/70 px-2.5 py-1 rounded-md border border-emerald-100/90 w-fit">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>Stokta Var</span>
+                    <span className="text-emerald-300 font-light">•</span>
+                    <span>Hafta içi saat 16:00'a kadar verilen siparişlerde <strong>Aynı Gün Kargo</strong></span>
+                  </div>
+                )}
 
                 {/* Boyut ve Harf Fiyat Bilgilendirme Notu */}
                 {product.isCustomText && letterBreakdown.extraLetters > 0 && (

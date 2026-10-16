@@ -1,453 +1,206 @@
 <?php
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, x-admin-token');
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, x-admin-token");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
-// 1. Gelen JSON veya Form gövdesini al
-$rawInput = file_get_contents('php://input');
-$body = json_decode($rawInput, true);
-if (!is_array($body) || empty($body)) {
-    $body = $_POST;
-}
+require_once 'db.php';
 
-$action = $body['action'] ?? ($_GET['action'] ?? '');
+$rawInput = file_get_contents("php://input");
+$data = json_decode($rawInput, true) ?: [];
 
-// 2. Merkezi Veri Depolama Klasörü (data_storage)
-$dataDir = __DIR__ . '/../../data_storage';
-if (!is_dir($dataDir)) {
-    $dataDir = __DIR__ . '/../data_storage';
-}
-if (!is_dir($dataDir)) {
-    @mkdir($dataDir, 0755, true);
-}
-$usersFile = $dataDir . '/users.json';
+// Gelen isteğin türü (register / login / update_profile / change_password)
+$action = $data['action'] ?? ($_GET['action'] ?? '');
 
-function readJsonUsers($filePath) {
-    if (!file_exists($filePath)) return [];
-    $raw = @file_get_contents($filePath);
-    $decoded = json_decode($raw, true);
-    return is_array($decoded) ? $decoded : [];
-}
+// Olası form alanlarını yakalama
+$fullname = trim($data['fullname'] ?? $data['name'] ?? ($data['firstName'] ?? '') . ' ' . ($data['lastName'] ?? ''));
+$phone    = trim($data['phone'] ?? $data['telephone'] ?? '');
+$email    = strtolower(trim($data['email'] ?? ($_GET['email'] ?? '')));
+$password = trim($data['password'] ?? $data['pass'] ?? '');
+$addresses = $data['addresses'] ?? null;
+$address  = trim($data['address'] ?? '');
 
-function writeJsonUsers($filePath, $data) {
-    @file_put_contents($filePath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-}
-
-// 3. MySQL Veritabanı Bağlantısı (Varsa PDO ile bağlanır, yoksa data_storage/users.json kullanır)
-$pdo = null;
-$dbHost = getenv('DB_HOST') ?: (getenv('MYSQL_HOST') ?: 'localhost');
-$dbName = getenv('DB_NAME') ?: (getenv('MYSQL_DATABASE') ?: '');
-$dbUser = getenv('DB_USER') ?: (getenv('MYSQL_USER') ?: '');
-$dbPass = getenv('DB_PASS') ?: (getenv('MYSQL_PASSWORD') ?: '');
-
-if (!empty($dbName) && !empty($dbUser)) {
-    try {
-        $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4", $dbUser, $dbPass, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
-        // Tablo yoksa otomatik oluştur
-        $pdo->exec("CREATE TABLE IF NOT EXISTS users (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            full_name VARCHAR(150),
-            email VARCHAR(150) UNIQUE,
-            password_hash VARCHAR(255),
-            plain_password VARCHAR(255),
-            phone VARCHAR(50),
-            address TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    } catch (Exception $e) {
-        $pdo = null; // MySQL bağlanamazsa güvenli JSON depolamaya devam et
-    }
-}
-
-// ====================================================
-// A. KAYIT OLMA (ACTION: 'register')
-// JSON: { action: 'register', email: '...', password: '...', full_name: '...', phone: '...', address: '...' }
-// ====================================================
-if ($action === 'register') {
-    $email = strtolower(trim($body['email'] ?? ''));
-    $password = strval($body['password'] ?? '');
-    $fullName = trim($body['full_name'] ?? ($body['name'] ?? ''));
-    $phone = trim($body['phone'] ?? '');
-    $address = trim($body['address'] ?? '');
-
-    if (empty($fullName)) {
-        echo json_encode(['success' => false, 'error' => 'Lütfen Ad ve Soyadınızı girin.']);
+// 1. PROFİL GÜNCELLEME (İsim, Telefon, Adresler) - Hesaptaki tüm değişiklikler anında MySQL'e yazılır
+if ($action === 'update_profile' || $action === 'update' || $action === 'save_profile' || (!empty($fullname) && !empty($email) && empty($password) && ($addresses !== null || !empty($phone)))) {
+    if (empty($email)) {
+        echo json_encode(["status" => "error", "message" => "E-posta adresi eksik."]);
         exit;
     }
 
-    if (empty($email) || strpos($email, '@') === false) {
-        echo json_encode(['success' => false, 'error' => 'Geçerli bir e-posta adresi girin.']);
-        exit;
-    }
-
-    if (strlen($password) < 6) {
-        echo json_encode(['success' => false, 'error' => 'Şifreniz en az 6 karakter olmalıdır.']);
-        exit;
-    }
-
-    // 1. MySQL veritabanı aktifse oraya kaydet
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
-            $stmt->execute([$email]);
-            if ($stmt->fetch()) {
-                echo json_encode(['success' => false, 'error' => 'Bu e-posta adresiyle kayıtlı bir hesap zaten var. Lütfen giriş yapın.']);
-                exit;
-            }
-
-            $hashed = password_hash($password, PASSWORD_DEFAULT);
-            $insert = $pdo->prepare("INSERT INTO users (full_name, email, password_hash, plain_password, phone, address, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-            $insert->execute([$fullName, $email, $hashed, $password, $phone, $address]);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'error' => 'Veritabanı kayıt hatası: ' . $e->getMessage()]);
-            exit;
-        }
-    }
-
-    // 2. Her durumda data_storage/users.json ile de senkronize et (çift emniyet)
-    $users = readJsonUsers($usersFile);
-    $exists = false;
-    foreach ($users as $u) {
-        if (strtolower(trim($u['email'] ?? '')) === $email) {
-            $exists = true;
-            break;
-        }
-    }
-
-    if (!$exists) {
-        $newUser = [
-            'name' => $fullName,
-            'full_name' => $fullName,
-            'email' => $email,
-            'passwordHash' => hash('sha256', $password . 'akuz_salt_2026'),
-            'plainPassword' => $password,
-            'phone' => $phone,
-            'address' => $address,
-            'createdAt' => date('c'),
-            'addresses' => !empty($address) ? [
-                [
-                    'id' => 'addr-1',
-                    'title' => 'Ev / Teslimat Adresim',
-                    'recipientName' => $fullName,
-                    'phone' => $phone,
-                    'city' => 'Bursa',
-                    'district' => 'Nilüfer',
-                    'fullAddress' => $address,
-                    'isDefault' => true,
-                ]
-            ] : [],
-        ];
-        $users[] = $newUser;
-        writeJsonUsers($usersFile, $users);
-    } else if (!$pdo) {
-        echo json_encode(['success' => false, 'error' => 'Bu e-posta adresiyle kayıtlı bir hesap zaten var. Lütfen giriş yapın.']);
-        exit;
-    }
-
-    $responseUser = [
-        'full_name' => $fullName,
-        'name' => $fullName,
+    $syncSuccess = syncUserToMysql($db, [
         'email' => $email,
+        'fullname' => $fullname,
         'phone' => $phone,
+        'addresses' => $addresses,
         'address' => $address,
-        'addresses' => !empty($address) ? [
-            [
-                'id' => 'addr-1',
-                'title' => 'Ev / Teslimat Adresim',
-                'recipientName' => $fullName,
-                'phone' => $phone,
-                'city' => 'Bursa',
-                'district' => 'Nilüfer',
-                'fullAddress' => $address,
-                'isDefault' => true,
-            ]
-        ] : [],
-    ];
-
-    echo json_encode([
-        'success' => true,
-        'message' => 'Kayıt başarılı, giriş yapabilirsiniz',
-        'user' => $responseUser,
     ]);
-    exit;
-}
 
-// ====================================================
-// B. GİRİŞ YAPMA (ACTION: 'login')
-// JSON: { action: 'login', email: '...', password: '...' }
-// ====================================================
-if ($action === 'login') {
-    $email = strtolower(trim($body['email'] ?? ''));
-    $password = strval($body['password'] ?? '');
-
-    if (empty($email) || empty($password)) {
-        echo json_encode(['success' => false, 'error' => 'E-posta ve şifre gereklidir.']);
-        exit;
-    }
-
-    $foundUser = null;
-
-    // 1. Önce MySQL veritabanını kontrol et
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? LIMIT 1");
-            $stmt->execute([$email]);
-            $dbRow = $stmt->fetch();
-            if ($dbRow) {
-                $hash = $dbRow['password_hash'] ?? '';
-                if ($hash === 'google_oauth_verified' || ($dbRow['auth_provider'] ?? '') === 'google') {
-                    echo json_encode([
-                        'success' => false,
-                        'isGoogleAccount' => true,
-                        'error' => 'Bu hesap Google ile oluşturulmuştur. Lütfen "Google ile Giriş Yap" seçeneğini kullanarak oturum açınız.'
-                    ]);
-                    exit;
-                }
-                $plain = $dbRow['plain_password'] ?? '';
-                $match = false;
-
-                if (!empty($hash) && password_verify($password, $hash)) {
-                    $match = true;
-                } else if ($plain === $password || $hash === $password || $hash === hash('sha256', $password . 'akuz_salt_2026')) {
-                    $match = true;
-                }
-
-                if ($match) {
-                    $addrStr = $dbRow['address'] ?? '';
-                    $fullName = $dbRow['full_name'] ?? explode('@', $email)[0];
-                    $phone = $dbRow['phone'] ?? '';
-                    $foundUser = [
-                        'full_name' => $fullName,
-                        'name' => $fullName,
-                        'email' => $dbRow['email'],
-                        'phone' => $phone,
-                        'address' => $addrStr,
-                        'addresses' => !empty($addrStr) ? [
-                            [
-                                'id' => 'addr-1',
-                                'title' => 'Kayıtlı Adresim',
-                                'recipientName' => $fullName,
-                                'phone' => $phone,
-                                'city' => 'Bursa',
-                                'district' => 'Nilüfer',
-                                'fullAddress' => $addrStr,
-                                'isDefault' => true,
-                            ]
-                        ] : [],
-                    ];
-                } else {
-                    echo json_encode(['success' => false, 'error' => 'Hatalı şifre girdiniz. Lütfen tekrar deneyin.']);
-                    exit;
-                }
-            }
-        } catch (Exception $e) {
-            // MySQL sorgu hatasında JSON depolamadan dene
-        }
-    }
-
-    // 2. MySQL'de bulunamadıysa veya MySQL yoksa data_storage/users.json'dan kontrol et
-    if (!$foundUser) {
-        $users = readJsonUsers($usersFile);
-        $account = null;
-        foreach ($users as $u) {
+    // Ayrıca data_storage/users.json dosyasını da senkronize tut
+    $dataDir = __DIR__ . '/../../data_storage';
+    if (!is_dir($dataDir)) $dataDir = __DIR__ . '/../data_storage';
+    $usersFile = $dataDir . '/users.json';
+    if (file_exists($usersFile)) {
+        $jsonUsers = json_decode(file_get_contents($usersFile), true) ?: [];
+        foreach ($jsonUsers as $k => $u) {
             if (strtolower(trim($u['email'] ?? '')) === $email) {
-                $account = $u;
+                if (!empty($fullname)) $jsonUsers[$k]['name'] = $fullname;
+                if (!empty($phone)) $jsonUsers[$k]['phone'] = $phone;
+                if ($addresses !== null) $jsonUsers[$k]['addresses'] = $addresses;
                 break;
             }
         }
-
-        if (!$account) {
-            echo json_encode(['success' => false, 'error' => 'Bu e-posta adresine ait hesap bulunamadı. Lütfen kayıt olun.']);
-            exit;
-        }
-
-        if (($account['passwordHash'] ?? '') === 'google_oauth_verified' || ($account['auth_provider'] ?? '') === 'google') {
-            echo json_encode([
-                'success' => false,
-                'isGoogleAccount' => true,
-                'error' => 'Bu hesap Google ile oluşturulmuştur. Lütfen "Google ile Giriş Yap" seçeneğini kullanarak oturum açınız.'
-            ]);
-            exit;
-        }
-
-        $inputHash = hash('sha256', $password . 'akuz_salt_2026');
-        $isMatch = (($account['passwordHash'] ?? '') === $inputHash)
-            || (($account['passwordHash'] ?? '') === $password)
-            || (($account['plainPassword'] ?? '') === $password);
-
-        if (!$isMatch) {
-            echo json_encode(['success' => false, 'error' => 'Hatalı şifre girdiniz. Lütfen tekrar deneyin.']);
-            exit;
-        }
-
-        $fullName = $account['name'] ?? ($account['full_name'] ?? explode('@', $email)[0]);
-        $phone = $account['phone'] ?? '';
-        $addrStr = $account['address'] ?? ($account['addresses'][0]['fullAddress'] ?? '');
-        $addresses = $account['addresses'] ?? [];
-        if (empty($addresses) && !empty($addrStr)) {
-            $addresses = [
-                [
-                    'id' => 'addr-1',
-                    'title' => 'Kayıtlı Adresim',
-                    'recipientName' => $fullName,
-                    'phone' => $phone,
-                    'city' => 'Bursa',
-                    'district' => 'Nilüfer',
-                    'fullAddress' => $addrStr,
-                    'isDefault' => true,
-                ]
-            ];
-        }
-
-        $foundUser = [
-            'full_name' => $fullName,
-            'name' => $fullName,
-            'email' => $account['email'] ?? $email,
-            'phone' => $phone,
-            'address' => $addrStr,
-            'addresses' => $addresses,
-        ];
+        @file_put_contents($usersFile, json_encode($jsonUsers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
 
     echo json_encode([
-        'success' => true,
-        'message' => 'Giriş başarılı',
-        'user' => $foundUser,
+        "status" => "success",
+        "success" => true,
+        "message" => "Hesap bilgileri veritabanında başarıyla güncellendi!",
+        "user" => [
+            "name" => $fullname,
+            "fullname" => $fullname,
+            "email" => $email,
+            "phone" => $phone,
+            "addresses" => $addresses ?: [],
+        ]
     ]);
     exit;
 }
 
-// ====================================================
-// C. GOOGLE İLE GİRİŞ & İSİM SOYİSİM SENKRONİZASYONU (ACTION: 'google')
-// ====================================================
-if ($action === 'google') {
-    $email = strtolower(trim($body['email'] ?? ''));
-    $fullName = trim($body['full_name'] ?? ($body['name'] ?? ''));
-    if (empty($fullName)) {
-        $fullName = explode('@', $email)[0];
-    }
+// 2. ŞİFRE GÜNCELLEME - Hesaptaki yeni şifre anında MySQL'de hash'lenerek kaydedilir
+if ($action === 'change_password' || $action === 'update_password') {
+    $newPassword = $data['newPassword'] ?? ($data['new_password'] ?? $password);
+    $currentPassword = $data['currentPassword'] ?? ($data['current_password'] ?? '');
 
-    if (empty($email)) {
-        echo json_encode(['success' => false, 'error' => 'E-posta eksik.']);
+    if (empty($email) || empty($newPassword)) {
+        echo json_encode(["status" => "error", "message" => "E-posta ve yeni şifre gereklidir."]);
         exit;
     }
 
-    $foundUser = null;
+    if (strlen($newPassword) < 6) {
+        echo json_encode(["status" => "error", "message" => "Yeni şifreniz en az 6 karakter olmalıdır."]);
+        exit;
+    }
 
-    // 1. MySQL varsa kullanıcıyı bul veya ekle/güncelle
-    if ($pdo) {
-        try {
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? LIMIT 1");
-            $stmt->execute([$email]);
-            $dbRow = $stmt->fetch();
-            if ($dbRow) {
-                // İsmi güncelle
-                $up = $pdo->prepare("UPDATE users SET full_name = ? WHERE email = ?");
-                $up->execute([$fullName, $email]);
-                $addrStr = $dbRow['address'] ?? '';
-                $phone = $dbRow['phone'] ?? '';
-            } else {
-                $ins = $pdo->prepare("INSERT INTO users (full_name, email, password_hash, plain_password, phone, address) VALUES (?, ?, ?, ?, ?, ?)");
-                $ins->execute([$fullName, $email, 'google_oauth_user', '', '', '']);
-                $addrStr = '';
-                $phone = '';
+    // Kullanıcı varsa mevcut şifreyi kontrol et
+    if ($db) {
+        $stmt = $db->prepare("SELECT id, password FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $userRow = $stmt->fetch();
+        if ($userRow && !empty($currentPassword) && !empty($userRow['password'])) {
+            if (!password_verify($currentPassword, $userRow['password'])) {
+                echo json_encode(["status" => "error", "message" => "Mevcut şifreniz hatalı."]);
+                exit;
             }
-
-            $foundUser = [
-                'full_name' => $fullName,
-                'name' => $fullName,
-                'email' => $email,
-                'phone' => $phone,
-                'address' => $addrStr,
-                'addresses' => !empty($addrStr) ? [
-                    [
-                        'id' => 'addr-1',
-                        'title' => 'Kayıtlı Adresim',
-                        'recipientName' => $fullName,
-                        'phone' => $phone,
-                        'city' => 'Bursa',
-                        'district' => 'Nilüfer',
-                        'fullAddress' => $addrStr,
-                        'isDefault' => true,
-                    ]
-                ] : [],
-            ];
-        } catch (Exception $e) {
-            // MySQL hata verirse JSON'a devam et
         }
     }
 
-    // 2. data_storage/users.json'da da senkronize tut
-    $users = readJsonUsers($usersFile);
-    $idx = -1;
-    foreach ($users as $k => $u) {
-        if (strtolower(trim($u['email'] ?? '')) === $email) {
-            $idx = $k;
-            break;
-        }
-    }
+    syncUserToMysql($db, [
+        'email' => $email,
+        'password' => $newPassword,
+    ]);
 
-    if ($idx !== -1) {
-        $users[$idx]['name'] = $fullName;
-        $users[$idx]['full_name'] = $fullName;
-        if (!$foundUser) {
-            $foundUser = [
-                'full_name' => $fullName,
-                'name' => $fullName,
-                'email' => $email,
-                'phone' => $users[$idx]['phone'] ?? '',
-                'address' => $users[$idx]['address'] ?? '',
-                'addresses' => $users[$idx]['addresses'] ?? [],
-            ];
+    // data_storage/users.json güncelle
+    $dataDir = __DIR__ . '/../../data_storage';
+    if (!is_dir($dataDir)) $dataDir = __DIR__ . '/../data_storage';
+    $usersFile = $dataDir . '/users.json';
+    if (file_exists($usersFile)) {
+        $jsonUsers = json_decode(file_get_contents($usersFile), true) ?: [];
+        foreach ($jsonUsers as $k => $u) {
+            if (strtolower(trim($u['email'] ?? '')) === $email) {
+                $jsonUsers[$k]['passwordHash'] = password_hash($newPassword, PASSWORD_BCRYPT);
+                $jsonUsers[$k]['plainPassword'] = $newPassword;
+                break;
+            }
         }
-    } else {
-        $newUser = [
-            'name' => $fullName,
-            'full_name' => $fullName,
-            'email' => $email,
-            'passwordHash' => 'google_oauth_user',
-            'plainPassword' => '',
-            'phone' => '',
-            'address' => '',
-            'createdAt' => date('c'),
-            'addresses' => [],
-        ];
-        $users[] = $newUser;
-        if (!$foundUser) {
-            $foundUser = [
-                'full_name' => $fullName,
-                'name' => $fullName,
-                'email' => $email,
-                'phone' => '',
-                'address' => '',
-                'addresses' => [],
-            ];
-        }
+        @file_put_contents($usersFile, json_encode($jsonUsers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
-    writeJsonUsers($usersFile, $users);
 
     echo json_encode([
-        'success' => true,
-        'message' => 'Google ile giriş başarılı',
-        'user' => $foundUser,
+        "status" => "success",
+        "success" => true,
+        "message" => "Şifreniz MySQL veritabanında başarıyla güncellendi!"
     ]);
     exit;
 }
 
-// ====================================================
-// D. DURUM / API KONTROLÜ
-// ====================================================
-echo json_encode([
-    'success' => true,
-    'message' => 'AKUZ Stickers MySQL Auth API Aktif',
-    'actions' => ['register', 'login', 'google'],
-]);
+// 3. KAYIT İŞLEMİ (Eğer action 'register' ise veya isim alanı dolu geldiyse)
+if ($action === 'register' || (!empty($fullname) && !empty($password) && !empty($email))) {
+    if (empty($email) || empty($password)) {
+        echo json_encode(["status" => "error", "message" => "E-posta ve şifre zorunludur."]);
+        exit;
+    }
+
+    $syncSuccess = syncUserToMysql($db, [
+        'email' => $email,
+        'fullname' => $fullname,
+        'phone' => $phone,
+        'password' => $password,
+        'addresses' => $addresses,
+        'address' => $address,
+    ]);
+
+    if ($syncSuccess) {
+        echo json_encode([
+            "status" => "success",
+            "success" => true,
+            "message" => "Kayıt başarılı!",
+            "user" => ["fullname" => $fullname, "name" => $fullname, "email" => $email, "phone" => $phone]
+        ]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Kayıt sırasında hata oluştu veya bu e-posta zaten kayıtlı."]);
+    }
+    exit;
+}
+
+// 4. GİRİŞ İŞLEMİ
+if ($action === 'login' || (!empty($email) && !empty($password))) {
+    if ($db) {
+        $stmt = $db->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+
+        if ($user && (!empty($user['password']) ? password_verify($password, $user['password']) : true)) {
+            $userAddresses = [];
+            if (!empty($user['addresses'])) {
+                $decoded = json_decode($user['addresses'], true);
+                if (is_array($decoded)) $userAddresses = $decoded;
+            } elseif (!empty($user['address'])) {
+                $userAddresses = [[
+                    'id' => 'addr-1',
+                    'title' => 'Kayıtlı Adresim',
+                    'recipientName' => $user['fullname'] ?? ($user['name'] ?? ''),
+                    'phone' => $user['phone'] ?? '',
+                    'fullAddress' => $user['address'],
+                    'isDefault' => true,
+                ]];
+            }
+
+            echo json_encode([
+                "status" => "success",
+                "success" => true,
+                "message" => "Giriş başarılı!",
+                "user" => [
+                    "id" => $user['id'],
+                    "fullname" => $user['fullname'] ?? ($user['name'] ?? ''),
+                    "name" => $user['fullname'] ?? ($user['name'] ?? ''),
+                    "email" => $user['email'],
+                    "phone" => $user['phone'] ?? '',
+                    "addresses" => $userAddresses,
+                ]
+            ]);
+            exit;
+        }
+    }
+
+    echo json_encode(["status" => "error", "message" => "Hatalı e-posta veya şifre."]);
+    exit;
+}
+
+echo json_encode(["status" => "error", "message" => "Geçersiz işlem."]);
+?>

@@ -9,6 +9,7 @@ import {
   checkEmailExistsDetailed,
   getLastGoogleAccount,
   triggerGoogleAccountPicker,
+  saveGoogleUserToCpanel,
 } from '../utils/auth';
 
 interface LoginPageProps {
@@ -91,27 +92,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     try {
       await triggerGoogleAccountPicker(
-        (user) => {
+        async (user) => {
           clearTimeout(safetyTimer);
-          // İsim soyisim adımına yönlendir
-          setGoogleAuthData({ email: user.email, name: user.name });
-          setGoogleFullName(user.name || '');
-          setStep('google_name_prompt');
-          setIsLoading(false);
+          // Google login başarılı: cPanel'deki google_auth.php adresine POST at ve user_id'yi kaydet
+          await saveGoogleUserToCpanel(user.name, user.email);
+
+          // İsim varsa doğrudan oturumu tamamla ve yönlendir
+          if (user.name && user.name.trim().length >= 2) {
+            const loginRes = await loginWithGoogleAccount(user.email, user.name);
+            setIsLoading(false);
+            setSuccessMessage(`Giriş başarılı! Hoş geldiniz, ${loginRes.user.name}`);
+            setTimeout(() => {
+              triggerSuccessfulLogin(loginRes.user);
+            }, 350);
+          } else {
+            // İsim eksikse kullanıcıdan ad-soyad iste
+            setGoogleAuthData({ email: user.email, name: user.name });
+            setGoogleFullName(user.name || '');
+            setStep('google_name_prompt');
+            setIsLoading(false);
+          }
         },
         (errorMsg) => {
           clearTimeout(safetyTimer);
           setIsLoading(false);
           setErrorMessage(errorMsg);
-        },
-        (info) => {
-          // Google hesabı seçildi -> Kullanıcıdan isim soyisim iste
-          clearTimeout(safetyTimer);
-          setIsLoading(false);
-          setErrorMessage(null);
-          setGoogleAuthData(info);
-          setGoogleFullName(info.name || '');
-          setStep('google_name_prompt');
         }
       );
     } catch (err: any) {
@@ -140,8 +145,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
     setIsLoading(true);
     try {
+      // cPanel'deki google_auth.php adresine isim & e-posta POST at ve dönen user_id'yi kaydet
+      await saveGoogleUserToCpanel(trimmed, cleanEmail);
+
       const loginRes = await loginWithGoogleAccount(cleanEmail, trimmed);
-      triggerSuccessfulLogin(loginRes.user);
+      setIsLoading(false);
+      setSuccessMessage(`Giriş başarılı! Hoş geldiniz, ${loginRes.user.name}`);
+      setTimeout(() => {
+        triggerSuccessfulLogin(loginRes.user);
+      }, 350);
     } catch (err: any) {
       setIsLoading(false);
       setErrorMessage(err?.message || 'Giriş tamamlanamadı. Lütfen tekrar deneyin.');
@@ -235,7 +247,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
 
     setIsLoading(true);
-    console.log('[Kayıt Formu Gönderiliyor -> https://akuzstickers.com/api/auth.php]', {
+    console.log('[Kayıt Formu Gönderiliyor -> /api/auth.php]', {
       email,
       full_name: registerName,
       phone: registerPhone,

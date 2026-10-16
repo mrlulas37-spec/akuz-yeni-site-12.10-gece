@@ -30,52 +30,68 @@
   "categories": [
     {
       "id": "all",
-      "titleLine1": "Tüm",
-      "titleLine2": "Ürünler",
-      "bgGradient": "bg-slate-900 text-white"
-    },
-    {
-      "id": "discount",
-      "titleLine1": "İndirimli",
-      "titleLine2": "Fırsatlar",
-      "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white"
+      "titleLine1": "Katalog",
+      "titleLine2": "Tüm Ürünler",
+      "bgGradient": "bg-slate-900 text-white",
+      "cardImageUrl": "/products/IMG_1141.jpeg",
+      "subtitle": "Tüm Sticker Koleksiyonu"
     },
     {
       "id": "ataturk",
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-      "imageUrl": "/products/IMG_1278.jpeg"
+      "imageUrl": "/products/IMG_1278.jpeg",
+      "cardImageUrl": "/products/IMG_1278.jpeg",
+      "subtitle": "İmza, Portre & Özel Tasarımlar"
     },
     {
       "id": "araba",
       "titleLine1": "Araba",
       "titleLine2": "Stickerları",
-      "bgGradient": "bg-gradient-to-tr from-orange-500 to-amber-500 text-white"
+      "bgGradient": "bg-gradient-to-tr from-orange-500 to-amber-500 text-white",
+      "cardImageUrl": "/products/AkuzStickers_LaFamilia.jpg",
+      "subtitle": "Cam, Kaporta & Tampon Vinilleri"
     },
     {
       "id": "motosiklet",
       "titleLine1": "Motosiklet",
       "titleLine2": "Stickerları",
-      "bgGradient": "bg-slate-800 text-orange-400"
-    },
-    {
-      "id": "custom",
-      "titleLine1": "Kişiye Özel",
-      "titleLine2": "Stickerlar",
-      "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white"
+      "bgGradient": "bg-slate-800 text-orange-400",
+      "cardImageUrl": "/products/IMG_1143.webp",
+      "subtitle": "Kask, Depo, Maşa & Jant Çıkartmaları"
     },
     {
       "id": "offroad",
       "titleLine1": "Off-Road",
       "titleLine2": "Stickerları",
-      "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white"
+      "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white",
+      "cardImageUrl": "/products/IMG_1140.jpeg",
+      "subtitle": "4x4 Arazi, Dağ & Macera Çıkartmaları"
+    },
+    {
+      "id": "custom",
+      "titleLine1": "Kişiye Özel",
+      "titleLine2": "Stickerlar",
+      "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white",
+      "cardImageUrl": "/products/phonto.jpeg",
+      "subtitle": "Kendi Yazını & Fontunu Tasarla"
     },
     {
       "id": "ayna",
       "titleLine1": "Ayna",
       "titleLine2": "Stickerları",
-      "bgGradient": "bg-gradient-to-tr from-cyan-600 to-blue-600 text-white"
+      "bgGradient": "bg-gradient-to-tr from-cyan-600 to-blue-600 text-white",
+      "cardImageUrl": "/products/IMG_1142.jpeg",
+      "subtitle": "Yan Ayna & Dikiz Çıkartmaları"
+    },
+    {
+      "id": "discount",
+      "titleLine1": "İndirimli",
+      "titleLine2": "Fırsatlar",
+      "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white",
+      "cardImageUrl": "/products/IMG_1147.webp",
+      "subtitle": "Avantajlı Paketler & İndirimler"
     }
   ],
   "availableFoilTypes": [

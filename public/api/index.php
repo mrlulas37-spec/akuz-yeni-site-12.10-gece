@@ -9,6 +9,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+if (file_exists(__DIR__ . '/db.php')) {
+    require_once __DIR__ . '/db.php';
+}
+
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 // Normalize URI
 $route = preg_replace('#^.*/api/#', '', $requestUri);
@@ -242,8 +246,21 @@ if ($route === 'upload' || $route === 'upload-image') {
 }
 
 // 3. PRODUCTS
-if ($route === 'products') {
+if ($route === 'products' || preg_match('#^products/#', $route)) {
     $prodFile = $dataDir . '/products.json';
+    if ($_SERVER['REQUEST_METHOD'] === 'DELETE' || $route === 'products/delete') {
+        $id = $_GET['id'] ?? ($body['id'] ?? '');
+        if (empty($id) && preg_match('#^products/(.+)$#', $route, $matches)) {
+            $id = $matches[1];
+        }
+        $products = readJson($prodFile, []);
+        $filtered = array_values(array_filter($products, function($p) use ($id) {
+            return ($p['id'] ?? '') !== $id && ($p['slug'] ?? '') !== $id;
+        }));
+        writeJson($prodFile, $filtered);
+        echo json_encode(['success' => true, 'count' => count($filtered), 'deletedId' => $id]);
+        exit;
+    }
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $products = $body['products'] ?? [];
         writeJson($prodFile, $products);
@@ -617,6 +634,46 @@ if ($route === 'user/profile') {
             echo json_encode(['success' => false, 'error' => 'E-posta adresi gereklidir.']);
             exit;
         }
+
+        // Önce MySQL'den en güncel verileri çekmeyi dene
+        if (isset($db) && $db) {
+            try {
+                $stmt = $db->prepare("SELECT * FROM users WHERE email = ?");
+                $stmt->execute([$email]);
+                $mysqlUser = $stmt->fetch();
+                if ($mysqlUser) {
+                    $mAddrs = [];
+                    if (!empty($mysqlUser['addresses'])) {
+                        $dec = json_decode($mysqlUser['addresses'], true);
+                        if (is_array($dec)) $mAddrs = $dec;
+                    } elseif (!empty($mysqlUser['address'])) {
+                        $mAddrs = [[
+                            'id' => 'addr-1',
+                            'title' => 'Kayıtlı Adresim',
+                            'recipientName' => $mysqlUser['fullname'] ?? ($mysqlUser['name'] ?? ''),
+                            'phone' => $mysqlUser['phone'] ?? '',
+                            'fullAddress' => $mysqlUser['address'],
+                            'isDefault' => true,
+                        ]];
+                    }
+
+                    echo json_encode([
+                        'success' => true,
+                        'user' => [
+                            'name' => $mysqlUser['fullname'] ?? ($mysqlUser['name'] ?? ''),
+                            'fullname' => $mysqlUser['fullname'] ?? ($mysqlUser['name'] ?? ''),
+                            'email' => $mysqlUser['email'],
+                            'phone' => $mysqlUser['phone'] ?? '',
+                            'addresses' => $mAddrs,
+                            'isGoogleUser' => ($mysqlUser['auth_provider'] ?? '') === 'google',
+                            'hasPassword' => !empty($mysqlUser['password']),
+                        ],
+                    ]);
+                    exit;
+                }
+            } catch (Exception $e) {}
+        }
+
         foreach ($users as $u) {
             if (strtolower(trim($u['email'] ?? '')) === $email) {
                 $isGoogle = ($u['passwordHash'] ?? '') === 'google_oauth_verified';
@@ -639,29 +696,108 @@ if ($route === 'user/profile') {
         exit;
     }
 
-    if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
+    if ($_SERVER['REQUEST_METHOD'] === 'PUT' || $_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = strtolower(trim($body['email'] ?? ''));
+        $name = trim($body['name'] ?? ($body['fullname'] ?? ''));
+        $phone = trim($body['phone'] ?? '');
+        $addresses = $body['addresses'] ?? null;
+        $address = trim($body['address'] ?? '');
+
+        if (empty($email)) {
+            echo json_encode(['success' => false, 'error' => 'E-posta adresi eksik.']);
+            exit;
+        }
+
+        // 1. MySQL Veritabanında güncelle (Hesapta yapılan tüm değişiklikler)
+        if (function_exists('syncUserToMysql') && isset($db)) {
+            syncUserToMysql($db, [
+                'email' => $email,
+                'fullname' => $name,
+                'name' => $name,
+                'phone' => $phone,
+                'addresses' => $addresses,
+                'address' => $address,
+            ]);
+        }
+
+        // 2. data_storage/users.json dosyasını da senkronize tut
+        $foundUser = false;
         foreach ($users as $k => $u) {
             if (strtolower(trim($u['email'] ?? '')) === $email) {
-                if (isset($body['name'])) $users[$k]['name'] = $body['name'];
-                if (isset($body['phone'])) $users[$k]['phone'] = $body['phone'];
-                if (isset($body['addresses'])) $users[$k]['addresses'] = $body['addresses'];
-                writeJson($usersFile, $users);
-                echo json_encode([
-                    'success' => true,
-                    'user' => [
-                        'name' => $users[$k]['name'],
-                        'email' => $users[$k]['email'],
-                        'phone' => $users[$k]['phone'],
-                        'addresses' => $users[$k]['addresses'],
-                    ],
-                ]);
-                exit;
+                if (isset($body['name'])) $users[$k]['name'] = $name;
+                if (isset($body['phone'])) $users[$k]['phone'] = $phone;
+                if (isset($body['addresses'])) $users[$k]['addresses'] = $addresses;
+                $foundUser = true;
+                break;
             }
         }
-        echo json_encode(['success' => false, 'error' => 'Kullanıcı bulunamadı.']);
+        if (!$foundUser && !empty($email)) {
+            $users[] = [
+                'name' => $name ?: explode('@', $email)[0],
+                'email' => $email,
+                'phone' => $phone,
+                'addresses' => $addresses ?: [],
+                'createdAt' => date('c'),
+            ];
+        }
+        writeJson($usersFile, $users);
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Hesap bilgileri MySQL veritabanında güncellendi.',
+            'user' => [
+                'name' => $name,
+                'fullname' => $name,
+                'email' => $email,
+                'phone' => $phone,
+                'addresses' => $addresses ?: [],
+            ],
+        ]);
         exit;
     }
+}
+
+// 6b. KULLANICI ŞİFRE GÜNCELLEME (Hesap Bilgilerinden Şifre Değiştirme)
+if ($route === 'user/password') {
+    $email = strtolower(trim($body['email'] ?? ''));
+    $newPassword = $body['newPassword'] ?? ($body['password'] ?? '');
+    $currentPassword = $body['currentPassword'] ?? '';
+
+    if (empty($email) || empty($newPassword)) {
+        echo json_encode(['success' => false, 'error' => 'E-posta ve yeni şifre gereklidir.']);
+        exit;
+    }
+
+    if (strlen($newPassword) < 6) {
+        echo json_encode(['success' => false, 'error' => 'Yeni şifreniz en az 6 karakterden oluşmalıdır.']);
+        exit;
+    }
+
+    // 1. MySQL Veritabanında güncelle
+    if (function_exists('syncUserToMysql') && isset($db)) {
+        syncUserToMysql($db, [
+            'email' => $email,
+            'password' => $newPassword,
+        ]);
+    }
+
+    // 2. data_storage/users.json güncelle
+    $usersFile = $dataDir . '/users.json';
+    $users = readJson($usersFile, []);
+    foreach ($users as $k => $u) {
+        if (strtolower(trim($u['email'] ?? '')) === $email) {
+            $users[$k]['passwordHash'] = password_hash($newPassword, PASSWORD_BCRYPT);
+            $users[$k]['plainPassword'] = $newPassword;
+            writeJson($usersFile, $users);
+            break;
+        }
+    }
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Şifreniz MySQL veritabanında başarıyla güncellendi.',
+    ]);
+    exit;
 }
 
 if ($route === 'users') {
@@ -928,3 +1064,4 @@ if ($route === 'paytr/callback' || $route === 'paytr-callback' || $route === 'ca
 
 // DEFAULT FALLBACK
 echo json_encode(['success' => true, 'message' => 'AKUZ cPanel API Aktif']);
+?>

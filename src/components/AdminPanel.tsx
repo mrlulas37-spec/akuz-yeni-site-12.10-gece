@@ -129,43 +129,74 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
 
-  const handlePurgeAllUsersClick = async () => {
-    if (!window.confirm('Kayıtlı TÜM kullanıcıları, adreslerini ve hesap bilgilerini kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) {
-      return;
-    }
-    setIsPurgingUsers(true);
-    try {
-      await purgeAllRegisteredUsers('akuz_admin_2026');
-      if (onUpdateUsers) {
-        onUpdateUsers([]);
-      }
-      setSaveSuccessMsg('Tüm kullanıcı kayıtları başarıyla silindi ve sıfırlandı.');
-      setTimeout(() => setSaveSuccessMsg(null), 3000);
-    } catch {
-      alert('Kullanıcı kayıtları silinirken bir hata oluştu.');
-    } finally {
-      setIsPurgingUsers(false);
-    }
+  // Özel Onay Modalı (window.confirm iframe içinde engellendiği için özel modal)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    targetName?: string;
+    imageUrl?: string;
+    confirmText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
+  const [isConfirmLoading, setIsConfirmLoading] = useState(false);
+
+  const handlePurgeAllUsersClick = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tüm Kullanıcıları Temizle',
+      description: 'Kayıtlı TÜM kullanıcıları, teslimat adreslerini ve hesap bilgilerini kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+      confirmText: 'Evet, Tümünü Temizle',
+      isDestructive: true,
+      onConfirm: async () => {
+        setIsConfirmLoading(true);
+        setIsPurgingUsers(true);
+        try {
+          await purgeAllRegisteredUsers('akuz_admin_2026');
+          if (onUpdateUsers) {
+            onUpdateUsers([]);
+          }
+          showNotification('Tüm kullanıcı kayıtları başarıyla silindi ve sıfırlandı.');
+        } catch {
+          showNotification('Kullanıcı kayıtları silinirken bir hata oluştu.');
+        } finally {
+          setIsPurgingUsers(false);
+          setIsConfirmLoading(false);
+          setConfirmDialog(null);
+        }
+      },
+    });
   };
 
-  const handleDeleteUserClick = async (emailToDelete: string) => {
-    if (!window.confirm(`${emailToDelete} kullanıcısını silmek istediğinize emin misiniz?`)) {
-      return;
-    }
-    try {
-      await fetch(`/api/users?email=${encodeURIComponent(emailToDelete)}`, {
-        method: 'DELETE',
-        headers: { 'x-admin-token': 'akuz_admin_2026' },
-      });
-      const filtered = users.filter((u) => (u.email || '').toLowerCase() !== emailToDelete.toLowerCase());
-      if (onUpdateUsers) {
-        onUpdateUsers(filtered);
-      }
-      setSaveSuccessMsg(`${emailToDelete} kullanıcısı silindi.`);
-      setTimeout(() => setSaveSuccessMsg(null), 3000);
-    } catch {
-      alert('Kullanıcı silinemedi.');
-    }
+  const handleDeleteUserClick = (emailToDelete: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Kullanıcıyı Sil',
+      description: 'Kullanıcının kayıtlı hesabı ve adres bilgileri kalıcı olarak silinecektir.',
+      targetName: emailToDelete,
+      confirmText: 'Evet, Kullanıcıyı Sil',
+      isDestructive: true,
+      onConfirm: async () => {
+        setIsConfirmLoading(true);
+        try {
+          await fetch(`/api/users?email=${encodeURIComponent(emailToDelete)}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-token': 'akuz_admin_2026' },
+          });
+          const filtered = users.filter((u) => (u.email || '').toLowerCase() !== emailToDelete.toLowerCase());
+          if (onUpdateUsers) {
+            onUpdateUsers(filtered);
+          }
+          showNotification(`${emailToDelete} kullanıcısı silindi.`);
+        } catch {
+          showNotification('Kullanıcı silinemedi.');
+        } finally {
+          setIsConfirmLoading(false);
+          setConfirmDialog(null);
+        }
+      },
+    });
   };
 
   // Güvenli Kategori ve İçerik Listeleri (Asla undefined olamaz, çökme engellendi)
@@ -516,11 +547,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsProductModalOpen(false);
   };
 
-  const handleDeleteProduct = (id: string, name: string) => {
-    if (window.confirm(`"${name}" ürününü silmek istediğinize emin misiniz?`)) {
-      onUpdateProducts(products.filter((p) => p.id !== id));
-      showNotification(`"${name}" ürünü silindi.`);
-    }
+  const handleDeleteProduct = (id: string, name: string, imageUrl?: string) => {
+    const prod = products.find((p) => p.id === id);
+    const img = imageUrl || prod?.imageUrl || (prod?.images && prod.images[0]);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Ürünü Sil',
+      description: 'Bu işlem geri alınamaz ve ürün mağaza kataloğundan kalıcı olarak kaldırılacaktır.',
+      targetName: name,
+      imageUrl: img,
+      confirmText: 'Evet, Ürünü Sil',
+      isDestructive: true,
+      onConfirm: async () => {
+        setIsConfirmLoading(true);
+        try {
+          const updated = products.filter((p) => p.id !== id && p.slug !== id);
+          onUpdateProducts(updated);
+
+          // Sunucuya doğrudan DELETE isteği
+          fetch(`/api/products/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+          }).catch((e) => console.warn('[DELETE API ERROR]', e));
+
+          showNotification(`"${name}" ürünü başarıyla silindi.`);
+          if (editingProduct && (editingProduct.id === id || editingProduct.slug === id)) {
+            setIsProductModalOpen(false);
+            setEditingProduct(null);
+          }
+        } finally {
+          setIsConfirmLoading(false);
+          setConfirmDialog(null);
+        }
+      },
+    });
   };
 
   // ==========================================
@@ -545,13 +604,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [uploadProgressText, setUploadProgressText] = useState('');
   const [quickUploadingProdId, setQuickUploadingProdId] = useState<string | null>(null);
 
-  const handleCategoryFileUpload = async (catId: CategoryCircleItem['id'], file: File) => {
+  const handleCategoryFileUpload = async (
+    catId: CategoryCircleItem['id'],
+    file: File,
+    field: 'imageUrl' | 'cardImageUrl' = 'imageUrl'
+  ) => {
     if (!file) return;
     try {
       showNotification('Kategori fotoğrafı optimize ediliyor...');
       const url = await processAndUploadProductImage(file);
-      handleUpdateCategory(catId, 'imageUrl', url);
-      showNotification('Kategori yuvarlak fotoğrafı başarıyla güncellendi!');
+      handleUpdateCategory(catId, field, url);
+      showNotification(
+        field === 'cardImageUrl'
+          ? 'Kategori dikdörtgen vitrin görseli başarıyla güncellendi!'
+          : 'Kategori yuvarlak fotoğrafı başarıyla güncellendi!'
+      );
     } catch (err: any) {
       console.error('[CATEGORY UPLOAD ERROR]', err);
       showNotification('Fotoğraf yüklenemedi: ' + (err.message || 'Geçersiz dosya'));
@@ -737,10 +804,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       showNotification('Uyarı: En az bir renk tanımlı kalmalıdır.');
       return;
     }
-    if (window.confirm(`"${name}" rengini tamamen silmek istiyor musunuz?`)) {
-      onUpdateGlobalColors(globalColors.filter((c) => c.name !== name));
-      showNotification(`"${name}" rengi silindi.`);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Rengi Sil',
+      description: 'Bu renk seçeneği tüm ürünlerden ve renk paletinden kaldırılacaktır.',
+      targetName: `${name} Rengi`,
+      confirmText: 'Evet, Rengi Sil',
+      isDestructive: true,
+      onConfirm: () => {
+        onUpdateGlobalColors(globalColors.filter((c) => c.name !== name));
+        showNotification(`"${name}" rengi silindi.`);
+        setConfirmDialog(null);
+      },
+    });
   };
 
   const handleToggleGlobalFoil = (foil: 'Mat' | 'Parlak') => {
@@ -2113,6 +2189,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
+                                type="button"
                                 onClick={() => openEditProductModal(p)}
                                 className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
                                 title="Düzenle"
@@ -2120,7 +2197,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <Edit2 size={15} />
                               </button>
                               <button
-                                onClick={() => handleDeleteProduct(p.id, p.name)}
+                                type="button"
+                                onClick={() => handleDeleteProduct(p.id, p.name, p.imageUrl)}
                                 className="p-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
                                 title="Sil"
                               >
@@ -2369,91 +2447,118 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {safeCategories.map((cat) => (
                   <div
                     key={cat.id}
-                    className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 flex flex-col gap-3.5 shadow-2xs hover:shadow-xs transition-shadow"
+                    className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 flex flex-col gap-4 shadow-2xs hover:shadow-xs transition-shadow"
                   >
-                    {/* Üst Önizleme Rozeti */}
-                    <div className="flex items-center gap-3.5 p-2 bg-white rounded-xl border border-slate-200/80">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center overflow-hidden shrink-0 shadow-md ${cat.bgGradient || 'bg-slate-900 text-white'}`}>
-                        {cat.imageUrl ? (
-                          <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
-                        ) : (
-                          <span className="text-sm font-black uppercase text-white">{cat.titleLine1.charAt(0)}</span>
-                        )}
+                    {/* Üst Önizleme: Hem Yuvarlak İkon Hem Dikdörtgen Katalog Kartı */}
+                    <div className="grid grid-cols-2 gap-3 p-2.5 bg-white rounded-xl border border-slate-200/80">
+                      {/* 1. Yuvarlak Önizleme */}
+                      <div className="flex flex-col items-center text-center">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                          Yuvarlak İkon
+                        </span>
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden shadow-sm ${cat.bgGradient || 'bg-slate-900 text-white'}`}>
+                          {cat.imageUrl ? (
+                            <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
+                          ) : (
+                            <span className="text-sm font-black uppercase text-white">{cat.titleLine1.charAt(0)}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1 leading-tight">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6600]">
-                          Canlı Önizleme
+
+                      {/* 2. Dikdörtgen Katalog Kartı Önizleme */}
+                      <div className="flex flex-col items-center text-center">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6600] mb-1">
+                          Katalog Kartı (Trendyol)
                         </span>
-                        <p className="text-xs font-black text-slate-900 truncate mt-0.5">
-                          {cat.titleLine1}
-                        </p>
-                        <p className="text-[11px] font-semibold text-slate-500 truncate">
-                          {cat.titleLine2}
-                        </p>
-                        <span className="inline-block mt-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 uppercase">
-                          id: {cat.id}
-                        </span>
+                        <div className="w-20 aspect-[3/4] rounded-xl overflow-hidden bg-slate-900 shadow-sm relative border border-slate-200">
+                          <img
+                            src={cat.cardImageUrl || cat.imageUrl || '/products/IMG_1141.jpeg'}
+                            alt={cat.titleLine1}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-1">
+                            <span className="text-[8px] font-black text-white truncate leading-tight">
+                              {cat.titleLine1}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Başlık Girişleri */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          1. Satır Başlık
-                        </label>
-                        <input
-                          type="text"
-                          value={cat.titleLine1}
-                          onChange={(e) => handleUpdateCategory(cat.id, 'titleLine1', e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#ff0055]"
-                        />
+                    {/* Başlık ve Alt Başlık Girişleri */}
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            1. Satır Başlık
+                          </label>
+                          <input
+                            type="text"
+                            value={cat.titleLine1}
+                            onChange={(e) => handleUpdateCategory(cat.id, 'titleLine1', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#ff0055]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            2. Satır Başlık
+                          </label>
+                          <input
+                            type="text"
+                            value={cat.titleLine2}
+                            onChange={(e) => handleUpdateCategory(cat.id, 'titleLine2', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#ff0055]"
+                          />
+                        </div>
                       </div>
 
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          2. Satır Başlık
+                          Katalog Kartı Açıklaması / Alt Başlık
                         </label>
                         <input
                           type="text"
-                          value={cat.titleLine2}
-                          onChange={(e) => handleUpdateCategory(cat.id, 'titleLine2', e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-bold focus:outline-none focus:border-[#ff0055]"
+                          value={cat.subtitle || ''}
+                          placeholder="Örn: Cam, Kaporta & Tampon Vinilleri"
+                          onChange={(e) => handleUpdateCategory(cat.id, 'subtitle', e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-medium focus:outline-none focus:border-[#ff0055]"
                         />
                       </div>
                     </div>
 
-                    {/* Fotoğraf Yükleme & Seçme */}
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1.5">
-                        Yuvarlak Fotoğrafı (Yükle veya URL Gir)
+                    {/* KATALOG DİKDÖRTGEN KART GÖRSELİ (Kullanıcı İsteği) */}
+                    <div className="pt-2 border-t border-slate-200/80">
+                      <label className="text-[11px] font-black text-slate-900 block mb-1.5 flex items-center justify-between">
+                        <span>🖼️ Katalog Dikdörtgen Kart Görseli</span>
+                        <span className="text-[10px] text-[#ff6600] font-bold">Trendyol Vitrini</span>
                       </label>
                       <div className="flex items-center gap-2 mb-2">
-                        <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 text-[#ff6600] border border-orange-200 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs active:scale-[0.98]">
+                        <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs active:scale-[0.98]">
                           <Upload size={14} />
-                          <span>Fotoğraf Yükle</span>
+                          <span>Kart Fotoğrafı Yükle</span>
                           <input
                             type="file"
                             accept="image/*"
                             className="hidden"
                             onChange={(e) => {
                               if (e.target.files?.[0]) {
-                                handleCategoryFileUpload(cat.id, e.target.files[0]);
+                                handleCategoryFileUpload(cat.id, e.target.files[0], 'cardImageUrl');
                               }
                             }}
                           />
                         </label>
 
-                        {cat.imageUrl && (
+                        {cat.cardImageUrl && (
                           <button
                             type="button"
                             onClick={() => {
-                              handleUpdateCategory(cat.id, 'imageUrl', '');
-                              showNotification('Fotoğraf kaldırıldı, varsayılan ikona dönüldü.');
+                              handleUpdateCategory(cat.id, 'cardImageUrl', '');
+                              showNotification('Dikdörtgen kart fotoğrafı kaldırıldı.');
                             }}
                             className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold cursor-pointer transition-colors"
                             title="Fotoğrafı Kaldır"
@@ -2465,9 +2570,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       <input
                         type="text"
-                        value={cat.imageUrl || ''}
+                        value={cat.cardImageUrl || ''}
                         placeholder="Veya URL girin (/products/... veya https://)"
-                        onChange={(e) => handleUpdateCategory(cat.id, 'imageUrl', e.target.value)}
+                        onChange={(e) => handleUpdateCategory(cat.id, 'cardImageUrl', e.target.value)}
                         className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-slate-200 text-xs font-medium focus:outline-none focus:border-[#ff0055]"
                       />
 
@@ -2477,13 +2582,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           value=""
                           onChange={(e) => {
                             if (e.target.value) {
-                              handleUpdateCategory(cat.id, 'imageUrl', e.target.value);
-                              showNotification(`"${cat.titleLine1}" için ürün görseli seçildi!`);
+                              handleUpdateCategory(cat.id, 'cardImageUrl', e.target.value);
+                              showNotification(`"${cat.titleLine1}" için kart görseli seçildi!`);
                             }
                           }}
                           className="w-full mt-1.5 px-2 py-1 bg-white rounded-lg border border-slate-200 text-[11px] text-slate-600 focus:outline-none cursor-pointer"
                         >
-                          <option value="">⚡ Mevcut ürün görsellerinden seç...</option>
+                          <option value="">⚡ Mevcut ürün fotoğraflarından kart görseli seç...</option>
                           {products.filter((p) => p.imageUrl).map((p) => (
                             <option key={p.id} value={p.imageUrl}>
                               {p.name} ({p.category})
@@ -2491,6 +2596,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           ))}
                         </select>
                       )}
+                    </div>
+
+                    {/* YUVARLAK İKON FOTOĞRAFI */}
+                    <div className="pt-2 border-t border-slate-200/80">
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        🔘 Yuvarlak İkon Fotoğrafı (Opsiyonel)
+                      </label>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <label className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer transition-colors">
+                          <Upload size={12} />
+                          <span>İkon Fotoğrafı Yükle</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files?.[0]) {
+                                handleCategoryFileUpload(cat.id, e.target.files[0], 'imageUrl');
+                              }
+                            }}
+                          />
+                        </label>
+                        {cat.imageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateCategory(cat.id, 'imageUrl', '');
+                              showNotification('İkon fotoğrafı kaldırıldı.');
+                            }}
+                            className="px-2 py-1.5 bg-slate-100 hover:bg-rose-50 text-rose-600 rounded-lg text-[11px] font-bold"
+                          >
+                            Kaldır
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={cat.imageUrl || ''}
+                        placeholder="İkon URL (/products/...)"
+                        onChange={(e) => handleUpdateCategory(cat.id, 'imageUrl', e.target.value)}
+                        className="w-full px-2.5 py-1 bg-white rounded-lg border border-slate-200 text-[11px] font-medium focus:outline-none"
+                      />
                     </div>
                   </div>
                 ))}
@@ -5022,22 +5169,105 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3.5 pb-1 border-t border-slate-100 bg-white sticky bottom-0 -mx-1 px-1">
-                <button
-                  type="button"
-                  onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors"
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#ff0055] hover:bg-rose-600 text-white text-xs font-black cursor-pointer shadow-md transition-all"
-                >
-                  {editingProduct ? 'Güncellemeleri Kaydet' : 'Ürünü Ekle'}
-                </button>
+              <div className="flex items-center justify-between gap-3 pt-3.5 pb-1 border-t border-slate-100 bg-white sticky bottom-0 -mx-1 px-1">
+                {editingProduct ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteProduct(editingProduct.id, editingProduct.name, editingProduct.imageUrl);
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 cursor-pointer transition-colors flex items-center gap-1.5"
+                    title="Bu ürünü kalıcı olarak sil"
+                  >
+                    <Trash2 size={14} />
+                    <span>Ürünü Sil</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-[#ff0055] hover:bg-rose-600 text-white text-xs font-black cursor-pointer shadow-md transition-all"
+                  >
+                    {editingProduct ? 'Güncellemeleri Kaydet' : 'Ürünü Ekle'}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ÖZEL SİLME / AKSİYON ONAY MODALI */}
+      {/* ========================================================= */}
+      {confirmDialog && confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-100 shadow-inner">
+                <Trash2 size={26} />
+              </div>
+
+              <h3 className="text-lg font-black text-slate-900 mb-1.5">
+                {confirmDialog.title}
+              </h3>
+
+              {confirmDialog.targetName && (
+                <div className="flex items-center justify-center gap-3 my-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 max-w-sm mx-auto">
+                  {confirmDialog.imageUrl ? (
+                    <img
+                      src={confirmDialog.imageUrl}
+                      alt={confirmDialog.targetName}
+                      className="w-10 h-10 object-cover rounded-lg border border-slate-200 bg-white shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                      <Package size={18} />
+                    </div>
+                  )}
+                  <span className="font-extrabold text-xs sm:text-sm text-slate-800 line-clamp-2 text-left">
+                    {confirmDialog.targetName}
+                  </span>
+                </div>
+              )}
+
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                {confirmDialog.description}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-slate-50/80 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isConfirmLoading}
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/70 cursor-pointer transition-colors"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                disabled={isConfirmLoading}
+                onClick={async () => {
+                  if (confirmDialog.onConfirm) {
+                    await confirmDialog.onConfirm();
+                  }
+                }}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black cursor-pointer shadow-md shadow-rose-600/20 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {isConfirmLoading && <Loader2 size={14} className="animate-spin" />}
+                <span>{confirmDialog.confirmText || 'Evet, Sil'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
