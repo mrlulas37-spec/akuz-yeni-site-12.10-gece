@@ -39,9 +39,64 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
 } catch (PDOException $e) {
-    // If running in standalone or dev without active local MySQL, provide null instead of fatal crash
-    $db = null;
-    error_log("[MySQL Connection Error] " . $e->getMessage());
+    if ($host === 'localhost') {
+        try {
+            $db = new PDO("mysql:host=127.0.0.1;dbname=$dbname;charset=utf8mb4", $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ]);
+        } catch (PDOException $e2) {
+            $db = null;
+            error_log("[MySQL Connection Error] " . $e2->getMessage());
+        }
+    } else {
+        $db = null;
+        error_log("[MySQL Connection Error] " . $e->getMessage());
+    }
+}
+
+// MySQL veritabanı tablolarının ve sütunlarının varlığını anında garantile
+if ($db) {
+    try {
+        $uCols = $db->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('cart', $uCols)) @$db->exec("ALTER TABLE users ADD COLUMN cart LONGTEXT NULL");
+        if (!in_array('favorites', $uCols)) @$db->exec("ALTER TABLE users ADD COLUMN favorites TEXT NULL");
+        if (!in_array('addresses', $uCols)) @$db->exec("ALTER TABLE users ADD COLUMN addresses TEXT NULL");
+        if (!in_array('address', $uCols)) @$db->exec("ALTER TABLE users ADD COLUMN address TEXT NULL");
+        if (!in_array('phone', $uCols)) @$db->exec("ALTER TABLE users ADD COLUMN phone VARCHAR(50) NULL");
+        if (!in_array('auth_provider', $uCols)) @$db->exec("ALTER TABLE users ADD COLUMN auth_provider VARCHAR(50) DEFAULT 'local'");
+    } catch (Exception $e) {
+        error_log("[MySQL Users Table Upgrade Error] " . $e->getMessage());
+    }
+
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS cart (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(191) NOT NULL,
+            product_id VARCHAR(191) NOT NULL,
+            quantity INT DEFAULT 1,
+            color VARCHAR(100) NULL,
+            dimension VARCHAR(100) NULL,
+            finish VARCHAR(50) NULL,
+            custom_text TEXT NULL,
+            custom_font VARCHAR(100) NULL,
+            calculated_price DECIMAL(10,2) NULL,
+            item_data LONGTEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY user_idx (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } catch (Exception $e) {}
+
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS favorites (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(191) NOT NULL,
+            product_id VARCHAR(191) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY user_prod_idx (user_id, product_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } catch (Exception $e) {}
 }
 
 /**
@@ -49,7 +104,7 @@ try {
  * Tablo veya sütunlar eksikse otomatik olarak güvenle oluşturur/uyarlar.
  * 
  * @param PDO|null $db
- * @param array $data ['email', 'fullname'|'name', 'phone', 'addresses', 'address', 'password']
+ * @param array $data ['email', 'fullname'|'name', 'phone', 'addresses', 'address', 'password', 'cart', 'favorites']
  * @return bool
  */
 function syncUserToMysql($db, $data) {
@@ -63,6 +118,8 @@ function syncUserToMysql($db, $data) {
     $password = $data['password'] ?? null;
     $addresses = $data['addresses'] ?? null;
     $address = trim($data['address'] ?? '');
+    $cart = $data['cart'] ?? null;
+    $favorites = $data['favorites'] ?? null;
 
     // Eğer adresler dizisi verilmiş ve tek satırlık address boşsa, birincil adresten üret
     if (is_array($addresses) && !empty($addresses) && empty($address)) {
@@ -102,7 +159,7 @@ function syncUserToMysql($db, $data) {
         }
 
         // 2. Kullanıcı veritabanında var mı kontrol et
-        $check = $db->prepare("SELECT id, password FROM users WHERE email = ?");
+        $check = $db->prepare("SELECT id, password FROM users WHERE LOWER(email) = ?");
         $check->execute([$email]);
         $existingUser = $check->fetch(PDO::FETCH_ASSOC);
 
@@ -146,6 +203,18 @@ function syncUserToMysql($db, $data) {
                 $insertCols[] = 'address';
                 $insertPlaceholders[] = '?';
                 $insertValues[] = $address;
+            }
+
+            if (in_array('cart', $existingCols) && $cart !== null) {
+                $insertCols[] = 'cart';
+                $insertPlaceholders[] = '?';
+                $insertValues[] = is_string($cart) ? $cart : json_encode($cart, JSON_UNESCAPED_UNICODE);
+            }
+
+            if (in_array('favorites', $existingCols) && $favorites !== null) {
+                $insertCols[] = 'favorites';
+                $insertPlaceholders[] = '?';
+                $insertValues[] = is_string($favorites) ? $favorites : json_encode($favorites, JSON_UNESCAPED_UNICODE);
             }
 
             $sql = "INSERT INTO users (" . implode(', ', $insertCols) . ") VALUES (" . implode(', ', $insertPlaceholders) . ")";
@@ -197,13 +266,27 @@ function syncUserToMysql($db, $data) {
             }
         }
 
+        if ($cart !== null) {
+            if (in_array('cart', $existingCols)) {
+                $setClauses[] = "cart = ?";
+                $params[] = is_string($cart) ? $cart : json_encode($cart, JSON_UNESCAPED_UNICODE);
+            }
+        }
+
+        if ($favorites !== null) {
+            if (in_array('favorites', $existingCols)) {
+                $setClauses[] = "favorites = ?";
+                $params[] = is_string($favorites) ? $favorites : json_encode($favorites, JSON_UNESCAPED_UNICODE);
+            }
+        }
+
         if (in_array('updated_at', $existingCols)) {
             $setClauses[] = "updated_at = NOW()";
         }
 
         if (!empty($setClauses)) {
             $params[] = $email;
-            $sql = "UPDATE users SET " . implode(', ', $setClauses) . " WHERE email = ?";
+            $sql = "UPDATE users SET " . implode(', ', $setClauses) . " WHERE LOWER(email) = ?";
             $updStmt = $db->prepare($sql);
             $updStmt->execute($params);
         }

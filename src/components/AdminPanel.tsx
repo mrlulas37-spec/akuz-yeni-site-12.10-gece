@@ -49,6 +49,8 @@ import {
   Lock,
   Camera,
   Loader2,
+  ShoppingCart,
+  Heart,
 } from 'lucide-react';
 import {
   Product,
@@ -2798,6 +2800,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <th className="py-3 px-4">Kullanıcı</th>
                         <th className="py-3 px-4">E-posta</th>
                         <th className="py-3 px-4">Telefon</th>
+                        <th className="py-3 px-4">Aktif Sepet</th>
+                        <th className="py-3 px-4">Favoriler</th>
                         <th className="py-3 px-4">Kayıtlı Adresler</th>
                         <th className="py-3 px-4">Kayıt Tarihi</th>
                         <th className="py-3 px-4 text-right">İşlem</th>
@@ -2816,6 +2820,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </td>
                           <td className="py-3 px-4 text-slate-700 font-semibold">{u.email}</td>
                           <td className="py-3 px-4 text-slate-600">{u.phone || 'Girilmedi'}</td>
+                          <td className="py-3 px-4 text-slate-600">
+                            {u.cart && u.cart.length > 0 ? (
+                              <div className="space-y-1">
+                                <span className="px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-bold text-xs inline-flex items-center gap-1">
+                                  <ShoppingCart size={11} className="text-amber-600" />
+                                  {u.cart.length} Ürün Sepette
+                                </span>
+                                <p className="text-[10px] text-slate-500 font-medium max-w-xs truncate" title={u.cart.map((it: any) => it.product?.name || it.name || 'Sticker').join(', ')}>
+                                  {u.cart.map((it: any) => it.product?.name || it.name || 'Sticker').slice(0, 2).join(', ')}{u.cart.length > 2 ? '...' : ''}
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-xs">Sepet Boş</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">
+                            {u.favorites && u.favorites.length > 0 ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-bold text-xs inline-flex items-center gap-1">
+                                <Heart size={11} className="text-rose-500 fill-rose-500" />
+                                {u.favorites.length} Ürün Favoride
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs">Favori Yok</span>
+                            )}
+                          </td>
                           <td className="py-3 px-4 text-slate-600">
                             {u.addresses && u.addresses.length > 0 ? (
                               <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-xs">

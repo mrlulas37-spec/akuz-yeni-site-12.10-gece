@@ -24,9 +24,11 @@ $email    = strtolower(trim($data['email'] ?? ($_GET['email'] ?? '')));
 $password = trim($data['password'] ?? $data['pass'] ?? '');
 $addresses = $data['addresses'] ?? null;
 $address  = trim($data['address'] ?? '');
+$cart     = $data['cart'] ?? null;
+$favorites = $data['favorites'] ?? null;
 
-// 1. PROFİL GÜNCELLEME (İsim, Telefon, Adresler) - Hesaptaki tüm değişiklikler anında MySQL'e yazılır
-if ($action === 'update_profile' || $action === 'update' || $action === 'save_profile' || (!empty($fullname) && !empty($email) && empty($password) && ($addresses !== null || !empty($phone)))) {
+// 1. PROFİL GÜNCELLEME (İsim, Telefon, Adresler, Sepet, Favoriler) - Hesaptaki tüm değişiklikler anında MySQL'e yazılır
+if ($action === 'update_profile' || $action === 'update' || $action === 'save_profile' || $cart !== null || $favorites !== null || (!empty($fullname) && !empty($email) && empty($password) && ($addresses !== null || !empty($phone)))) {
     if (empty($email)) {
         echo json_encode(["status" => "error", "message" => "E-posta adresi eksik."]);
         exit;
@@ -38,6 +40,8 @@ if ($action === 'update_profile' || $action === 'update' || $action === 'save_pr
         'phone' => $phone,
         'addresses' => $addresses,
         'address' => $address,
+        'cart' => $cart,
+        'favorites' => $favorites,
     ]);
 
     // Ayrıca data_storage/users.json dosyasını da senkronize tut
@@ -51,6 +55,8 @@ if ($action === 'update_profile' || $action === 'update' || $action === 'save_pr
                 if (!empty($fullname)) $jsonUsers[$k]['name'] = $fullname;
                 if (!empty($phone)) $jsonUsers[$k]['phone'] = $phone;
                 if ($addresses !== null) $jsonUsers[$k]['addresses'] = $addresses;
+                if ($cart !== null) $jsonUsers[$k]['cart'] = $cart;
+                if ($favorites !== null) $jsonUsers[$k]['favorites'] = $favorites;
                 break;
             }
         }
@@ -161,7 +167,7 @@ if ($action === 'register' || (!empty($fullname) && !empty($password) && !empty(
 // 4. GİRİŞ İŞLEMİ
 if ($action === 'login' || (!empty($email) && !empty($password))) {
     if ($db) {
-        $stmt = $db->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ?");
         $stmt->execute([$email]);
         $user = $stmt->fetch();
 
@@ -181,6 +187,18 @@ if ($action === 'login' || (!empty($email) && !empty($password))) {
                 ]];
             }
 
+            $userCart = [];
+            if (!empty($user['cart'])) {
+                $decodedCart = is_string($user['cart']) ? json_decode($user['cart'], true) : $user['cart'];
+                if (is_array($decodedCart)) $userCart = $decodedCart;
+            }
+
+            $userFavs = [];
+            if (!empty($user['favorites'])) {
+                $decodedFavs = is_string($user['favorites']) ? json_decode($user['favorites'], true) : $user['favorites'];
+                if (is_array($decodedFavs)) $userFavs = $decodedFavs;
+            }
+
             echo json_encode([
                 "status" => "success",
                 "success" => true,
@@ -192,6 +210,8 @@ if ($action === 'login' || (!empty($email) && !empty($password))) {
                     "email" => $user['email'],
                     "phone" => $user['phone'] ?? '',
                     "addresses" => $userAddresses,
+                    "cart" => $userCart,
+                    "favorites" => $userFavs,
                 ]
             ]);
             exit;

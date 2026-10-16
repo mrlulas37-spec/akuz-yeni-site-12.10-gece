@@ -1,0 +1,14 @@
+{
+  "test_mert": [],
+  "test@akuz.com": [
+    {
+      "product": {
+        "id": "ataturk-imza",
+        "name": "Atatürk İmzası"
+      },
+      "quantity": 1,
+      "selectedColor": "Beyaz"
+    }
+  ],
+  "testuser@example.com": []
+}

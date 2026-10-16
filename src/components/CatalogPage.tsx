@@ -3,12 +3,10 @@ import {
   ChevronDown,
   SlidersHorizontal,
   ArrowUpDown,
-  Filter,
   Eye,
   Heart,
   ShoppingBag,
   X,
-  ArrowLeft,
   Layers,
   Sparkles,
 } from 'lucide-react';
@@ -63,13 +61,11 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
   onGoHome,
 }) => {
   const [currentSort, setCurrentSort] = useState<SortOption>('default');
-  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
 
   // Close dropdowns on outside click
   React.useEffect(() => {
     const handleOutside = () => {
-      setIsCategoryOpen(false);
       setIsSortOpen(false);
     };
     window.addEventListener('click', handleOutside);
@@ -211,7 +207,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
       {/* Breadcrumb & Navigation Bar */}
       <div className="bg-white border-b border-slate-200/80 sticky top-16 md:top-20 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center justify-between text-xs text-slate-500">
+          <div className="flex items-center text-xs text-slate-500">
             <div className="flex items-center gap-2">
               <button
                 onClick={onGoHome}
@@ -235,10 +231,6 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                 </>
               )}
             </div>
-
-            <span className="font-mono text-xs font-semibold text-slate-600">
-              {displayedProducts.length} Ürün Listelendi
-            </span>
           </div>
         </div>
       </div>
@@ -250,124 +242,54 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         categoriesConfig={categoriesConfig}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 sm:pt-3">
         {/* Title & Filter Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 pb-2.5 sm:pb-3 border-b border-slate-200">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
                 {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG & KATEGORİLER'}
               </h1>
-              {selectedCategory !== 'all' ? (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#ff6600] text-white shadow-2xs">
-                  {displayedProducts.length} Ürün
-                </span>
-              ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-900 text-white shadow-2xs">
+              {selectedCategory === 'all' && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-900 text-white shadow-2xs">
                   {showcaseCategories.length} Kategori
                 </span>
               )}
             </div>
-            {selectedCategory !== 'all' ? (
-              <p className="text-xs text-slate-500 font-medium mt-1">
-                Sadece seçilen kategorinin ürünleri gösteriliyor
-              </p>
-            ) : (
-              <p className="text-xs text-slate-500 font-medium mt-1">
+            {selectedCategory === 'all' && (
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
                 İncelemek istediğiniz kategoriyi seçebilir veya tüm ürünleri listeleyebilirsiniz
               </p>
             )}
           </div>
 
-          {/* SADE FİLTRELEME & SIRALAMA KUTULARI */}
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-            {selectedCategory !== 'all' && (
-              <button
-                type="button"
-                onClick={() => onSelectCategory('all')}
-                className="px-3 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
-                title="Tüm Kategorilere Dön"
-              >
-                <ArrowLeft size={14} />
-                <span>Kategorilere Dön</span>
-              </button>
-            )}
-            {/* 1. KATEGORİ KUTUSU (Dropdown) */}
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCategoryOpen(!isCategoryOpen);
-                  setIsSortOpen(false);
-                }}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
-                  isCategoryOpen || selectedCategory !== 'all'
-                    ? 'border-[#ff6600] bg-orange-50/60 text-[#ff6600]'
-                    : 'border-slate-300 bg-white hover:border-slate-400 text-slate-800'
-                }`}
-              >
-                <Filter size={15} className={selectedCategory !== 'all' ? 'text-[#ff6600]' : 'text-slate-500'} />
-                <span>Kategori: <strong>{activeCategoryLabel}</strong></span>
-                <ChevronDown
-                  size={15}
-                  className={`transition-transform duration-200 ${isCategoryOpen ? 'rotate-180 text-[#ff6600]' : 'text-slate-400'}`}
-                />
-              </button>
-
-              {/* Kategori Açılır Menü */}
-              {isCategoryOpen && (
-                <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-3 py-1.5 text-[11px] font-black uppercase text-slate-400 tracking-wider">
-                    Kategori Seçin
-                  </div>
-                  {CATEGORY_LIST.map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => {
-                        onSelectCategory(cat.id);
-                        setIsCategoryOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                        selectedCategory === cat.id
-                          ? 'bg-[#ff6600] text-white font-bold'
-                          : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
-                      }`}
-                    >
-                      <span>{cat.label}</span>
-                      {selectedCategory === cat.id && <span className="text-xs">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 2. SIRALAMA KUTUSU (Dropdown - Artan Fiyat, Azalan Fiyat vs.) */}
+          {/* SADE SIRALAMA KUTUSU & SIFIRLA (Kullanıcı İsteği: Kategori Seçme Kısmı Silindi, Sıralama Sol Yukarıya Hizalandı) */}
+          <div className="flex flex-wrap items-center justify-start gap-1.5 sm:gap-2 -mt-0.5 sm:mt-0">
+            {/* SIRALAMA KUTUSU (Dropdown - %30 Daha Kompakt) */}
             <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={() => {
                   setIsSortOpen(!isSortOpen);
-                  setIsCategoryOpen(false);
                 }}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-[11px] sm:text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
                   isSortOpen || currentSort !== 'default'
-                    ? 'border-[#ff6600] bg-orange-50/60 text-[#ff6600]'
-                    : 'border-slate-300 bg-white hover:border-slate-400 text-slate-800'
+                    ? 'border-[#ff6600] bg-orange-50/70 text-[#ff6600]'
+                    : 'border-slate-300 bg-white hover:border-slate-400 text-slate-700'
                 }`}
               >
-                <ArrowUpDown size={15} className={currentSort !== 'default' ? 'text-[#ff6600]' : 'text-slate-500'} />
-                <span>Sırala: <strong>{activeSortLabel}</strong></span>
+                <ArrowUpDown size={13} className={currentSort !== 'default' ? 'text-[#ff6600]' : 'text-slate-500'} />
+                <span>Sırala: <strong className="font-bold">{activeSortLabel}</strong></span>
                 <ChevronDown
-                  size={15}
+                  size={13}
                   className={`transition-transform duration-200 ${isSortOpen ? 'rotate-180 text-[#ff6600]' : 'text-slate-400'}`}
                 />
               </button>
 
               {/* Sıralama Açılır Menü */}
               {isSortOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-3 py-1.5 text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-1.5 w-56 bg-white rounded-xl border border-slate-200 shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1 text-[10px] font-black uppercase text-slate-400 tracking-wider">
                     Sıralama Ölçütü
                   </div>
                   {SORT_OPTIONS.map((sort) => (
@@ -378,7 +300,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
                         setCurrentSort(sort.id);
                         setIsSortOpen(false);
                       }}
-                      className={`w-full text-left px-4 py-2.5 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                      className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                         currentSort === sort.id
                           ? 'bg-[#ff6600] text-white font-bold'
                           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
@@ -392,19 +314,18 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
               )}
             </div>
 
-            {/* Aktif Filtre Temizle (Varsa) */}
-            {(selectedCategory !== 'all' || currentSort !== 'default' || searchQuery) && (
+            {/* Aktif Sıralama / Arama Temizle (Varsa) */}
+            {(currentSort !== 'default' || Boolean(searchQuery.trim())) && (
               <button
                 type="button"
                 onClick={() => {
-                  onSelectCategory('all');
                   setCurrentSort('default');
                   onSearchChange('');
                 }}
-                className="flex items-center gap-1 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-[#ff6600] bg-slate-200/60 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
-                title="Filtreleri Sıfırla"
+                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] sm:text-xs font-semibold text-slate-500 hover:text-[#ff6600] bg-slate-200/60 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
+                title="Sıralama ve Aramayı Sıfırla"
               >
-                <X size={14} />
+                <X size={12} />
                 <span>Sıfırla</span>
               </button>
             )}
@@ -489,20 +410,6 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
           </div>
         )}
 
-        {/* KATEGORİ İÇİNDEYKEN: KATEGORİLERE GERİ DÖN BUTONU */}
-        {selectedCategory !== 'all' && (
-          <div className="mt-4 mb-6">
-            <button
-              type="button"
-              onClick={() => onSelectCategory('all')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:border-[#ff6600] hover:text-[#ff6600] text-xs font-bold text-slate-700 transition-all shadow-xs cursor-pointer group"
-            >
-              <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform text-[#ff6600]" />
-              <span>← Tüm Kategorilere Dön (Kategori Vitrini)</span>
-            </button>
-          </div>
-        )}
-
         {/* ÜRÜN IZGARASI (GRID) */}
         {displayedProducts.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 mt-6 shadow-xs">
@@ -513,17 +420,8 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
               Bu Kriterde Ürün Bulunamadı
             </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Seçilen kategori veya arama teriminde henüz eklenmiş ürün yok. Diğer kategorilere göz atabilirsiniz.
+              Seçilen kategori veya arama teriminde henüz eklenmiş ürün bulunmuyor.
             </p>
-            <button
-              onClick={() => {
-                onSelectCategory('all');
-                onSearchChange('');
-              }}
-              className="mt-5 px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md"
-            >
-              Tüm Kataloğu Görüntüle
-            </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 md:gap-5 mt-4">

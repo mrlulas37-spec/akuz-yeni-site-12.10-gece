@@ -13,12 +13,18 @@ DirectoryIndex index.php index.html
   RewriteCond %{REQUEST_URI} ^/(index\.html|index\.php|odeme|checkout|sepete-git|cart)?/?$
   RewriteRule ^(.*)$ paytr-callback.php [QSA,L]
 
-  # 3. Var olan dosya veya klasörler doğrudan açılsın (api/auth.php, api/google_auth.php, api/cart.php, resimler, css, js)
+  # 3. Cart, Favorites ve Auth .php uzantısız isteklerini doğrudan ilgili PHP motoruna yönlendir
+  RewriteRule ^api/cart/?$ api/cart.php [QSA,L]
+  RewriteRule ^api/favorites/?$ api/favorites.php [QSA,L]
+  RewriteRule ^api/auth/?$ api/auth.php [QSA,L]
+  RewriteRule ^api/google_auth/?$ api/google_auth.php [QSA,L]
+
+  # 4. Var olan dosya veya klasörler doğrudan açılsın (api/auth.php, api/google_auth.php, api/cart.php, resimler, css, js)
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 4. Diğer cPanel API İsteklerini PHP motoruna yönlendir (api/products, api/settings vb.)
+  # 5. Diğer cPanel API İsteklerini PHP motoruna yönlendir (api/products, api/settings vb.)
   RewriteRule ^api/(.*)$ api/index.php [QSA,L]
 
   # 5. Kalan tüm sayfaları React SPA index.html'e yönlendir (404 hatasını önler)

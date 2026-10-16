@@ -176,12 +176,46 @@ export const saveUserSavedState = (
     saveRegisteredUsers(users);
   }
 
-  // Sunucuya da arka planda gönder (/api/cart.php)
+  // Sunucuya da arka planda gönder (/api/cart.php ve /api/favorites.php - MySQL ve sunucu senkronizasyonu)
   try {
     fetch(API_CART_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: cleanEmail, cart, favorites, recentlyViewed }),
+      body: JSON.stringify({
+        action: 'sync',
+        userId: cleanEmail,
+        user_id: cleanEmail,
+        email: cleanEmail,
+        cart,
+        items: cart,
+        favorites,
+        recentlyViewed,
+      }),
+    }).catch(() => {});
+
+    fetch('/api/favorites.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'sync',
+        userId: cleanEmail,
+        user_id: cleanEmail,
+        email: cleanEmail,
+        favorites,
+        items: favorites,
+      }),
+    }).catch(() => {});
+
+    // MySQL users tablosundaki cart ve favorites sütunlarını da anında senkronize et
+    fetch(API_AUTH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update_profile',
+        email: cleanEmail,
+        cart,
+        favorites,
+      }),
     }).catch(() => {});
   } catch {}
 };

@@ -245,6 +245,22 @@ if ($route === 'upload' || $route === 'upload-image') {
     exit;
 }
 
+// 2b. CART (Sepet senkronizasyonu - MySQL ve JSON)
+if ($route === 'cart' || $route === 'cart.php' || strpos($route, 'cart') === 0) {
+    if (file_exists(__DIR__ . '/cart.php')) {
+        require __DIR__ . '/cart.php';
+        exit;
+    }
+}
+
+// 2c. FAVORITES (Favori senkronizasyonu - MySQL ve JSON)
+if ($route === 'favorites' || $route === 'favorites.php' || strpos($route, 'favorites') === 0) {
+    if (file_exists(__DIR__ . '/favorites.php')) {
+        require __DIR__ . '/favorites.php';
+        exit;
+    }
+}
+
 // 3. PRODUCTS
 if ($route === 'products' || preg_match('#^products/#', $route)) {
     $prodFile = $dataDir . '/products.json';

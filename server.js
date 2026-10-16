@@ -5,30 +5,229 @@ import fs from "fs";
 import crypto from "crypto";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
+import mysql from "mysql2/promise";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, "data_storage");
+const BACKUPS_DIR = path.resolve(DATA_DIR, "backups");
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(BACKUPS_DIR)) {
+  fs.mkdirSync(BACKUPS_DIR, { recursive: true });
 }
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const CARTS_FILE = path.join(DATA_DIR, "carts.json");
+const FAVORITES_FILE = path.join(DATA_DIR, "favorites.json");
 const GOOGLE_CREDENTIALS_FILE = path.join(DATA_DIR, "google_credentials.json");
-function readJsonFile(filePath, fallback) {
+const MYSQL_CONFIG = {
+  host: process.env.DB_HOST || process.env.MYSQL_HOST || "localhost",
+  user: process.env.DB_USER || process.env.MYSQL_USER || "akuzstic_data",
+  password: process.env.DB_PASS || process.env.MYSQL_PASSWORD || "Mert830801?",
+  database: process.env.DB_NAME || process.env.MYSQL_DATABASE || "akuzstic_data",
+  waitForConnections: true,
+  connectionLimit: 5,
+  connectTimeout: 4e3
+};
+let mysqlPool = null;
+try {
+  mysqlPool = mysql.createPool(MYSQL_CONFIG);
+} catch (e) {
+  console.warn("[MYSQL POOL INIT WARN]", e);
+}
+async function ensureMysqlSchema() {
+  if (!mysqlPool) return;
   try {
-    if (!fs.existsSync(filePath)) return fallback;
-    const raw = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(raw);
+    const conn = await mysqlPool.getConnection();
+    try {
+      const [cols] = await conn.query("SHOW COLUMNS FROM users").catch(() => [[]]);
+      const colNames = Array.isArray(cols) ? cols.map((c) => c.Field) : [];
+      if (colNames.length > 0) {
+        if (!colNames.includes("cart")) {
+          await conn.query("ALTER TABLE users ADD COLUMN cart LONGTEXT NULL").catch(() => {
+          });
+        }
+        if (!colNames.includes("favorites")) {
+          await conn.query("ALTER TABLE users ADD COLUMN favorites TEXT NULL").catch(() => {
+          });
+        }
+        if (!colNames.includes("addresses")) {
+          await conn.query("ALTER TABLE users ADD COLUMN addresses TEXT NULL").catch(() => {
+          });
+        }
+        if (!colNames.includes("phone")) {
+          await conn.query("ALTER TABLE users ADD COLUMN phone VARCHAR(50) NULL").catch(() => {
+          });
+        }
+      }
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS cart (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id VARCHAR(191) NOT NULL,
+          product_id VARCHAR(191) NOT NULL,
+          quantity INT DEFAULT 1,
+          color VARCHAR(100) NULL,
+          dimension VARCHAR(100) NULL,
+          finish VARCHAR(50) NULL,
+          custom_text TEXT NULL,
+          custom_font VARCHAR(100) NULL,
+          calculated_price DECIMAL(10,2) NULL,
+          item_data LONGTEXT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          KEY user_idx (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `).catch(() => {
+      });
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS favorites (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id VARCHAR(191) NOT NULL,
+          product_id VARCHAR(191) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY user_prod_idx (user_id, product_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `).catch(() => {
+      });
+    } finally {
+      conn.release();
+    }
   } catch (err) {
-    console.error(`[DATA READ ERROR] ${filePath}:`, err);
-    return fallback;
+    console.warn("[MYSQL SCHEMA INIT NOTE] cPanel MySQL ba\u011Flant\u0131s\u0131 dev ortam\u0131nda pasif veya cPanel sunucusunda aktif.");
   }
+}
+ensureMysqlSchema();
+async function syncMysqlCart(email, userId, cartItems) {
+  if (!mysqlPool) return;
+  try {
+    const conn = await mysqlPool.getConnection();
+    try {
+      const jsonStr = JSON.stringify(cartItems);
+      if (email) {
+        await conn.query("UPDATE users SET cart = ? WHERE LOWER(email) = ?", [jsonStr, email.toLowerCase()]).catch(() => {
+        });
+      }
+      if (userId && userId !== email) {
+        await conn.query("UPDATE users SET cart = ? WHERE LOWER(email) = ? OR id = ?", [jsonStr, userId.toLowerCase(), userId]).catch(() => {
+        });
+      }
+      const targetId = email || userId;
+      if (targetId) {
+        await conn.query("DELETE FROM cart WHERE user_id = ? OR user_id = ?", [targetId, userId]).catch(() => {
+        });
+        for (const it of cartItems) {
+          const pId = String(it.product?.id || it.productId || it.product_id || "prod");
+          const qty = Number(it.quantity) || 1;
+          const color = String(it.selectedColor || it.color || "");
+          const dim = String(it.selectedDimension || it.dimension || "");
+          const finish = String(it.selectedFinish || it.finish || "");
+          const cText = String(it.customText || it.custom_text || "");
+          const cFont = String(it.customFont || it.custom_font || "");
+          const price = Number(it.calculatedPrice || it.price || 0);
+          const itemJson = JSON.stringify(it);
+          await conn.query(
+            "INSERT INTO cart (user_id, product_id, quantity, color, dimension, finish, custom_text, custom_font, calculated_price, item_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [targetId, pId, qty, color, dim, finish, cText, cFont, price, itemJson]
+          ).catch(() => {
+          });
+        }
+      }
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+  }
+}
+async function syncMysqlFavorites(email, userId, favs) {
+  if (!mysqlPool) return;
+  try {
+    const conn = await mysqlPool.getConnection();
+    try {
+      const jsonStr = JSON.stringify(favs);
+      if (email) {
+        await conn.query("UPDATE users SET favorites = ? WHERE LOWER(email) = ?", [jsonStr, email.toLowerCase()]).catch(() => {
+        });
+      }
+      if (userId && userId !== email) {
+        await conn.query("UPDATE users SET favorites = ? WHERE LOWER(email) = ? OR id = ?", [jsonStr, userId.toLowerCase(), userId]).catch(() => {
+        });
+      }
+      const targetId = email || userId;
+      if (targetId) {
+        await conn.query("DELETE FROM favorites WHERE user_id = ? OR user_id = ?", [targetId, userId]).catch(() => {
+        });
+        for (const fId of favs) {
+          const cleanId = String(fId).trim();
+          if (cleanId) {
+            await conn.query("INSERT IGNORE INTO favorites (user_id, product_id) VALUES (?, ?)", [targetId, cleanId]).catch(() => {
+            });
+          }
+        }
+      }
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+  }
+}
+function readJsonFile(filePath, fallback) {
+  const backupPath = filePath + ".bak";
+  const fileName = path.basename(filePath);
+  const archiveBackupPath = path.join(BACKUPS_DIR, `${fileName}.bak`);
+  try {
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      if (raw && raw.trim().length > 0) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch (err) {
+    console.warn(`[DATA READ WARN] ${filePath} bozuk veya okunamad\u0131, yedek deneniyor:`, err);
+  }
+  try {
+    if (fs.existsSync(backupPath)) {
+      const rawBackup = fs.readFileSync(backupPath, "utf-8");
+      if (rawBackup && rawBackup.trim().length > 0) {
+        const parsed = JSON.parse(rawBackup);
+        fs.writeFileSync(filePath, rawBackup, "utf-8");
+        console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmi\u015Fti, .bak yede\u011Finden ba\u015Far\u0131yla geri y\xFCklendi.`);
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn(`[DATA RESTORE WARN] ${backupPath} okunamad\u0131:`, err);
+  }
+  try {
+    if (fs.existsSync(archiveBackupPath)) {
+      const rawArchive = fs.readFileSync(archiveBackupPath, "utf-8");
+      if (rawArchive && rawArchive.trim().length > 0) {
+        const parsed = JSON.parse(rawArchive);
+        fs.writeFileSync(filePath, rawArchive, "utf-8");
+        console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmi\u015Fti, archive yede\u011Finden ba\u015Far\u0131yla geri y\xFCklendi.`);
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn(`[DATA RESTORE WARN] ${archiveBackupPath} okunamad\u0131:`, err);
+  }
+  return fallback;
 }
 function writeJsonFile(filePath, data) {
   try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    const serialized = JSON.stringify(data, null, 2);
+    fs.writeFileSync(filePath, serialized, "utf-8");
+    try {
+      fs.writeFileSync(filePath + ".bak", serialized, "utf-8");
+    } catch {
+    }
+    try {
+      const fileName = path.basename(filePath);
+      fs.writeFileSync(path.join(BACKUPS_DIR, `${fileName}.bak`), serialized, "utf-8");
+    } catch {
+    }
   } catch (err) {
     console.error(`[DATA WRITE ERROR] ${filePath}:`, err);
   }
@@ -38,6 +237,12 @@ function hashPassword(password) {
 }
 if (!fs.existsSync(USERS_FILE)) {
   writeJsonFile(USERS_FILE, []);
+}
+if (!fs.existsSync(CARTS_FILE)) {
+  writeJsonFile(CARTS_FILE, {});
+}
+if (!fs.existsSync(FAVORITES_FILE)) {
+  writeJsonFile(FAVORITES_FILE, {});
 }
 async function startServer() {
   const app = express();
@@ -627,10 +832,13 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
-  app.post(["/api/auth.php", "/auth.php"], (req, res) => {
+  app.post(["/api/auth.php", "/auth.php"], (req, res, next) => {
     try {
       const { action, email, password, full_name, name, phone, address } = req.body;
       const cleanEmail = (email || "").trim().toLowerCase();
+      if (action !== "register" && action !== "login" && action !== "google") {
+        return next();
+      }
       if (action === "register") {
         const cleanName = (full_name || name || "").trim();
         if (!cleanName) return res.status(400).json({ success: false, error: "L\xFCtfen Ad ve Soyad\u0131n\u0131z\u0131 girin." });
@@ -660,7 +868,9 @@ async function startServer() {
           phone: phone || "",
           address: address || "",
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          addresses
+          addresses,
+          cart: [],
+          favorites: []
         };
         users.push(newAccount);
         writeJsonFile(USERS_FILE, users);
@@ -673,7 +883,9 @@ async function startServer() {
             email: cleanEmail,
             phone: phone || "",
             address: address || "",
-            addresses
+            addresses,
+            cart: [],
+            favorites: []
           }
         });
       }
@@ -702,7 +914,9 @@ async function startServer() {
             email: account.email,
             phone: account.phone || "",
             address: account.address || (account.addresses?.[0]?.fullAddress || ""),
-            addresses: account.addresses || []
+            addresses: account.addresses || [],
+            cart: account.cart || [],
+            favorites: account.favorites || []
           }
         });
       }
@@ -1106,40 +1320,183 @@ async function startServer() {
   });
   app.all(["/api/cart.php", "/cart.php", "/api/user/sync-data", "/api/cart"], (req, res) => {
     try {
+      const allCarts = readJsonFile(CARTS_FILE, {});
+      const allFavs = readJsonFile(FAVORITES_FILE, {});
+      const users = readJsonFile(USERS_FILE, []);
       if (req.method === "GET") {
-        const cleanEmail2 = (req.query.email || "").trim().toLowerCase();
-        if (!cleanEmail2) {
-          return res.status(400).json({ success: false, error: "E-posta adresi gereklidir." });
+        const identifier2 = String(req.query.email || req.query.userId || req.query.user_id || req.query.guestId || "").trim().toLowerCase();
+        if (!identifier2) {
+          return res.status(400).json({ success: false, error: "Kullan\u0131c\u0131 kimli\u011Fi (email veya userId) gereklidir." });
         }
-        const users2 = readJsonFile(USERS_FILE, []);
-        const account2 = users2.find((u) => u.email.toLowerCase() === cleanEmail2);
+        const account = users.find((u) => u.email?.toLowerCase() === identifier2 || u.id === identifier2);
+        const cartFromAccount = account?.cart;
+        const cartFromStore = allCarts[identifier2];
+        const activeCart = Array.isArray(cartFromAccount) && cartFromAccount.length > 0 ? cartFromAccount : Array.isArray(cartFromStore) ? cartFromStore : [];
+        const favsFromAccount = account?.favorites;
+        const favsFromStore = allFavs[identifier2];
+        const activeFavs = Array.isArray(favsFromAccount) && favsFromAccount.length > 0 ? favsFromAccount : Array.isArray(favsFromStore) ? favsFromStore : [];
         return res.json({
           success: true,
-          cart: account2?.cart || [],
-          favorites: account2?.favorites || [],
-          recentlyViewed: account2?.recentlyViewed || []
+          status: "success",
+          cart: activeCart,
+          items: activeCart,
+          favorites: activeFavs,
+          recentlyViewed: account?.recentlyViewed || []
         });
       }
-      const { email, cart, favorites, recentlyViewed } = req.body;
-      const cleanEmail = (email || "").trim().toLowerCase();
-      if (!cleanEmail) {
-        return res.status(400).json({ success: false, error: "E-posta adresi gereklidir." });
+      const body = req.body || {};
+      const action = body.action || req.query.action || "sync";
+      const identifier = String(body.email || body.userId || body.user_id || body.guestId || req.query.userId || req.query.email || "").trim().toLowerCase();
+      if (!identifier) {
+        return res.status(400).json({ success: false, error: "Kullan\u0131c\u0131 kimli\u011Fi (email veya userId) gereklidir." });
       }
-      const users = readJsonFile(USERS_FILE, []);
-      let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
-      if (account) {
-        if (Array.isArray(cart)) account.cart = cart;
-        if (Array.isArray(favorites)) account.favorites = favorites;
-        if (Array.isArray(recentlyViewed)) account.recentlyViewed = recentlyViewed;
+      let currentCart = allCarts[identifier] || [];
+      const userIdx = users.findIndex((u) => u.email?.toLowerCase() === identifier || u.id === identifier);
+      if (userIdx !== -1 && Array.isArray(users[userIdx].cart) && users[userIdx].cart.length > 0 && currentCart.length === 0) {
+        currentCart = users[userIdx].cart;
+      }
+      if (action === "remove") {
+        const prodId = String(body.productId || body.product_id || "").trim();
+        const itemIdx = typeof body.index === "number" ? body.index : -1;
+        if (prodId) {
+          currentCart = currentCart.filter((it) => {
+            const itId = String(it.product?.id || it.productId || it.id || "");
+            return itId !== prodId;
+          });
+        } else if (itemIdx >= 0 && itemIdx < currentCart.length) {
+          currentCart = currentCart.filter((_, i) => i !== itemIdx);
+        }
+      } else if (action === "clear") {
+        currentCart = [];
+      } else if (action === "add") {
+        const newItem = body.item || {
+          product: { id: body.productId, name: "AKUZ Sticker" },
+          quantity: Number(body.quantity) || 1,
+          selectedColor: body.color || "Orijinal Renkli",
+          selectedDimension: body.dimension || "Standart",
+          selectedFinish: body.finish || "Parlak",
+          customText: body.customText || "",
+          customFont: body.customFont || "",
+          calculatedPrice: Number(body.calculatedPrice || body.price) || 0
+        };
+        const existingIdx = currentCart.findIndex((it) => {
+          const itId = String(it.product?.id || it.productId || "");
+          const newId = String(newItem.product?.id || newItem.productId || "");
+          return itId === newId && (it.selectedColor || "") === (newItem.selectedColor || "") && (it.selectedDimension || "") === (newItem.selectedDimension || "") && (it.selectedFinish || "") === (newItem.selectedFinish || "") && (it.customText || "") === (newItem.customText || "") && (it.customFont || "") === (newItem.customFont || "");
+        });
+        if (existingIdx !== -1) {
+          currentCart[existingIdx].quantity = (Number(currentCart[existingIdx].quantity) || 1) + (Number(newItem.quantity) || 1);
+        } else {
+          currentCart.push(newItem);
+        }
+      } else {
+        const incomingCart = body.cart || body.items;
+        if (Array.isArray(incomingCart)) {
+          currentCart = incomingCart;
+        }
+      }
+      allCarts[identifier] = currentCart;
+      writeJsonFile(CARTS_FILE, allCarts);
+      const email = String(body.email || (identifier.includes("@") ? identifier : "")).trim().toLowerCase();
+      syncMysqlCart(email, identifier, currentCart);
+      if (userIdx !== -1) {
+        users[userIdx].cart = currentCart;
+        if (Array.isArray(body.favorites)) {
+          users[userIdx].favorites = body.favorites;
+          allFavs[identifier] = body.favorites;
+          writeJsonFile(FAVORITES_FILE, allFavs);
+          syncMysqlFavorites(email, identifier, body.favorites);
+        }
+        if (Array.isArray(body.recentlyViewed)) {
+          users[userIdx].recentlyViewed = body.recentlyViewed;
+        }
         writeJsonFile(USERS_FILE, users);
       }
+      console.log(`[CART UPDATE SUCCESS] ${identifier} sepeti g\xFCncellendi (${currentCart.length} \xFCr\xFCn).`);
       return res.json({
         success: true,
-        message: "Sepet ve kullan\u0131c\u0131 verileri senkronize edildi.",
-        cart: account?.cart || cart || [],
-        favorites: account?.favorites || favorites || []
+        status: "success",
+        message: "Sepet veritaban\u0131nda an\u0131nda g\xFCncellendi ve yedeklendi.",
+        cart: currentCart,
+        items: currentCart,
+        count: currentCart.length
       });
     } catch (err) {
+      console.error("[CART UPDATE ERROR]", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  app.all(["/api/favorites.php", "/favorites.php", "/api/favorites"], (req, res) => {
+    try {
+      const allFavs = readJsonFile(FAVORITES_FILE, {});
+      const users = readJsonFile(USERS_FILE, []);
+      if (req.method === "GET") {
+        const identifier2 = String(req.query.email || req.query.userId || req.query.user_id || "").trim().toLowerCase();
+        if (!identifier2) {
+          return res.status(400).json({ success: false, error: "Kullan\u0131c\u0131 kimli\u011Fi gereklidir." });
+        }
+        const account = users.find((u) => u.email?.toLowerCase() === identifier2 || u.id === identifier2);
+        const favsFromAccount = account?.favorites;
+        const favsFromStore = allFavs[identifier2];
+        const activeFavs = Array.isArray(favsFromAccount) && favsFromAccount.length > 0 ? favsFromAccount : Array.isArray(favsFromStore) ? favsFromStore : [];
+        return res.json({
+          success: true,
+          status: "success",
+          favorites: activeFavs
+        });
+      }
+      const body = req.body || {};
+      const action = body.action || req.query.action || "sync";
+      const identifier = String(body.email || body.userId || body.user_id || req.query.userId || req.query.email || "").trim().toLowerCase();
+      const productId = String(body.productId || body.product_id || "").trim();
+      if (!identifier) {
+        return res.status(400).json({ success: false, error: "Kullan\u0131c\u0131 kimli\u011Fi gereklidir." });
+      }
+      let currentFavs = allFavs[identifier] || [];
+      const userIdx = users.findIndex((u) => u.email?.toLowerCase() === identifier || u.id === identifier);
+      if (userIdx !== -1 && Array.isArray(users[userIdx].favorites) && users[userIdx].favorites.length > 0 && currentFavs.length === 0) {
+        currentFavs = users[userIdx].favorites;
+      }
+      let isFavorite = false;
+      if (action === "toggle" && productId) {
+        if (currentFavs.includes(productId)) {
+          currentFavs = currentFavs.filter((id) => id !== productId);
+          isFavorite = false;
+        } else {
+          currentFavs = [...currentFavs, productId];
+          isFavorite = true;
+        }
+      } else if (action === "add" && productId) {
+        if (!currentFavs.includes(productId)) {
+          currentFavs = [...currentFavs, productId];
+        }
+        isFavorite = true;
+      } else if (action === "remove" && productId) {
+        currentFavs = currentFavs.filter((id) => id !== productId);
+        isFavorite = false;
+      } else if (Array.isArray(body.favorites)) {
+        currentFavs = Array.from(new Set(body.favorites.map((x) => String(x).trim()).filter(Boolean)));
+        isFavorite = productId ? currentFavs.includes(productId) : false;
+      }
+      allFavs[identifier] = currentFavs;
+      writeJsonFile(FAVORITES_FILE, allFavs);
+      const email = String(body.email || (identifier.includes("@") ? identifier : "")).trim().toLowerCase();
+      syncMysqlFavorites(email, identifier, currentFavs);
+      if (userIdx !== -1) {
+        users[userIdx].favorites = currentFavs;
+        writeJsonFile(USERS_FILE, users);
+      }
+      console.log(`[FAVORITES UPDATE SUCCESS] ${identifier} favorileri g\xFCncellendi (${currentFavs.length} favori).`);
+      return res.json({
+        success: true,
+        status: "success",
+        isFavorite,
+        message: "Favoriler veritaban\u0131nda an\u0131nda g\xFCncellendi ve yedeklendi.",
+        favorites: currentFavs,
+        count: currentFavs.length
+      });
+    } catch (err) {
+      console.error("[FAVORITES UPDATE ERROR]", err);
       return res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -1150,14 +1507,44 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "Yetkisiz eri\u015Fim. Sadece y\xF6netici paneli eri\u015Febilir." });
       }
       const users = readJsonFile(USERS_FILE, []);
-      const sanitized = users.map((u) => ({
-        name: u.name,
-        email: u.email,
-        phone: u.phone || "",
-        createdAt: u.createdAt,
-        addresses: u.addresses || []
-      }));
+      const allCarts = readJsonFile(CARTS_FILE, {});
+      const allFavs = readJsonFile(FAVORITES_FILE, {});
+      const sanitized = users.map((u) => {
+        const cleanEmail = (u.email || "").toLowerCase().trim();
+        const userCart = Array.isArray(u.cart) && u.cart.length > 0 ? u.cart : allCarts[cleanEmail] || [];
+        const userFavs = Array.isArray(u.favorites) && u.favorites.length > 0 ? u.favorites : allFavs[cleanEmail] || [];
+        return {
+          name: u.name,
+          email: u.email,
+          phone: u.phone || "",
+          createdAt: u.createdAt,
+          addresses: u.addresses || [],
+          cart: userCart,
+          favorites: userFavs,
+          recentlyViewed: u.recentlyViewed || []
+        };
+      });
       return res.json({ success: true, users: sanitized });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  app.get("/api/admin/carts-activity", (req, res) => {
+    try {
+      const adminToken = req.headers["x-admin-token"] || req.query.adminToken;
+      if (adminToken !== "akuz_admin_2026") {
+        return res.status(403).json({ success: false, error: "Yetkisiz eri\u015Fim." });
+      }
+      const allCarts = readJsonFile(CARTS_FILE, {});
+      const allFavs = readJsonFile(FAVORITES_FILE, {});
+      const users = readJsonFile(USERS_FILE, []);
+      return res.json({
+        success: true,
+        carts: allCarts,
+        favorites: allFavs,
+        totalActiveCarts: Object.keys(allCarts).filter((k) => allCarts[k]?.length > 0).length,
+        totalRegisteredUsers: users.length
+      });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
     }
@@ -1204,7 +1591,7 @@ async function startServer() {
       }
     }
     try {
-      const { email, name, fullname, phone, addresses } = req.body;
+      const { email, name, fullname, phone, addresses, cart, favorites } = req.body;
       const cleanEmail = (email || "").trim().toLowerCase();
       const cleanName = (name || fullname || "").trim();
       if (!cleanEmail) {
@@ -1218,6 +1605,8 @@ async function startServer() {
           email: cleanEmail,
           phone: phone || "",
           addresses: addresses || [],
+          cart: cart || [],
+          favorites: favorites || [],
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         users.push(newUser);
@@ -1226,6 +1615,14 @@ async function startServer() {
         if (cleanName) users[index].name = cleanName;
         if (phone !== void 0) users[index].phone = phone;
         if (addresses !== void 0) users[index].addresses = addresses;
+        if (cart !== void 0) users[index].cart = cart;
+        if (favorites !== void 0) users[index].favorites = favorites;
+      }
+      if (cart !== void 0) {
+        syncMysqlCart(cleanEmail, cleanEmail, cart);
+      }
+      if (favorites !== void 0) {
+        syncMysqlFavorites(cleanEmail, cleanEmail, favorites);
       }
       writeJsonFile(USERS_FILE, users);
       return res.json({
@@ -1237,7 +1634,9 @@ async function startServer() {
           fullname: users[index].name,
           email: users[index].email,
           phone: users[index].phone,
-          addresses: users[index].addresses
+          addresses: users[index].addresses,
+          cart: users[index].cart || [],
+          favorites: users[index].favorites || []
         }
       });
     } catch (err) {
@@ -1590,14 +1989,15 @@ async function startServer() {
       });
     }
   }
-  const portToListen = process.env.NODE_ENV === "production" && rawPort ? isNaN(Number(rawPort)) ? rawPort : parseInt(rawPort, 10) : 3e3;
-  if (typeof portToListen === "string") {
-    app.listen(portToListen, () => {
-      console.log(`[SERVER] AKUZ Stickers Server running on Passenger socket ${portToListen}`);
+  const isPassengerSocket = typeof rawPort === "string" && isNaN(Number(rawPort)) && rawPort.startsWith("/");
+  if (isPassengerSocket) {
+    app.listen(rawPort, () => {
+      console.log(`[SERVER] AKUZ Stickers Server running on Passenger socket ${rawPort}`);
     });
   } else {
-    app.listen(portToListen, "0.0.0.0", () => {
-      console.log(`[SERVER] AKUZ Stickers Server running on port ${portToListen}`);
+    const port = parseInt(rawPort || "3000", 10) || 3e3;
+    app.listen(port, "0.0.0.0", () => {
+      console.log(`[SERVER] AKUZ Stickers Server running on http://0.0.0.0:${port}`);
     });
   }
 }

@@ -18,19 +18,35 @@ if (empty($email)) {
 
 try {
     // 1. Bu kullanıcı daha önce kayıt olmuş mu kontrol et
-    $stmt = $db->prepare("SELECT id, fullname, email FROM users WHERE email = ?");
-    $stmt->execute([$email]);
+    $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ?");
+    $stmt->execute([strtolower($email)]);
     $user = $stmt->fetch();
 
     if ($user) {
+        $userCart = [];
+        if (!empty($user['cart'])) {
+            $decodedCart = is_string($user['cart']) ? json_decode($user['cart'], true) : $user['cart'];
+            if (is_array($decodedCart)) $userCart = $decodedCart;
+        }
+
+        $userFavs = [];
+        if (!empty($user['favorites'])) {
+            $decodedFavs = is_string($user['favorites']) ? json_decode($user['favorites'], true) : $user['favorites'];
+            if (is_array($decodedFavs)) $userFavs = $decodedFavs;
+        }
+
         // Zaten kayıtlı, direkt giriş yaptır
         echo json_encode([
             "status" => "success",
             "message" => "Google ile giriş başarılı!",
             "user" => [
                 "id" => $user['id'],
-                "fullname" => $user['fullname'],
-                "email" => $user['email']
+                "fullname" => $user['fullname'] ?? ($user['name'] ?? $fullname),
+                "name" => $user['fullname'] ?? ($user['name'] ?? $fullname),
+                "email" => $user['email'],
+                "phone" => $user['phone'] ?? '',
+                "cart" => $userCart,
+                "favorites" => $userFavs,
             ]
         ]);
     } else {

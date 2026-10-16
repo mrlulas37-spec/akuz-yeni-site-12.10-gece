@@ -100,37 +100,22 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
   };
 }
 
-export default function App() {
-  // Kullanıcı İsteği: Kayıt dataları, favoriler ve sepete eklemeleri tamamen sıfırlama
-  (() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('akuz_registered_users');
-        localStorage.removeItem('akuz_favorites');
-        localStorage.removeItem('akuz_cart');
-        localStorage.removeItem('currentUser');
-        localStorage.removeItem('akuz_user');
-        localStorage.removeItem('akuz_google_accounts_list');
-        localStorage.removeItem('akuz_last_google_account');
-
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const k = localStorage.key(i);
-          if (
-            k &&
-            (k.startsWith('akuz_user_') ||
-              k.startsWith('akuz_cart') ||
-              k.startsWith('akuz_fav') ||
-              k.startsWith('akuz_registered') ||
-              k.startsWith('akuz_google') ||
-              k.includes('mertopro') ||
-              k.includes('mrlulas'))
-          ) {
-            localStorage.removeItem(k);
-          }
-        }
-      } catch {}
+// Kullanıcı veya misafir için benzersiz ve kalıcı kimlik belirteci
+export function getClientIdentifier(email?: string): string {
+  if (email && email.trim()) return email.toLowerCase().trim();
+  try {
+    let id = localStorage.getItem('akuz_client_id');
+    if (!id) {
+      id = 'client_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem('akuz_client_id', id);
     }
-  })();
+    return id;
+  } catch {
+    return 'client_default';
+  }
+}
+
+export default function App() {
 
   // Kullanıcı İsteği: Yukarıdan aşağı kaydırınca veya reload atıldığında ana sayfaya atmasın, bulunulan sayfayı yenilesin
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -271,6 +256,25 @@ export default function App() {
       return [];
     }
   });
+
+  // Sunucudan yedekli sepet ve favorileri otomatik geri yükle (Dosya veya tarayıcı belleği silinse dahi sunucudan kurtarır)
+  useEffect(() => {
+    const id = getClientIdentifier(currentUser?.email);
+    fetch(`/api/cart.php?userId=${encodeURIComponent(id)}&action=list`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success || data.status === 'success') {
+          const incomingCart = data.cart || data.items;
+          if (Array.isArray(incomingCart) && incomingCart.length > 0) {
+            setCartItems((prev) => (prev.length === 0 ? incomingCart : prev));
+          }
+          if (Array.isArray(data.favorites) && data.favorites.length > 0) {
+            setFavoriteIds((prev) => (prev.length === 0 ? data.favorites : Array.from(new Set([...prev, ...data.favorites]))));
+          }
+        }
+      })
+      .catch((err) => console.warn('[CART/FAV RESTORE NOTE]', err));
+  }, [currentUser?.email]);
 
   // Admin veya kullanıcı oturumuna göre sipariş ve kullanıcı verilerini çek
   useEffect(() => {
@@ -536,12 +540,26 @@ export default function App() {
     } catch {}
 
     const savedData = getUserSavedState(normalized.email);
+    const userSavedCart = (Array.isArray(user.cart) && user.cart.length > 0)
+      ? user.cart
+      : ((savedData.cart || []) as CartItem[]);
+    const userSavedFavs = (Array.isArray(user.favorites) && user.favorites.length > 0)
+      ? user.favorites
+      : (savedData.favorites || []);
+
+    let finalMergedCart: CartItem[] = [];
+    let finalMergedFavs: string[] = [];
 
     // Sepet birleştirme (Kullanıcı giriş yapmadan önce sepete ürün eklediyse onları korur)
     setCartItems((prevGuestCart) => {
-      const userSavedCart = (savedData.cart || []) as CartItem[];
-      if (userSavedCart.length === 0) return prevGuestCart;
-      if (prevGuestCart.length === 0) return userSavedCart;
+      if (userSavedCart.length === 0) {
+        finalMergedCart = prevGuestCart;
+        return prevGuestCart;
+      }
+      if (prevGuestCart.length === 0) {
+        finalMergedCart = userSavedCart;
+        return userSavedCart;
+      }
 
       const merged = [...userSavedCart];
       for (const gItem of prevGuestCart) {
@@ -559,14 +577,26 @@ export default function App() {
           merged.push(gItem);
         }
       }
+      finalMergedCart = merged;
       return merged;
     });
 
     // Favori birleştirme
     setFavoriteIds((prevGuestFavs) => {
-      const userSavedFavs = savedData.favorites || [];
-      return Array.from(new Set([...userSavedFavs, ...prevGuestFavs]));
+      const mergedFavs = Array.from(new Set([...userSavedFavs, ...prevGuestFavs]));
+      finalMergedFavs = mergedFavs;
+      return mergedFavs;
     });
+
+    // Anında MySQL ve sunucuya birleşik halini kaydet
+    setTimeout(() => {
+      if (finalMergedCart.length > 0) {
+        syncCartToServerDirectly(finalMergedCart);
+      }
+      if (finalMergedFavs.length > 0) {
+        syncFavoritesToServerDirectly(finalMergedFavs);
+      }
+    }, 150);
 
     // Baktığı ürünleri birleştirme
     if (savedData.recentlyViewed && savedData.recentlyViewed.length > 0) {
@@ -788,11 +818,84 @@ export default function App() {
     return products.filter((p) => favoriteIds.includes(p.id));
   }, [favoriteIds, products]);
 
+  // Sunucuya sepet senkronizasyonunu anında fırlatan fonksiyon (MySQL ve kalıcı sunucu depolaması)
+  const syncCartToServerDirectly = (cartToSync: CartItem[]) => {
+    const userEmail = (currentUser?.email || '').trim().toLowerCase();
+    const clientId = getClientIdentifier();
+    const primaryId = userEmail || clientId;
+
+    fetch('/api/cart.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'sync',
+        userId: primaryId,
+        user_id: primaryId,
+        email: userEmail,
+        cart: cartToSync,
+        items: cartToSync,
+      }),
+    }).catch((err) => console.warn('[CART SYNC ERROR]', err));
+
+    // MySQL users tablosundaki cart sütununu anında güncellemesi için auth.php'ye de bildir
+    if (userEmail) {
+      fetch('/api/auth.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_profile',
+          email: userEmail,
+          cart: cartToSync,
+        }),
+      }).catch(() => {});
+    }
+  };
+
+  // Sunucuya favori senkronizasyonunu anında fırlatan fonksiyon (MySQL ve kalıcı sunucu depolaması)
+  const syncFavoritesToServerDirectly = (favsToSync: string[], action = 'sync', productId?: string) => {
+    const userEmail = (currentUser?.email || '').trim().toLowerCase();
+    const clientId = getClientIdentifier();
+    const primaryId = userEmail || clientId;
+
+    fetch('/api/favorites.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'sync',
+        userId: primaryId,
+        user_id: primaryId,
+        email: userEmail,
+        favorites: favsToSync,
+        items: favsToSync,
+        productId,
+      }),
+    }).catch((err) => console.warn('[FAVORITES SYNC ERROR]', err));
+
+    // MySQL users tablosundaki favorites sütununu anında güncellemesi için auth.php'ye de bildir
+    if (userEmail) {
+      fetch('/api/auth.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_profile',
+          email: userEmail,
+          favorites: favsToSync,
+        }),
+      }).catch(() => {});
+    }
+  };
+
   // Handlers
   const handleToggleFavorite = (product: Product) => {
-    setFavoriteIds((prev) =>
-      prev.includes(product.id) ? prev.filter((id) => id !== product.id) : [...prev, product.id]
-    );
+    setFavoriteIds((prev) => {
+      const isCurrentlyFav = prev.includes(product.id);
+      const updated = isCurrentlyFav
+        ? prev.filter((id) => id !== product.id)
+        : [...prev, product.id];
+      // Favoriden ürün çıkarılırsa veya eklenirse veritabanında da direkt güncellensin
+      syncFavoritesToServerDirectly(updated, isCurrentlyFav ? 'remove' : 'add', product.id);
+      return updated;
+    });
   };
 
   const handleAddToCart = (
@@ -820,13 +923,13 @@ export default function App() {
           item.customFont === customFont
       );
 
+      let updated: CartItem[];
       if (existingIdx >= 0) {
-        const updated = [...prev];
+        updated = [...prev];
         updated[existingIdx].quantity += quantity;
         updated[existingIdx].calculatedPrice = calculatedPrice;
-        return updated;
       } else {
-        return [
+        updated = [
           ...prev,
           {
             product,
@@ -840,10 +943,11 @@ export default function App() {
           },
         ];
       }
+      // Sepete ürün eklendiğinde doğrudan sunucu veri deposuna anında kaydet
+      syncCartToServerDirectly(updated);
+      return updated;
     });
 
-    // Sepete ürün eklenince yandaki panel otomatik açılmaz (kullanıcı isteği)
-    // Bunun yerine sepete eklendiğine dair zarif bir bildirim gösterilir
     if (cartToastTimerRef.current) {
       clearTimeout(cartToastTimerRef.current);
     }
@@ -864,17 +968,27 @@ export default function App() {
     }
     setCartItems((prev) => {
       const updated = [...prev];
-      updated[index].quantity = newQty;
+      if (updated[index]) {
+        updated[index] = { ...updated[index], quantity: newQty };
+      }
+      // Adet değiştiğinde sunucu verisinde direkt anında güncelle
+      syncCartToServerDirectly(updated);
       return updated;
     });
   };
 
   const handleRemoveCartItem = (index: number) => {
-    setCartItems((prev) => prev.filter((_, i) => i !== index));
+    setCartItems((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Sepetten ürün çıkarıldığında sunucu verisinde direkt anında güncellensin
+      syncCartToServerDirectly(updated);
+      return updated;
+    });
   };
 
   const handleClearCart = () => {
     setCartItems([]);
+    syncCartToServerDirectly([]);
   };
 
   const handleOpenFavorites = () => {
