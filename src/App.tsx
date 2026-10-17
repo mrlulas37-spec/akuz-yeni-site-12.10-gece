@@ -28,7 +28,7 @@ import { FastAkuzLoader } from './components/FastAkuzLoader';
 import { OrderTrackingPage } from './components/OrderTrackingPage';
 import { PRODUCTS as INITIAL_PRODUCTS } from './data/products';
 import { LogOut, Check, ShoppingBag, X } from 'lucide-react';
-import { Product, CartItem, UserProfile, Order, Review, SiteSettings, ProductColorOption } from './types';
+import { Product, CartItem, UserProfile, Order, Review, SiteSettings, ProductColorOption, CategoryCircleItem } from './types';
 import {
   updateUserProfileData,
   logoutUser,
@@ -53,9 +53,27 @@ import { safeLocalStorageSet } from './utils/imageOptimizer';
 
 function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
   if (!incoming || typeof incoming !== 'object') return current;
-  const categories = (Array.isArray(incoming.categories) && incoming.categories.length > 0)
+
+  const incomingCats: CategoryCircleItem[] = Array.isArray(incoming.categories) && incoming.categories.length > 0
     ? incoming.categories
-    : (Array.isArray(current.categories) && current.categories.length > 0 ? current.categories : INITIAL_CATEGORY_CIRCLES);
+    : [];
+  const currentCats: CategoryCircleItem[] = Array.isArray(current.categories) && current.categories.length > 0
+    ? current.categories
+    : INITIAL_CATEGORY_CIRCLES;
+
+  const categories = INITIAL_CATEGORY_CIRCLES.map((baseCat) => {
+    const inc = incomingCats.find((c) => c.id === baseCat.id);
+    const cur = currentCats.find((c) => c.id === baseCat.id);
+    const finalImageUrl = inc?.imageUrl !== undefined ? inc.imageUrl : (cur?.imageUrl !== undefined ? cur.imageUrl : baseCat.imageUrl);
+    const finalCardImageUrl = inc?.cardImageUrl || cur?.cardImageUrl || baseCat.cardImageUrl;
+    return {
+      ...baseCat,
+      ...(cur || {}),
+      ...(inc || {}),
+      imageUrl: finalImageUrl,
+      cardImageUrl: finalCardImageUrl,
+    };
+  });
 
   const whyAkuzCards = (Array.isArray(incoming.whyAkuzCards) && incoming.whyAkuzCards.length > 0)
     ? incoming.whyAkuzCards
@@ -197,7 +215,30 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.products) && data.products.length > 0) {
-          setProducts(data.products);
+          const serverProducts: Product[] = data.products;
+          const localSaved = localStorage.getItem('akuz_dynamic_products');
+          let mergedProducts = serverProducts;
+          if (localSaved) {
+            try {
+              const localList: Product[] = JSON.parse(localSaved);
+              if (Array.isArray(localList)) {
+                const missingLocals = localList.filter(
+                  (lp) => !serverProducts.some((sp) => sp.id === lp.id || sp.slug === lp.slug)
+                );
+                if (missingLocals.length > 0) {
+                  mergedProducts = [...missingLocals, ...serverProducts];
+                  // Eksik yerel ürünleri sunucuya da göndererek kalıcı hale getir
+                  fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ products: mergedProducts }),
+                  }).catch(() => {});
+                }
+              }
+            } catch {}
+          }
+          setProducts(mergedProducts);
+          safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(mergedProducts));
         }
       })
       .catch((e) => console.warn('[HOST DB] Ürünler çekilemedi, varsayılanlar kullanılıyor:', e));
@@ -1301,7 +1342,7 @@ export default function App() {
             }}
           />
         </main>
-      ) : currentPath === '/katalog' ? (
+      ) : currentPath === '/katalog' || currentPath.startsWith('/kategori') ? (
         <main className="flex-1">
           <CatalogPage
             products={products}
@@ -1319,6 +1360,14 @@ export default function App() {
               setSelectedCategory('all');
               navigateTo('/');
             }}
+          />
+
+          {/* İLETİŞİM BÖLÜMÜ - Kategoriler Sayfasının Altında (Ana Sayfadaki Gibi) */}
+          <ContactSection
+            description={siteSettings.contactDescription}
+            email={siteSettings.contactEmail}
+            whatsapp={siteSettings.contactWhatsApp}
+            address={siteSettings.contactAddress}
           />
         </main>
       ) : currentPath === '/favoriler' || currentPath === '/favorilerim' ? (

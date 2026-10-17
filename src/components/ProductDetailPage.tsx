@@ -107,7 +107,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     return allowedFinishesForColor.includes(finish);
   };
 
-  // Renk tıklandığında: Rengi seç, eğer seçili folyo bu renkte desteklenmiyorsa otomatik olarak desteklediği ilk folyoyu seç
+  // Renk tıklandığında: Rengi seç, o renge ait fotoğraf varsa görseli güncelle
   const handleSelectColor = (color: ProductColorOption) => {
     setClickedColor(color.name);
     try {
@@ -116,6 +116,24 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       }
     } catch {}
     setSelectedColor(color.name);
+
+    // Renk seçildiğinde o renge ait fotoğrafı otomatik aktif yap:
+    if (product.colorImages && product.colorImages[color.name]) {
+      setActiveImage(product.colorImages[color.name]);
+    } else if (product.images && product.images.length > 0) {
+      const cLower = color.name.toLowerCase();
+      const matchingImg = product.images.find((img) => {
+        const lower = img.toLowerCase();
+        if (cLower === 'beyaz' && (lower.includes('beyaz') || lower.includes('white') || lower.includes('1140'))) return true;
+        if (cLower === 'siyah' && (lower.includes('siyah') || lower.includes('black') || lower.includes('1138') || lower.includes('1141') || lower.includes('1147') || lower.includes('1143'))) return true;
+        if (cLower.includes('hologram') && (lower.includes('hologram') || lower.includes('1146'))) return true;
+        return lower.includes(cLower);
+      });
+      if (matchingImg) {
+        setActiveImage(matchingImg);
+      }
+    }
+
     if (color.supportedFinishes && color.supportedFinishes.length > 0 && !color.supportedFinishes.includes(selectedFinish)) {
       setSelectedFinish(color.supportedFinishes[0]);
     }
@@ -214,10 +232,26 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     touchEndYRef.current = null;
   };
 
-  // Sync activeImage if product changes
+  // Ürüne girildiğinde seçili renge göre fotoğrafı senkronize et
   React.useEffect(() => {
-    setActiveImage(product.images?.[0] || product.imageUrl || '/akuz-logo-badge.png');
-  }, [product]);
+    const initColor = availableColors[0]?.name || product.colors[0]?.name || 'Siyah';
+    setSelectedColor(initColor);
+    if (product.colorImages && product.colorImages[initColor]) {
+      setActiveImage(product.colorImages[initColor]);
+    } else if (product.images && product.images.length > 0) {
+      const cLower = initColor.toLowerCase();
+      const matchingImg = product.images.find((img) => {
+        const lower = img.toLowerCase();
+        if (cLower === 'beyaz' && (lower.includes('beyaz') || lower.includes('white') || lower.includes('1140'))) return true;
+        if (cLower === 'siyah' && (lower.includes('siyah') || lower.includes('black') || lower.includes('1138') || lower.includes('1141') || lower.includes('1147') || lower.includes('1143'))) return true;
+        if (cLower.includes('hologram') && (lower.includes('hologram') || lower.includes('1146'))) return true;
+        return lower.includes(cLower);
+      });
+      setActiveImage(matchingImg || product.images[0] || product.imageUrl || '/akuz-logo-badge.png');
+    } else {
+      setActiveImage(product.imageUrl || '/akuz-logo-badge.png');
+    }
+  }, [product, availableColors]);
 
   // Reviews for this specific product
   const productReviews = reviews.filter((r) => r.productId === product.id);
@@ -316,12 +350,17 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               {/* Product Artwork / Photo with Full Fill or Custom Text Live Preview */}
               <div className="w-full h-full flex items-center justify-center relative">
                 {product.isCustomText ? (
-                  /* Canlı Kişiye Özel Yazı Önizleme Sahnesi - Düz Beyaz Arka Plan, Siyah Yazı */
-                  <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center select-none relative bg-white">
-                    {/* Canlı Sticker Yazısı: Düz Beyaz Üzerinde Siyah (Altında yazı/rozet yok) */}
+                  /* Canlı Kişiye Özel Yazı Önizleme Sahnesi */
+                  <div
+                    className={`w-full h-full flex flex-col items-center justify-center p-6 text-center select-none relative transition-colors duration-300 ${
+                      selectedColor.toLowerCase() === 'beyaz'
+                        ? 'bg-[#181c24]'
+                        : 'bg-white'
+                    }`}
+                  >
                     <div className="relative z-10 max-w-full px-4 overflow-hidden flex flex-col items-center justify-center">
                       <p
-                        className="transition-all duration-200 tracking-wider break-words max-w-full leading-tight select-all text-black"
+                        className="transition-all duration-200 tracking-wider break-words max-w-full leading-tight select-all"
                         style={{
                           fontFamily: selectedFont.fontFamily,
                           fontSize:
@@ -332,7 +371,22 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                               : customText.length > 8
                               ? '3.4rem'
                               : '4.2rem',
-                          color: '#000000',
+                          ...(selectedColor.toLowerCase().includes('hologram')
+                            ? {
+                                background:
+                                  'linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                filter: 'drop-shadow(0 2px 8px rgba(167, 139, 250, 0.45))',
+                              }
+                            : selectedColor.toLowerCase() === 'beyaz'
+                            ? {
+                                color: '#ffffff',
+                                filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6))',
+                              }
+                            : {
+                                color: selectedColorObj?.hex || '#111827',
+                              }),
                         }}
                       >
                         {customText.trim() ? customText : 'YAZINIZI YAZIN'}
@@ -343,6 +397,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   <StickerGraphic
                     type={product.svgType}
                     imageUrl={activeImage}
+                    colorHex={selectedColorObj?.hex}
+                    colorName={selectedColor}
                     fit="cover"
                     className={`w-full h-full object-cover transition-all duration-300 ${
                       selectedFinish === 'Parlak'

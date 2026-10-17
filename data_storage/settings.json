@@ -37,6 +37,14 @@
       "subtitle": "Tüm Sticker Koleksiyonu"
     },
     {
+      "id": "discount",
+      "titleLine1": "İndirimli",
+      "titleLine2": "Fırsatlar",
+      "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white",
+      "cardImageUrl": "/products/IMG_1147.webp",
+      "subtitle": "Avantajlı Paketler & İndirimler"
+    },
+    {
       "id": "ataturk",
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
@@ -62,14 +70,6 @@
       "subtitle": "Kask, Depo, Maşa & Jant Çıkartmaları"
     },
     {
-      "id": "offroad",
-      "titleLine1": "Off-Road",
-      "titleLine2": "Stickerları",
-      "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white",
-      "cardImageUrl": "/products/IMG_1140.jpeg",
-      "subtitle": "4x4 Arazi, Dağ & Macera Çıkartmaları"
-    },
-    {
       "id": "custom",
       "titleLine1": "Kişiye Özel",
       "titleLine2": "Stickerlar",
@@ -78,20 +78,20 @@
       "subtitle": "Kendi Yazını & Fontunu Tasarla"
     },
     {
+      "id": "offroad",
+      "titleLine1": "Off-Road",
+      "titleLine2": "Stickerları",
+      "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white",
+      "cardImageUrl": "/products/IMG_1140.jpeg",
+      "subtitle": "4x4 Arazi, Dağ & Macera Çıkartmaları"
+    },
+    {
       "id": "ayna",
       "titleLine1": "Ayna",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-gradient-to-tr from-cyan-600 to-blue-600 text-white",
       "cardImageUrl": "/products/IMG_1142.jpeg",
       "subtitle": "Yan Ayna & Dikiz Çıkartmaları"
-    },
-    {
-      "id": "discount",
-      "titleLine1": "İndirimli",
-      "titleLine2": "Fırsatlar",
-      "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white",
-      "cardImageUrl": "/products/IMG_1147.webp",
-      "subtitle": "Avantajlı Paketler & İndirimler"
     }
   ],
   "availableFoilTypes": [
@@ -103,7 +103,7 @@
     "port": 465,
     "secure": true,
     "user": "info@akuzstickers.com",
-    "pass": "Mert830801.",
+    "pass": "",
     "fromName": "AKUZ Stickers",
     "fromEmail": "info@akuzstickers.com",
     "enabled": true
@@ -127,7 +127,7 @@
     "enabled": true,
     "testMode": true
   },
-  "shippingFee": 89.9,
-  "freeShippingThreshold": 400,
+  "shippingFee": 39.9,
+  "freeShippingThreshold": 150,
   "googleClientId": "947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com"
 }

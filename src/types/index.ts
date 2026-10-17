@@ -26,6 +26,7 @@ export interface Product {
   svgType: 'logo';
   imageUrl?: string;
   images?: string[];
+  colorImages?: Record<string, string>; // Renk bazlı özel ürün fotoğrafları (örn: { 'Siyah': '/products/IMG_1138.jpeg', 'Beyaz': '/products/IMG_1140.jpeg' })
   dimensions: string[];
   colors: ProductColorOption[];
   finishes?: ('Mat' | 'Parlak')[];

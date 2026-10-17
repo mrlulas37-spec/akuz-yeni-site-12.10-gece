@@ -687,15 +687,15 @@ a:active p,
 }
 
 /* ==========================================================================
-   13. ATATÜRK YAZISI BAŞTAN SONA AKAN YAVAŞ VE ZARİF PARILTI DÖNGÜSÜ
-   "atatürk parlama animasyonu yavaş zarif bir şekilde olsun"
+   13. ATATÜRK YAZISI TEK VE SABİT HIZDA, YAVAŞ VE ZARİF PARILTI DÖNGÜSÜ
+   "atatürk yazısındaki parlama animasyonu tek bir hızda olsun ve yavaş olsun"
    ========================================================================== */
 @keyframes ataturkGoldSweep {
   0% {
-    background-position: 240% center;
+    background-position: 200% center;
   }
   100% {
-    background-position: -240% center;
+    background-position: -200% center;
   }
 }
 
@@ -712,12 +712,13 @@ a:active p,
     #d97706 82%,
     #b45309 100%
   );
-  background-size: 240% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: ataturkGoldSweep 4.5s ease-in-out infinite;
+  /* Tek sabit hız (linear) ve yavaş, akıcı geçiş (7.5 saniye) */
+  animation: ataturkGoldSweep 7.5s linear infinite;
   filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.6));
   font-weight: 900;
   display: inline-block;

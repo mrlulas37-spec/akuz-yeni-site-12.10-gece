@@ -68,6 +68,10 @@ export const PRODUCTS: Product[] = [
     svgType: 'logo',
     imageUrl: '/products/IMG_1138.jpeg',
     images: ['/products/IMG_1138.jpeg', '/products/IMG_1140.jpeg'],
+    colorImages: {
+      'Siyah': '/products/IMG_1138.jpeg',
+      'Beyaz': '/products/IMG_1140.jpeg',
+    },
     dimensions: ['12x5 cm', '18x7 cm', '25x10 cm', '35x14 cm'],
     colors: COLOR_OPTIONS,
     finishes: ['Mat', 'Parlak'],
@@ -89,6 +93,9 @@ export const PRODUCTS: Product[] = [
     svgType: 'logo',
     imageUrl: '/products/IMG_1141.jpeg',
     images: ['/products/IMG_1141.jpeg', '/products/IMG_1142.jpeg'],
+    colorImages: {
+      'Siyah': '/products/IMG_1141.jpeg',
+    },
     dimensions: ['15x10 cm', '20x13 cm', '25x16 cm', '30x20 cm'],
     colors: COLOR_OPTIONS,
     finishes: ['Mat', 'Parlak'],
@@ -110,6 +117,10 @@ export const PRODUCTS: Product[] = [
     svgType: 'logo',
     imageUrl: '/products/IMG_1147.webp',
     images: ['/products/IMG_1147.webp', '/products/IMG_1146.jpeg'],
+    colorImages: {
+      'Siyah': '/products/IMG_1147.webp',
+      'Hologramlı': '/products/IMG_1146.jpeg',
+    },
     dimensions: ['15x6 cm', '20x8 cm', '25x10 cm', '35x14 cm'],
     colors: COLOR_OPTIONS,
     finishes: ['Mat', 'Parlak'],

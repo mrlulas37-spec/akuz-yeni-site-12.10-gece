@@ -29,22 +29,27 @@ const CARTS_FILE = path.join(DATA_DIR, 'carts.json');
 const FAVORITES_FILE = path.join(DATA_DIR, 'favorites.json');
 const GOOGLE_CREDENTIALS_FILE = path.join(DATA_DIR, 'google_credentials.json');
 
-// MySQL Veritabanı Havuzu (cPanel akuzstic_data ve yerel veritabanı senkronizasyonu)
+// MySQL Veritabanı Havuzu (cPanel akuzstic_data ve harici veritabanı senkronizasyonu)
+const hasMysqlConfig = Boolean(process.env.DB_HOST || process.env.MYSQL_HOST);
 const MYSQL_CONFIG = {
-  host: process.env.DB_HOST || process.env.MYSQL_HOST || 'localhost',
-  user: process.env.DB_USER || process.env.MYSQL_USER || 'akuzstic_data',
-  password: process.env.DB_PASS || process.env.MYSQL_PASSWORD || 'Mert830801?',
-  database: process.env.DB_NAME || process.env.MYSQL_DATABASE || 'akuzstic_data',
+  host: process.env.DB_HOST || process.env.MYSQL_HOST || '',
+  user: process.env.DB_USER || process.env.MYSQL_USER || '',
+  password: process.env.DB_PASS || process.env.MYSQL_PASSWORD || '',
+  database: process.env.DB_NAME || process.env.MYSQL_DATABASE || '',
   waitForConnections: true,
   connectionLimit: 5,
   connectTimeout: 4000,
 };
 
 let mysqlPool: mysql.Pool | null = null;
-try {
-  mysqlPool = mysql.createPool(MYSQL_CONFIG);
-} catch (e) {
-  console.warn('[MYSQL POOL INIT WARN]', e);
+if (hasMysqlConfig && MYSQL_CONFIG.host && MYSQL_CONFIG.user) {
+  try {
+    mysqlPool = mysql.createPool(MYSQL_CONFIG);
+  } catch (e) {
+    console.warn('[MYSQL POOL INIT WARN]', e);
+  }
+} else {
+  console.log('[AI Studio] MySQL credentials not supplied in env — utilizing persistent JSON file storage layer');
 }
 
 // MySQL tablo ve sütunlarını arka planda otomatik garantile

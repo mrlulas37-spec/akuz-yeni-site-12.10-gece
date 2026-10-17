@@ -11,6 +11,14 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     subtitle: 'Tüm Sticker Koleksiyonu',
   },
   {
+    id: 'discount',
+    titleLine1: 'İndirimli',
+    titleLine2: 'Fırsatlar',
+    bgGradient: 'bg-gradient-to-tr from-rose-500 to-red-500 text-white',
+    cardImageUrl: '/products/IMG_1147.webp',
+    subtitle: 'Avantajlı Paketler & İndirimler',
+  },
+  {
     id: 'ataturk',
     titleLine1: 'Atatürk',
     titleLine2: 'Stickerları',
@@ -27,6 +35,7 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     cardImageUrl: '/products/AkuzStickers_LaFamilia.jpg',
     subtitle: 'Cam, Kaporta & Tampon Vinilleri',
   },
+  // 2. SATIR (4 Adet)
   {
     id: 'motosiklet',
     titleLine1: 'Motosiklet',
@@ -34,15 +43,6 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     bgGradient: 'bg-slate-800 text-orange-400',
     cardImageUrl: '/products/IMG_1143.webp',
     subtitle: 'Kask, Depo, Maşa & Jant Çıkartmaları',
-  },
-  // 2. SATIR (4 Adet)
-  {
-    id: 'offroad',
-    titleLine1: 'Off-Road',
-    titleLine2: 'Stickerları',
-    bgGradient: 'bg-gradient-to-tr from-emerald-600 to-teal-700 text-white',
-    cardImageUrl: '/products/IMG_1140.jpeg',
-    subtitle: '4x4 Arazi, Dağ & Macera Çıkartmaları',
   },
   {
     id: 'custom',
@@ -53,20 +53,20 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     subtitle: 'Kendi Yazını & Fontunu Tasarla',
   },
   {
+    id: 'offroad',
+    titleLine1: 'Off-Road',
+    titleLine2: 'Stickerları',
+    bgGradient: 'bg-gradient-to-tr from-emerald-600 to-teal-700 text-white',
+    cardImageUrl: '/products/IMG_1140.jpeg',
+    subtitle: '4x4 Arazi, Dağ & Macera Çıkartmaları',
+  },
+  {
     id: 'ayna',
     titleLine1: 'Ayna',
     titleLine2: 'Stickerları',
     bgGradient: 'bg-gradient-to-tr from-cyan-600 to-blue-600 text-white',
     cardImageUrl: '/products/IMG_1142.jpeg',
     subtitle: 'Yan Ayna & Dikiz Çıkartmaları',
-  },
-  {
-    id: 'discount',
-    titleLine1: 'İndirimli',
-    titleLine2: 'Fırsatlar',
-    bgGradient: 'bg-gradient-to-tr from-rose-500 to-red-500 text-white',
-    cardImageUrl: '/products/IMG_1147.webp',
-    subtitle: 'Avantajlı Paketler & İndirimler',
   },
 ];
 
@@ -178,11 +178,19 @@ export const getStoredSiteSettings = (): SiteSettings => {
           titleLine1 = 'Katalog';
           titleLine2 = '';
         }
+        let imageUrl = c.imageUrl?.startsWith('/IMG_') ? `/products${c.imageUrl}` : c.imageUrl;
+        // Sadece Atatürk kategorisi varsayılan dairesel resme sahiptir; diğerleri SVG ikonlarını kullanır
+        if (c.id !== 'ataturk' && imageUrl) {
+          const defaultCard = INITIAL_CATEGORY_CIRCLES.find((b) => b.id === c.id)?.cardImageUrl;
+          if (imageUrl === defaultCard) {
+            imageUrl = undefined;
+          }
+        }
         return {
           ...c,
           titleLine1,
           titleLine2,
-          imageUrl: c.imageUrl?.startsWith('/IMG_') ? `/products${c.imageUrl}` : c.imageUrl,
+          imageUrl,
         };
       });
     }

@@ -169,7 +169,11 @@
     "finishes": [
       "Mat",
       "Parlak"
-    ]
+    ],
+    "colorImages": {
+      "Siyah": "/products/IMG_1138.jpeg",
+      "Beyaz": "/products/IMG_1140.jpeg"
+    }
   },
   {
     "id": "bagajdan-bakan-canavar-sticker",
@@ -249,7 +253,10 @@
     "finishes": [
       "Mat",
       "Parlak"
-    ]
+    ],
+    "colorImages": {
+      "Siyah": "/products/IMG_1141.jpeg"
+    }
   },
   {
     "id": "gazi-mustafa-kemal-ataturk-imza-sticker",
@@ -329,7 +336,11 @@
     "finishes": [
       "Mat",
       "Parlak"
-    ]
+    ],
+    "colorImages": {
+      "Siyah": "/products/IMG_1147.webp",
+      "Hologramlı": "/products/IMG_1146.jpeg"
+    }
   },
   {
     "id": "yaramaz-cocuk-sticker",

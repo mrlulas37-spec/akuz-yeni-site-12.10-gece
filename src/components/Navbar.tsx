@@ -456,14 +456,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* 2. ALT SATIR: ARAMA ÇUBUĞU VE SOLUNDA 3 ÇİZGİLİ MENÜ SEMBOLÜ */}
-        <div className="pb-3 pt-0.5 sm:pb-3.5 max-w-3xl mx-auto w-full px-1 sm:px-0">
-          <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* Arama çubuğunun solundaki 3 Çizgili Menü Butonu - Turuncu Etkileşim */}
+        {/* 2. ALT SATIR: ARAMA ÇUBUĞU VE SOLUNDA 3 ÇİZGİLİ MENÜ SEMBOLÜ (%15 Küçültülmüş) */}
+        <div className="pb-2.5 pt-0.5 sm:pb-3 max-w-2xl mx-auto w-full px-1 sm:px-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Arama çubuğunun solundaki 3 Çizgili Menü Butonu - Turuncu Etkileşim (%15 Daha Kompakt) */}
             <button
               type="button"
               onClick={() => triggerOrangeAction('menu', () => setIsSideMenuOpen(true))}
-              className={`shrink-0 flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-3 rounded-full text-slate-800 bg-[#eeece3] hover:bg-[#eae7dc] active:bg-[#dbd8cc] border shadow-xs active:scale-95 transition-all cursor-pointer group ${
+              className={`shrink-0 flex items-center justify-center gap-1 px-2.5 py-2 sm:py-2.5 rounded-full text-slate-800 bg-[#eeece3] hover:bg-[#eae7dc] active:bg-[#dbd8cc] border shadow-xs active:scale-95 transition-all cursor-pointer group ${
                 activeOrangeIcon === 'menu'
                   ? 'border-[#ff6600] ring-2 ring-[#ff6600] bg-orange-50 shadow-[0_0_16px_rgba(255,102,0,0.6)] text-[#ff6600]'
                   : 'border-[#dbd8cc] hover:border-[#cfcbc0]'
@@ -472,21 +472,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               aria-label="Hızlı Menüyü Aç"
             >
               <Menu
-                size={18}
+                size={15}
                 className={`transition-all ${
                   activeOrangeIcon === 'menu'
                     ? 'text-[#ff6600] drop-shadow-[0_0_10px_rgba(255,102,0,0.8)] scale-110'
                     : 'text-slate-800 group-hover:text-[#ff6600]'
                 }`}
               />
-              <span className={`text-xs font-bold transition-colors hidden sm:inline ${
+              <span className={`text-[11px] font-bold transition-colors hidden sm:inline ${
                 activeOrangeIcon === 'menu' ? 'text-[#ff6600]' : 'text-slate-700 group-hover:text-[#ff6600]'
               }`}>
                 Menü
               </span>
             </button>
 
-            {/* Arama Çubuğu (Kalan Alanı Doldurur, boyu kısalır) */}
+            {/* Arama Çubuğu (%15 Daha Kompakt) */}
             <div ref={searchContainerRef} className="flex-1 relative min-w-0">
               <div
                 onClick={handleSearchClick}
@@ -508,15 +508,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setIsDesktopDropdownOpen(true);
                   }}
                   placeholder="Sticker Ara…"
-                  className={`w-full bg-[#eeece3] hover:bg-[#eae7dc] focus:bg-white text-slate-900 placeholder:text-slate-500 text-[16px] md:text-sm rounded-full pl-10 sm:pl-12 pr-9 py-2.5 sm:py-3 border transition-all outline-none shadow-xs ${
+                  className={`w-full bg-[#eeece3] hover:bg-[#eae7dc] focus:bg-white text-slate-900 placeholder:text-slate-500 text-sm md:text-[13px] rounded-full pl-9 sm:pl-10 pr-8 py-2 sm:py-2.5 border transition-all outline-none shadow-xs ${
                     isDesktopDropdownOpen
                       ? 'border-[#ff6600] bg-white shadow-md'
                       : 'border-[#dbd8cc]'
                   }`}
                 />
                 <Search
-                  size={18}
-                  className={`absolute left-3.5 sm:left-4.5 pointer-events-none transition-colors ${
+                  size={15}
+                  className={`absolute left-3 sm:left-3.5 pointer-events-none transition-colors ${
                     isDesktopDropdownOpen ? 'text-[#ff6600]' : 'text-slate-500'
                   }`}
                 />
@@ -527,7 +527,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       e.stopPropagation();
                       onSearchChange('');
                     }}
-                    className="absolute right-3.5 text-xs text-slate-400 hover:text-slate-700 bg-slate-200/90 hover:bg-slate-300 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-colors"
+                    className="absolute right-3 text-[10px] text-slate-400 hover:text-slate-700 bg-slate-200/90 hover:bg-slate-300 w-4.5 h-4.5 rounded-full flex items-center justify-center cursor-pointer transition-colors"
                     title="Temizle"
                   >
                     ✕

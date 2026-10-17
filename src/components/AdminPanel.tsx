@@ -594,7 +594,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   ) => {
     const updated = safeCategories.map((cat) => {
       if (cat.id === id) {
-        return { ...cat, [field]: value };
+        const next = { ...cat, [field]: value };
+        if (field === 'imageUrl' && (!next.cardImageUrl || next.cardImageUrl === cat.imageUrl)) {
+          next.cardImageUrl = value;
+        } else if (field === 'cardImageUrl' && (!next.imageUrl || next.imageUrl === cat.cardImageUrl)) {
+          next.imageUrl = value;
+        }
+        return next;
       }
       return cat;
     });
@@ -615,12 +621,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       showNotification('Kategori fotoğrafı optimize ediliyor...');
       const url = await processAndUploadProductImage(file);
-      handleUpdateCategory(catId, field, url);
-      showNotification(
-        field === 'cardImageUrl'
-          ? 'Kategori dikdörtgen vitrin görseli başarıyla güncellendi!'
-          : 'Kategori yuvarlak fotoğrafı başarıyla güncellendi!'
-      );
+      const updated = safeCategories.map((cat) => {
+        if (cat.id === catId) {
+          return {
+            ...cat,
+            [field]: url,
+          };
+        }
+        return cat;
+      });
+      onUpdateSiteSettings({ ...siteSettings, categories: updated });
+      showNotification('Kategori görseli başarıyla yüklendi.');
     } catch (err: any) {
       console.error('[CATEGORY UPLOAD ERROR]', err);
       showNotification('Fotoğraf yüklenemedi: ' + (err.message || 'Geçersiz dosya'));

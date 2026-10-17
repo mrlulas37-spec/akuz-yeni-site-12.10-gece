@@ -203,7 +203,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
     SORT_OPTIONS.find((s) => s.id === currentSort)?.label || 'Önerilen Sıralama';
 
   return (
-    <div className="min-h-screen bg-[#faf9f6] text-slate-900 pb-20">
+    <div className="min-h-screen bg-[#faf9f6] text-slate-900 pb-12 sm:pb-16">
       {/* Breadcrumb & Navigation Bar */}
       <div className="bg-white border-b border-slate-200/80 sticky top-16 md:top-20 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
@@ -246,21 +246,9 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         {/* Title & Filter Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 pb-2.5 sm:pb-3 border-b border-slate-200">
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
-                {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG & KATEGORİLER'}
-              </h1>
-              {selectedCategory === 'all' && (
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-900 text-white shadow-2xs">
-                  {showcaseCategories.length} Kategori
-                </span>
-              )}
-            </div>
-            {selectedCategory === 'all' && (
-              <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
-                İncelemek istediğiniz kategoriyi seçebilir veya tüm ürünleri listeleyebilirsiniz
-              </p>
-            )}
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
+              {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG'}
+            </h1>
           </div>
 
           {/* SADE SIRALAMA KUTUSU & SIFIRLA (Kullanıcı İsteği: Kategori Seçme Kısmı Silindi, Sıralama Sol Yukarıya Hizalandı) */}
@@ -335,18 +323,10 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         {/* KULLANICI İSTEĞİ: KATALOG BUTONUNA TIKLANDIĞINDA KATEGORİ SEÇME ALANI (TRENDYOL VİTRİNİ) */}
         {selectedCategory === 'all' && (
           <div className="mt-6 mb-12">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 px-1">
-              <div>
-                <span className="text-[11px] font-black tracking-widest text-[#ff6600] uppercase block">
-                  KATEGORİ VİTRİNİ
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 font-display tracking-tight uppercase mt-0.5">
-                  KATEGORİ SEÇİN
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-                  Fotoğraflı bölmelerden dilediğiniz kategoriye dokunarak özel tasarımları keşfedin
-                </p>
-              </div>
+            <div className="mb-4 px-1">
+              <span className="text-[11px] sm:text-xs font-black tracking-widest text-[#ff6600] uppercase block">
+                KATEGORİ VİTRİNİ
+              </span>
             </div>
 
             {/* ÜRÜN GİBİ BÖLMELER (DİKDÖRTGEN KARTLAR) - FİYATSIZ, SADECE RESİM KAPLAYAN, KATEGORİYE AÇILAN */}

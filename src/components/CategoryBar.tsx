@@ -125,7 +125,13 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
     const list = (categoriesConfig && categoriesConfig.length >= 8 && categoriesConfig.some((c) => c.id === 'ayna'))
       ? categoriesConfig
       : defaultCategories;
-    return list.map((cat) => {
+    const preferredOrder = ['all', 'discount', 'ataturk', 'araba', 'motosiklet', 'custom', 'offroad', 'ayna'];
+    const sorted = [...list].sort((a, b) => {
+      const idxA = preferredOrder.indexOf(a.id);
+      const idxB = preferredOrder.indexOf(b.id);
+      return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+    });
+    return sorted.map((cat) => {
       if (cat.id === 'all') {
         return {
           ...cat,
