@@ -227,7 +227,9 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
               {selectedCategory !== 'all' && (
                 <>
                   <span>/</span>
-                  <span className="text-[#ff6600] font-bold">{activeCategoryLabel}</span>
+                  <span className={`font-bold ${selectedCategory === 'ataturk' ? 'animate-ataturk-gold-shimmer' : 'text-[#ff6600]'}`}>
+                    {activeCategoryLabel}
+                  </span>
                 </>
               )}
             </div>
@@ -247,7 +249,16 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 pb-2.5 sm:pb-3 border-b border-slate-200">
           <div>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 font-display tracking-tight uppercase">
-              {selectedCategory !== 'all' ? activeCategoryLabel : 'KATALOG'}
+              {selectedCategory === 'ataturk' ? (
+                <>
+                  <span className="animate-ataturk-gold-shimmer">ATATÜRK</span>{' '}
+                  <span className="text-slate-900">STİCKERLARI</span>
+                </>
+              ) : selectedCategory !== 'all' ? (
+                activeCategoryLabel
+              ) : (
+                'KATALOG'
+              )}
             </h1>
           </div>
 

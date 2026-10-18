@@ -7,7 +7,7 @@ export const DEFAULT_EMAIL_TEMPLATE: EmailTemplateConfig = {
   // 2. Konu satırı: "Ailemize Hoş Geldiniz! ✨"
   // 3. İçerik ve bildirim önizlemesi: "Hesabınız başarıyla oluşturuldu..." (Ailemize hoş geldiniz tekrarlamaz)
   subject: 'Ailemize Hoş Geldiniz! ✨',
-  logoUrl: 'https://ais-dev-5uln7xv63yhmjpdpuhfejn-135382651051.europe-west2.run.app/akuz-logo-badge.png',
+  logoUrl: 'https://akuzstickers.com/akuz-logo-badge.png',
   headerBgColor: '#ffffff',
   greeting: 'Merhaba, {name}! 👋',
   bodyText: 'Hesabınız ({email}) başarıyla oluşturuldu.\n\nAracınız, motosikletiniz veya kişisel eşyalarınız için en dayanıklı Alman malı döküm vinil folyo çıkartmaları, suya, güneşe ve yüksek basınçlı oto yıkamaya dayanıklı en özel tasarımları keşfetmeye hemen başlayabilirsiniz.',
@@ -17,6 +17,17 @@ export const DEFAULT_EMAIL_TEMPLATE: EmailTemplateConfig = {
   buttonText: 'Kataloğu Keşfet',
   buttonUrl: 'https://akuzstickers.com',
   footerNote: 'Sorularınız veya özel siparişleriniz için bize her zaman ulaşabilirsiniz.',
+};
+
+/**
+ * E-posta şablonları için genel web logo URL'si (Ek/attachment oluşturmaz, gelen kutusunda dosya simgesi göstermez)
+ */
+export const getEmailLogoUrl = (customTpl?: EmailTemplateConfig): string => {
+  const tpl = customTpl || getStoredSiteSettings().smtpSettings?.template || DEFAULT_EMAIL_TEMPLATE;
+  if (tpl.logoUrl && tpl.logoUrl.startsWith('http') && !tpl.logoUrl.includes('ais-dev-')) {
+    return tpl.logoUrl;
+  }
+  return 'https://akuzstickers.com/akuz-logo-badge.png';
 };
 
 /**
@@ -44,7 +55,7 @@ export const getWelcomeEmailHtml = (name: string, email: string, customTpl?: Ema
     .join('');
 
   const headerBg = tpl.headerBgColor || '#ffffff';
-  const logoCid = 'cid:akuz-logo@akuzstickers.com';
+  const logoUrl = getEmailLogoUrl(tpl);
 
   return `
 <!DOCTYPE html>
@@ -69,8 +80,8 @@ export const getWelcomeEmailHtml = (name: string, email: string, customTpl?: Ema
         <td style="background-color: ${headerBg}; padding: 36px 30px 28px; text-align: center; border-bottom: 2px solid #f1f5f9;">
           <a href="${tpl.buttonUrl || 'https://akuzstickers.com'}" target="_blank" style="text-decoration: none; display: inline-block;">
             <img 
-              src="${logoCid}" 
-              alt="Logo" 
+              src="${logoUrl}" 
+              alt="AKUZ Stickers" 
               width="120"
               style="display: block; margin: 0 auto; width: 120px; max-width: 120px; height: auto; border: 0; outline: none; text-decoration: none;"
             />
@@ -163,7 +174,7 @@ export interface OrderEmailDetails {
  * 2. Siparişiniz Hazırlanıyor E-postası HTML Şablonu (Eski 'Sipariş Alındı' yerine)
  */
 export const getOrderPreparingEmailHtml = (order: OrderEmailDetails): string => {
-  const logoCid = 'cid:akuz-logo@akuzstickers.com';
+  const logoUrl = getEmailLogoUrl();
 
   const itemsRowsHtml = order.items
     .map(
@@ -207,8 +218,8 @@ export const getOrderPreparingEmailHtml = (order: OrderEmailDetails): string => 
         <td style="background-color: #ffffff; padding: 36px 30px 24px; text-align: center; border-bottom: 2px solid #f1f5f9;">
           <a href="https://akuzstickers.com" target="_blank" style="text-decoration: none; display: inline-block;">
             <img 
-              src="${logoCid}" 
-              alt="Logo" 
+              src="${logoUrl}" 
+              alt="AKUZ Stickers" 
               width="120"
               style="display: block; margin: 0 auto; width: 120px; max-width: 120px; height: auto; border: 0; outline: none; text-decoration: none;"
             />
@@ -289,7 +300,7 @@ export const getOrderPreparingEmailHtml = (order: OrderEmailDetails): string => 
  * 3. Kargoya Verildi E-postası HTML Şablonu
  */
 export const getOrderShippedEmailHtml = (order: OrderEmailDetails): string => {
-  const logoCid = 'cid:akuz-logo@akuzstickers.com';
+  const logoUrl = getEmailLogoUrl();
   const trackingNo = order.trackingNumber || 'Sistemde Tanımlandı';
   const carrier = order.carrierName || 'Kargonomi / Anlaşmalı Kargo';
   const trackingUrl = order.trackingNumber
@@ -338,8 +349,8 @@ export const getOrderShippedEmailHtml = (order: OrderEmailDetails): string => {
         <td style="background-color: #ffffff; padding: 36px 30px 24px; text-align: center; border-bottom: 2px solid #f1f5f9;">
           <a href="https://akuzstickers.com" target="_blank" style="text-decoration: none; display: inline-block;">
             <img 
-              src="${logoCid}" 
-              alt="Logo" 
+              src="${logoUrl}" 
+              alt="AKUZ Stickers" 
               width="120"
               style="display: block; margin: 0 auto; width: 120px; max-width: 120px; height: auto; border: 0; outline: none; text-decoration: none;"
             />
@@ -420,7 +431,7 @@ export const getOrderShippedEmailHtml = (order: OrderEmailDetails): string => {
  * 4. Teslim Edildi E-postası HTML Şablonu
  */
 export const getOrderDeliveredEmailHtml = (order: OrderEmailDetails): string => {
-  const logoCid = 'cid:akuz-logo@akuzstickers.com';
+  const logoUrl = getEmailLogoUrl();
 
   const itemsRowsHtml = order.items
     .map(
@@ -464,8 +475,8 @@ export const getOrderDeliveredEmailHtml = (order: OrderEmailDetails): string => 
         <td style="background-color: #ffffff; padding: 36px 30px 24px; text-align: center; border-bottom: 2px solid #f1f5f9;">
           <a href="https://akuzstickers.com" target="_blank" style="text-decoration: none; display: inline-block;">
             <img 
-              src="${logoCid}" 
-              alt="Logo" 
+              src="${logoUrl}" 
+              alt="AKUZ Stickers" 
               width="120"
               style="display: block; margin: 0 auto; width: 120px; max-width: 120px; height: auto; border: 0; outline: none; text-decoration: none;"
             />
@@ -507,16 +518,19 @@ export const getOrderDeliveredEmailHtml = (order: OrderEmailDetails): string => 
             </table>
           </div>
 
-          <!-- SİTEMİZDEN DEĞERLENDİRİN KUTUSU -->
-          <div style="background: linear-gradient(135deg, #fdf2f8 0%, #ffffff 100%); border: 1px solid #fbcfe8; border-radius: 16px; padding: 22px 24px; text-align: center;">
-            <div style="font-size: 15px; font-weight: 900; color: #0f172a; margin-bottom: 6px;">
-              Siparişinizi Sitemizden Değerlendirin ⭐⭐⭐⭐⭐
+          <!-- SİTEMİZDEN DEĞERLENDİRİN KUTUSU (AKUZ TURUNCU KONSEPTİ & YÜKSEK OKUNURLUK) -->
+          <div style="background-color: #fff7ed; border: 2px solid #fed7aa; border-radius: 18px; padding: 26px 24px; text-align: center; margin-top: 24px; box-shadow: 0 4px 14px rgba(234, 88, 12, 0.08);">
+            <div style="font-size: 22px; line-height: 1; margin-bottom: 10px; letter-spacing: 2px;">
+              ⭐⭐⭐⭐⭐
             </div>
-            <p style="font-size: 13px; color: #475569; line-height: 1.6; margin: 0 0 16px;">
+            <div style="font-size: 18px; font-weight: 900; color: #9a3412; margin-bottom: 8px; line-height: 1.4;">
+              Siparişinizi Sitemizden Değerlendirin
+            </div>
+            <p style="font-size: 14px; color: #431407; line-height: 1.6; margin: 0 auto 20px; max-width: 450px; font-weight: 500;">
               Ürünlerimiz ve alışveriş deneyiminiz hakkındaki görüşleriniz bizim için çok kıymetli. Deneyiminizi paylaşarak diğer sticker tutkunlarına yol gösterebilirsiniz.
             </p>
 
-            <a href="https://akuzstickers.com" target="_blank" style="display: inline-block; background-color: #ff0055; color: #ffffff !important; text-decoration: none; font-size: 13px; font-weight: 800; padding: 13px 28px; border-radius: 12px; box-shadow: 0 6px 12px -2px rgba(255, 0, 85, 0.3);">
+            <a href="https://akuzstickers.com" target="_blank" style="display: inline-block; background-color: #ea580c; background-image: linear-gradient(135deg, #ff6600 0%, #ea580c 100%); color: #ffffff !important; text-decoration: none; font-size: 14px; font-weight: 900; padding: 14px 34px; border-radius: 12px; box-shadow: 0 6px 18px -2px rgba(234, 88, 12, 0.4); text-transform: uppercase; letter-spacing: 0.5px;">
               Sitemizden Değerlendirin ⭐
             </a>
           </div>

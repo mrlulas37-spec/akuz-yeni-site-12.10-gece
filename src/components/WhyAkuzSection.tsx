@@ -15,14 +15,39 @@ import {
   BookOpen,
   ArrowRight
 } from 'lucide-react';
-import { WhyAkuzCardItem } from '../types';
+import { WhyAkuzCardItem, CategoryCircleItem } from '../types';
+import { ThreeDDiscountCoin } from './ThreeDDiscountCoin';
 
 interface WhyAkuzSectionProps {
   cards?: WhyAkuzCardItem[];
+  categoriesConfig?: CategoryCircleItem[];
   onNavigateToCatalog?: () => void;
 }
 
-export const WhyAkuzSection: React.FC<WhyAkuzSectionProps> = ({ cards, onNavigateToCatalog }) => {
+// Ayna Stickerları için minyatür Yan Ayna Simgesi
+const MirrorIcon = ({ size = 14 }: { size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <ellipse cx="12" cy="11" rx="8" ry="5.5" />
+    <path d="M8 9l4 4" />
+    <path d="M12 7l4 4" />
+    <path d="M10 16.5l-2.5 3.5h9l-2.5-3.5" />
+  </svg>
+);
+
+export const WhyAkuzSection: React.FC<WhyAkuzSectionProps> = ({
+  cards,
+  categoriesConfig,
+  onNavigateToCatalog,
+}) => {
   const sectionRef = useRef<HTMLDivElement>(null);
   const [hasAnimated, setHasAnimated] = useState(false);
 
@@ -81,10 +106,15 @@ export const WhyAkuzSection: React.FC<WhyAkuzSectionProps> = ({ cards, onNavigat
     return desc.replace(/sökümü kolaydır/gi, 'uygulaması kolaydır');
   };
 
-  // Mini Kategori Yuvarlakları (Sayfanın üstündeki butonların minyatür hali)
-  const miniCategories = [
+  // Mini Kategori Yuvarlakları - Yuvarlak buton fotoğrafları güncellendiğinde burası da otomatik güncellenir
+  const defaultMiniCategories = [
     { id: 'all', name: 'Tümü', icon: <LayoutGrid size={13} />, bg: 'bg-slate-900 text-white' },
-    { id: 'discount', name: 'İndirim', icon: <Percent size={13} />, bg: 'bg-gradient-to-tr from-rose-500 to-red-500 text-white' },
+    {
+      id: 'discount',
+      name: 'İndirim',
+      icon: <ThreeDDiscountCoin size={22} />,
+      bg: 'bg-[radial-gradient(circle_at_center,_#2b0d14_0%,_#140508_55%,_#050204_100%)] text-white',
+    },
     {
       id: 'ataturk',
       name: 'Atatürk',
@@ -95,13 +125,50 @@ export const WhyAkuzSection: React.FC<WhyAkuzSectionProps> = ({ cards, onNavigat
           className="w-full h-full object-cover rounded-full"
         />
       ),
-      bg: 'bg-slate-900',
+      bg: 'bg-slate-950',
     },
     { id: 'araba', name: 'Araba', icon: <Car size={14} />, bg: 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white' },
     { id: 'motosiklet', name: 'Motor', icon: <Bike size={14} />, bg: 'bg-slate-800 text-orange-400' },
-    { id: 'offroad', name: '4x4', icon: <Compass size={13} />, bg: 'bg-gradient-to-tr from-emerald-600 to-teal-700 text-white' },
     { id: 'custom', name: 'Özel', icon: <Sparkles size={13} />, bg: 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white' },
+    { id: 'offroad', name: '4x4', icon: <Compass size={13} />, bg: 'bg-gradient-to-tr from-emerald-600 to-teal-700 text-white' },
+    { id: 'ayna', name: 'Ayna', icon: <MirrorIcon size={14} />, bg: 'bg-gradient-to-tr from-cyan-600 to-blue-600 text-white' },
   ];
+
+  const miniCategories = React.useMemo(() => {
+    return defaultMiniCategories.map((item) => {
+      const liveCat = categoriesConfig?.find((c) => c.id === item.id);
+      const customImg =
+        liveCat?.imageUrl || (item.id === 'ataturk' && !liveCat?.imageUrl ? '/products/IMG_1278.jpeg' : undefined);
+
+      let icon = item.icon;
+      if (item.id === 'discount') {
+        icon = liveCat?.imageUrl ? (
+          <img
+            src={liveCat.imageUrl}
+            alt={liveCat.titleLine1 || item.name}
+            className="w-full h-full object-cover rounded-full"
+          />
+        ) : (
+          <ThreeDDiscountCoin size={22} />
+        );
+      } else if (customImg) {
+        icon = (
+          <img
+            src={customImg}
+            alt={liveCat?.titleLine1 || item.name}
+            className="w-full h-full object-cover rounded-full"
+          />
+        );
+      }
+
+      return {
+        ...item,
+        name: liveCat?.titleLine1 || item.name,
+        icon,
+        bg: liveCat?.bgGradient || item.bg,
+      };
+    });
+  }, [categoriesConfig]);
 
   const marqueeItems = [...miniCategories, ...miniCategories];
 

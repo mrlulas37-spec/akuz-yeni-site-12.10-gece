@@ -197,7 +197,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
     "secure": true,
     "user": "info@akuzstickers.com",
     "pass": "GvqrM6nWyfE9mMX",
-    "fromName": "AKUZ STICKERS",
+    "fromName": "AKUZ STİCKERS",
     "fromEmail": "info@akuzstickers.com",
     "enabled": true
   },
@@ -221,7 +221,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
     "testMode": true
   },
   "shippingFee": 39.9,
-  "freeShippingThreshold": 150,
+  "freeShippingThreshold": 2,
   "googleClientId": "947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com"
 };
 

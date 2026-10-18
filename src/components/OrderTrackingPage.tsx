@@ -138,8 +138,6 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
             <ArrowLeft size={16} />
             <span>Ana Sayfaya Dön</span>
           </button>
-
-          <span className="text-xs text-slate-400 font-medium">/siparis-sorgula</span>
         </div>
 
         {/* Başlık ve Bilgilendirme */}
@@ -189,11 +187,6 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 pt-1">
               <span>💡 <strong>İpucu:</strong> Sipariş numaranız sipariş anında ekranda çıkan ve e-postanıza iletilen <strong>AKUZ...</strong> kodudur.</span>
-              {orders.length > 0 && (
-                <span className="text-slate-400">
-                  Tarayıcınızda kayıtlı <strong>{orders.length}</strong> sipariş bulundu.
-                </span>
-              )}
             </div>
           </form>
 

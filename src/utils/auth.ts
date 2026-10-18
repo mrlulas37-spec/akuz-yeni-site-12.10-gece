@@ -1,6 +1,8 @@
 import { UserProfile } from '../types';
+import { sendWelcomeEmail } from './emailService';
 
 export interface RegisteredAccount {
+  id?: string;
   name: string;
   email: string;
   full_name?: string;
@@ -9,6 +11,9 @@ export interface RegisteredAccount {
   plainPassword?: string;
   phone?: string;
   createdAt: string;
+  authProvider?: 'google' | 'normal' | string;
+  provider?: 'google' | 'normal' | string;
+  registeredVia?: 'google' | 'normal' | string;
   addresses?: UserProfile['addresses'];
   cart?: any[];
   favorites?: string[];
@@ -21,6 +26,36 @@ const LEGACY_USER_KEY = 'akuz_user';
 export const API_AUTH_URL = '/api/auth.php';
 export const API_GOOGLE_AUTH_URL = '/api/google_auth.php';
 export const API_CART_URL = '/api/cart.php';
+
+/**
+ * Yeni kullanıcı kaydı (normal form veya Google ile ilk giriş) gerçekleştiğinde
+ * otomatik "Ailemize Hoş Geldiniz! ✨" kayıt bildirimi e-postası gönderir.
+ * Her hesaba yalnızca bir kez gönderilmesi için yerel önbellek kilidiyle korunur.
+ */
+export const triggerRegistrationWelcomeEmail = (name: string, email: string) => {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanName = (name || '').trim() || cleanEmail.split('@')[0] || 'Değerli Kullanıcımız';
+  if (!cleanEmail || !cleanEmail.includes('@')) return;
+
+  try {
+    const welcomeKey = 'akuz_welcome_sent_' + cleanEmail;
+    if (localStorage.getItem(welcomeKey)) {
+      return; // Bu kullanıcıya hoş geldin e-postası zaten gönderilmiş
+    }
+    localStorage.setItem(welcomeKey, new Date().toISOString());
+  } catch {}
+
+  console.log('[KAYIT BİLDİRİMİ] Hoş geldin e-postası gönderiliyor:', cleanEmail);
+  sendWelcomeEmail(cleanName, cleanEmail)
+    .then((success) => {
+      if (success) {
+        console.log('[KAYIT BİLDİRİMİ BAŞARILI] E-posta başarıyla iletildi:', cleanEmail);
+      }
+    })
+    .catch((err) => {
+      console.warn('[KAYIT BİLDİRİMİ HATASI]', err);
+    });
+};
 
 // Kullanıcı profil verisini frontend ile %100 uyumlu normalize eder
 export const normalizeUserProfile = (raw: any): UserProfile => {
@@ -450,6 +485,9 @@ export const registerUser = async (
       saveRegisteredUsers(users);
     }
 
+    // Otomatik Kayıt Bildirimi E-postası Gönder
+    triggerRegistrationWelcomeEmail(cleanName, cleanEmail);
+
     return {
       success: true,
       message: data?.message || 'Kayıt başarılı, giriş yapabilirsiniz',
@@ -467,6 +505,7 @@ export const registerUser = async (
       });
       const fbData = await fallbackRes.json();
       if (fbData.success) {
+        triggerRegistrationWelcomeEmail(cleanName, cleanEmail);
         return {
           success: true,
           message: 'Kayıt başarılı, giriş yapabilirsiniz',
@@ -497,6 +536,8 @@ export const registerUser = async (
       addresses: profile.addresses,
     });
     saveRegisteredUsers(users);
+
+    triggerRegistrationWelcomeEmail(cleanName, cleanEmail);
 
     return {
       success: true,
@@ -685,7 +726,7 @@ export const loginWithGoogleAccount = async (
   // 1. Google login başarılı olduğunda cPanel'deki google_auth.php adresine POST at ve user_id'yi localStorage'a kaydet
   const { user_id: receivedUserId, data } = await saveGoogleUserToCpanel(cleanName, cleanEmail);
 
-  // 2. Unified auth.php API'ye de bildirim gönder
+  // 2. Unified auth.php API'ye ve /api/auth/google rotasına bildirim gönder (Tüm ortamlarda tam güvence)
   try {
     fetch(API_AUTH_URL, {
       method: 'POST',
@@ -695,6 +736,16 @@ export const loginWithGoogleAccount = async (
         email: cleanEmail,
         full_name: cleanName,
         name: cleanName,
+      }),
+    }).catch(() => {});
+
+    fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        name: cleanName,
+        fullname: cleanName,
       }),
     }).catch(() => {});
   } catch {}
@@ -783,6 +834,9 @@ export const loginWithGoogleAccount = async (
       addresses: profile.addresses || [],
     });
     saveRegisteredUsers(users);
+
+    // Google ile ilk defa sisteme kaydolan kullanıcıya Hoş Geldin bildirimi gönder
+    triggerRegistrationWelcomeEmail(cleanName, cleanEmail);
   } else {
     users[idx].name = cleanName;
     users[idx].full_name = cleanName;

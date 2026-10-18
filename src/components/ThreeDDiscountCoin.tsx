@@ -64,8 +64,8 @@ export const ThreeDDiscountCoin: React.FC<ThreeDDiscountCoinProps> = ({
 
       const percentGroup = new THREE.Group();
 
-      // (A) Çapraz Kapsül Çubuk (Poligon sayısı optimize edildi)
-      const barGeometry = new THREE.CapsuleGeometry(0.18, 1.95, isMobileOrLowEnd ? 8 : 12, isMobileOrLowEnd ? 12 : 18);
+      // (A) Çapraz Köşeli ve Tok 3D Altın Külçe Çubuk (Kullanıcı İsteği: Köşeli olsun, yassı olmasın)
+      const barGeometry = new THREE.BoxGeometry(0.28, 2.15, 0.28);
       const barMesh = new THREE.Mesh(barGeometry, goldMaterial);
       barMesh.rotation.z = -Math.PI / 4;
       percentGroup.add(barMesh);
@@ -190,7 +190,7 @@ export const ThreeDDiscountCoin: React.FC<ThreeDDiscountCoinProps> = ({
       {webGlFailed ? (
         <div className="relative z-10 w-full h-full flex items-center justify-center animate-elite-discount-spin">
           <svg viewBox="0 0 100 100" className="w-[80%] h-[80%] fill-none drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">
-            <line x1="76" y1="24" x2="24" y2="76" stroke="#f59e0b" strokeWidth="15" strokeLinecap="round" />
+            <line x1="76" y1="24" x2="24" y2="76" stroke="#f59e0b" strokeWidth="16" strokeLinecap="square" />
             <circle cx="30" cy="30" r="14" stroke="#f59e0b" strokeWidth="8.5" />
             <circle cx="70" cy="70" r="14" stroke="#f59e0b" strokeWidth="8.5" />
           </svg>

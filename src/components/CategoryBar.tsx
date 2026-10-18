@@ -216,7 +216,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
             }`}
             title={cat.titleLine1}
           >
-            {isAtaturk && !isClicked && !isSelected ? (
+            {isAtaturk && !isClicked ? (
               <span className="animate-ataturk-gold-shimmer">
                 {cat.titleLine1}
               </span>

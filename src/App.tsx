@@ -142,7 +142,15 @@ export default function App() {
       if (typeof window !== 'undefined' && window.location.search.includes('payment_result=')) {
         return '/odeme';
       }
-      return window.location.pathname || '/';
+      const rawPath = typeof window !== 'undefined' ? (window.location.pathname || '/') : '/';
+      // Kullanıcı İsteği: /admin ile girilemesin, adminadmin yazılarak girilsin
+      if (rawPath === '/admin' || rawPath === '/admin/') {
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, '', '/');
+        }
+        return '/';
+      }
+      return rawPath;
     } catch {
       return '/';
     }
@@ -201,7 +209,12 @@ export default function App() {
   // Listen to browser popstate (back / forward buttons)
   useEffect(() => {
     const handlePopState = () => {
-      const path = window.location.pathname || '/';
+      let path = window.location.pathname || '/';
+      // Kullanıcı İsteği: /admin ile girilemesin, ana sayfaya yönlendirilsin
+      if (path === '/admin' || path === '/admin/') {
+        path = '/';
+        window.history.replaceState({}, '', '/');
+      }
       setCurrentPath(path);
       if (path === '/') {
         setSelectedCategory('all');
@@ -260,6 +273,15 @@ export default function App() {
         }
       })
       .catch((e) => console.warn('[HOST DB] Ayarlar çekilemedi:', e));
+
+    // 3. Kayıtlı kullanıcıları çek (Admin görünümü için)
+    fetchCentralUsers('akuz_admin_2026')
+      .then((usersList) => {
+        if (Array.isArray(usersList)) {
+          setRegisteredUsers(usersList);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Favorites state (persisted in localStorage)
@@ -325,7 +347,7 @@ export default function App() {
   useEffect(() => {
     let isCancelled = false;
 
-    if (currentPath === '/admin') {
+    if (currentPath === '/adminadmin') {
       fetchCentralUsers('akuz_admin_2026').then((hostUsers) => {
         if (!isCancelled) {
           setRegisteredUsers(hostUsers || []);
@@ -409,6 +431,10 @@ export default function App() {
   });
 
   const navigateTo = (path: string) => {
+    // Kullanıcı İsteği: /admin ile girilemesin, adminadmin ile girilsin
+    if (path === '/admin' || path === '/admin/') {
+      path = '/';
+    }
     // Kullanıcı giriş veya şifre sayfasına giderken geldiği sayfayı kaydet
     if (path === '/giris' || path === '/login') {
       if (
@@ -1432,6 +1458,7 @@ export default function App() {
           <div className="perf-section-lazy">
             <WhyAkuzSection
               cards={siteSettings.whyAkuzCards}
+              categoriesConfig={siteSettings.categories}
               onNavigateToCatalog={() => {
                 navigateTo('/katalog');
                 window.scrollTo({ top: 0, behavior: 'instant' });

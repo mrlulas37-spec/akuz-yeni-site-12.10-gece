@@ -537,16 +537,16 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     }
 
     // 3. Otomatik "Siparişiniz Hazırlanıyor" E-postası gönder
-    if (cleanEmail && cleanEmail.includes('@')) {
+    if (emailToUse && emailToUse.includes('@')) {
       sendOrderPreparingEmail({
         orderId: newOrderId,
-        customerName: fullName.trim() || 'Değerli Müşterimiz',
-        customerEmail: cleanEmail,
-        customerPhone: finalPhone,
-        shippingAddress: `${finalAddress}, ${district}/${city}`,
-        items: orderItems,
-        totalPrice: grandTotal,
-        orderNote,
+        customerName: nameToUse || 'Değerli Müşterimiz',
+        customerEmail: emailToUse,
+        customerPhone: phoneToUse,
+        shippingAddress: addressToUse,
+        items: itemsToUse,
+        totalPrice: grandTotalToUse,
+        orderNote: orderNoteToUse,
       }).catch(console.error);
     }
 
@@ -556,12 +556,12 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     if (kargonomi?.enabled && kargonomi.autoCreateOnOrder !== false) {
       createKargonomiShipment({
         orderId: newOrderId,
-        recipientName: fullName.trim() || 'Müşteri',
-        recipientPhone: finalPhone,
-        recipientAddress: finalAddress,
-        recipientCity: city,
-        recipientDistrict: district,
-        itemsDescription: orderItems.map((i) => `${i.quantity}x ${i.productName}`).join(', '),
+        recipientName: nameToUse || 'Müşteri',
+        recipientPhone: phoneToUse,
+        recipientAddress: addressToUse,
+        recipientCity: city || 'Bursa',
+        recipientDistrict: district || 'Nilüfer',
+        itemsDescription: itemsToUse.map((i: any) => `${i.quantity}x ${i.productName}`).join(', '),
         carrier: kargonomi.defaultCarrier || 'mng',
       }).then((kargoRes) => {
         if (kargoRes.success && kargoRes.trackingNumber) {

@@ -40,143 +40,233 @@ function writeJson($filePath, $data) {
 $rawInput = file_get_contents('php://input');
 $body = json_decode($rawInput, true) ?: [];
 
-// Pure PHP SMTP socket function
+// Pure PHP SMTP socket function (RFC 5321 Multiline Response uyumlu)
+function smtpReadResponse($socket) {
+    $full = '';
+    $lastLine = '';
+    $code = '';
+    while (!feof($socket)) {
+        $line = fgets($socket, 1024);
+        if ($line === false) {
+            break;
+        }
+        $full .= $line;
+        $lastLine = $line;
+        // RFC 5321: Çok satırlı yanıtlarda 4. karakter tire '-' olur (örn. 250-SIZE ...)
+        // Son satırda 4. karakter boşluk ' ' olur veya sadece 3 basamaklı koddur.
+        if (preg_match('/^([0-9]{3})([ -]|$)/', $line, $m)) {
+            $code = $m[1];
+            if (!isset($m[2]) || $m[2] === ' ' || $m[2] === '' || $m[2] === "\r" || $m[2] === "\n") {
+                break;
+            }
+        }
+    }
+    return [
+        'code' => $code,
+        'full' => trim($full),
+        'lastLine' => trim($lastLine),
+    ];
+}
+
+function smtpOpenConnection($host, $port, $timeout = 15) {
+    $context = stream_context_create([
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'allow_self_signed' => true,
+        ],
+    ]);
+    $protocol = ($port == 465) ? 'ssl://' : 'tcp://';
+    $remote = $protocol . $host . ':' . $port;
+    $errno = 0;
+    $errstr = '';
+    $socket = @stream_socket_client($remote, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $context);
+    if (!$socket) {
+        $fallbackHost = ($port == 465 ? 'ssl://' : '') . $host;
+        $socket = @fsockopen($fallbackHost, $port, $errno, $errstr, $timeout);
+    }
+    if ($socket) {
+        stream_set_timeout($socket, $timeout);
+    }
+    return [$socket, $errno, $errstr];
+}
+
+function smtpPerformHandshakeAndAuth($socket, $host, $port, $user, $pass) {
+    // 1. Karşılama bannerını (220) tüm satırlarıyla oku
+    $banner = smtpReadResponse($socket);
+    if ($banner['code'] !== '220') {
+        return ['success' => false, 'error' => "SMTP sunucusu bağlantıyı kabul etmedi (" . ($banner['code'] ?: 'Cevap yok') . "): " . $banner['full']];
+    }
+
+    // 2. EHLO gönder ve çok satırlı cevabı tamamen tüket
+    $ehloDomain = !empty($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'akuzstickers.com';
+    fputs($socket, "EHLO $ehloDomain\r\n");
+    $ehlo = smtpReadResponse($socket);
+
+    if ($ehlo['code'] !== '250') {
+        fputs($socket, "HELO $ehloDomain\r\n");
+        $helo = smtpReadResponse($socket);
+        if ($helo['code'] !== '250') {
+            return ['success' => false, 'error' => "EHLO/HELO reddedildi (" . $helo['code'] . "): " . $helo['full']];
+        }
+    }
+
+    // 3. Port 587 STARTTLS desteği
+    if ($port == 587) {
+        fputs($socket, "STARTTLS\r\n");
+        $tls = smtpReadResponse($socket);
+        if ($tls['code'] === '220') {
+            if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                return ['success' => false, 'error' => "TLS şifreleme başlatılamadı."];
+            }
+            fputs($socket, "EHLO $ehloDomain\r\n");
+            $ehlo2 = smtpReadResponse($socket);
+            if ($ehlo2['code'] !== '250') {
+                return ['success' => false, 'error' => "TLS sonrası EHLO reddedildi: " . $ehlo2['full']];
+            }
+        }
+    }
+
+    // 4. AUTH LOGIN başlat
+    fputs($socket, "AUTH LOGIN\r\n");
+    $auth = smtpReadResponse($socket);
+    if ($auth['code'] !== '334') {
+        // Yedek: AUTH PLAIN dene
+        $plainAuth = base64_encode("\0" . $user . "\0" . $pass);
+        fputs($socket, "AUTH PLAIN $plainAuth\r\n");
+        $plainResp = smtpReadResponse($socket);
+        if ($plainResp['code'] === '235') {
+            return ['success' => true];
+        }
+        return ['success' => false, 'error' => "AUTH LOGIN reddedildi (" . $auth['code'] . "): " . $auth['full']];
+    }
+
+    // 5. Kullanıcı Adı (Base64)
+    fputs($socket, base64_encode($user) . "\r\n");
+    $userResp = smtpReadResponse($socket);
+    if ($userResp['code'] !== '334') {
+        return ['success' => false, 'error' => "Kullanıcı adı kabul edilmedi (" . $userResp['code'] . "): " . $userResp['full']];
+    }
+
+    // 6. Şifre (Base64)
+    fputs($socket, base64_encode($pass) . "\r\n");
+    $passResp = smtpReadResponse($socket);
+    if ($passResp['code'] !== '235') {
+        $msg = "cPanel Kimlik Doğrulama Hatası (535): Girdiğiniz e-posta kullanıcı adı ('$user') veya hesap şifresi cPanel sunucusu tarafından reddedildi.";
+        if (!empty($passResp['full'])) {
+            $msg .= " Sunucu yanıtı: " . $passResp['full'];
+        }
+        return ['success' => false, 'error' => $msg];
+    }
+
+    return ['success' => true];
+}
+
 function sendSmtpMail($smtpConfig, $to, $subject, $html) {
-    $host = !empty($smtpConfig['host']) ? $smtpConfig['host'] : getenv('SMTP_HOST');
+    $host = !empty($smtpConfig['host']) ? trim($smtpConfig['host']) : (getenv('SMTP_HOST') ?: 'mail.akuzstickers.com');
     $port = !empty($smtpConfig['port']) ? intval($smtpConfig['port']) : 465;
-    $user = !empty($smtpConfig['user']) ? $smtpConfig['user'] : getenv('SMTP_USER');
-    $pass = !empty($smtpConfig['pass']) ? $smtpConfig['pass'] : getenv('SMTP_PASS');
-    $fromName = !empty($smtpConfig['fromName']) ? $smtpConfig['fromName'] : 'AKUZ Stickers';
-    $fromEmail = !empty($smtpConfig['fromEmail']) ? $smtpConfig['fromEmail'] : ($user ?: 'info@akuzstickers.com');
+    $user = !empty($smtpConfig['user']) ? trim($smtpConfig['user']) : (getenv('SMTP_USER') ?: 'info@akuzstickers.com');
+    $pass = !empty($smtpConfig['pass']) ? trim($smtpConfig['pass']) : getenv('SMTP_PASS');
+    $fromName = !empty($smtpConfig['fromName']) ? trim($smtpConfig['fromName']) : 'AKUZ Stickers';
+    $fromEmail = !empty($smtpConfig['fromEmail']) ? trim($smtpConfig['fromEmail']) : ($user ?: 'info@akuzstickers.com');
 
     if (empty($host) || empty($user) || empty($pass)) {
         return ['success' => false, 'error' => 'cPanel SMTP hesap şifreniz henüz girilmemiş. Lütfen Yönetici Paneli -> E-posta & SMTP sekmesinden kurumsal e-posta şifrenizi kaydedin.'];
     }
 
-    $socketHost = ($port === 465 ? 'ssl://' : '') . $host;
-    $timeout = 15;
-    $errno = 0;
-    $errstr = '';
-
-    $socket = @fsockopen($socketHost, $port, $errno, $errstr, $timeout);
+    list($socket, $errno, $errstr) = smtpOpenConnection($host, $port, 15);
     if (!$socket) {
-        return ['success' => false, 'error' => "Sunucuya bağlanılamadı ($errno): $errstr. Port veya host adresini kontrol edin."];
+        return ['success' => false, 'error' => "SMTP Sunucusuna Bağlanılamadı ($errno): $errstr. ($host:$port)"];
     }
 
-    $response = fgets($socket, 515);
-
-    fputs($socket, "EHLO " . ($_SERVER['SERVER_NAME'] ?: 'localhost') . "\r\n");
-    $response = '';
-    while ($line = fgets($socket, 515)) {
-        $response .= $line;
-        if (substr($line, 3, 1) === ' ') break;
-    }
-
-    // TLS on port 587
-    if ($port === 587) {
-        fputs($socket, "STARTTLS\r\n");
-        $tlsResponse = fgets($socket, 515);
-        if (substr($tlsResponse, 0, 3) === '220') {
-            stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
-            fputs($socket, "EHLO " . ($_SERVER['SERVER_NAME'] ?: 'localhost') . "\r\n");
-            while ($line = fgets($socket, 515)) {
-                if (substr($line, 3, 1) === ' ') break;
-            }
-        }
-    }
-
-    fputs($socket, "AUTH LOGIN\r\n");
-    $authResp = fgets($socket, 515);
-    if (substr($authResp, 0, 3) !== '334') {
+    $auth = smtpPerformHandshakeAndAuth($socket, $host, $port, $user, $pass);
+    if (!$auth['success']) {
+        fputs($socket, "QUIT\r\n");
         fclose($socket);
-        return ['success' => false, 'error' => "AUTH LOGIN reddedildi: $authResp"];
+        return $auth;
     }
 
-    fputs($socket, base64_encode($user) . "\r\n");
-    $userResp = fgets($socket, 515);
-    if (substr($userResp, 0, 3) !== '334') {
-        fclose($socket);
-        return ['success' => false, 'error' => "Kullanıcı adı kabul edilmedi: $userResp"];
-    }
-
-    fputs($socket, base64_encode($pass) . "\r\n");
-    $passResp = fgets($socket, 515);
-    if (substr($passResp, 0, 3) !== '235') {
-        fclose($socket);
-        return ['success' => false, 'error' => "Şifre doğrulanamadı (535): E-posta şifrenizi kontrol edin."];
-    }
-
+    // MAIL FROM
     fputs($socket, "MAIL FROM: <$fromEmail>\r\n");
-    $fromResp = fgets($socket, 515);
-
-    fputs($socket, "RCPT TO: <$to>\r\n");
-    $toResp = fgets($socket, 515);
-    if (substr($toResp, 0, 3) !== '250') {
+    $fromResp = smtpReadResponse($socket);
+    if ($fromResp['code'] !== '250') {
+        fputs($socket, "QUIT\r\n");
         fclose($socket);
-        return ['success' => false, 'error' => "Alıcı adresi reddedildi: $toResp"];
+        return ['success' => false, 'error' => "Gönderici adresi reddedildi: " . $fromResp['full']];
     }
 
-    fputs($socket, "DATA\r\n");
-    $dataResp = fgets($socket, 515);
+    // RCPT TO
+    fputs($socket, "RCPT TO: <$to>\r\n");
+    $toResp = smtpReadResponse($socket);
+    if ($toResp['code'] !== '250') {
+        fputs($socket, "QUIT\r\n");
+        fclose($socket);
+        return ['success' => false, 'error' => "Alıcı adresi reddedildi: " . $toResp['full']];
+    }
 
-    $boundary = md5(uniqid(time()));
+    // DATA
+    fputs($socket, "DATA\r\n");
+    $dataResp = smtpReadResponse($socket);
+    if ($dataResp['code'] !== '354') {
+        fputs($socket, "QUIT\r\n");
+        fclose($socket);
+        return ['success' => false, 'error' => "DATA komutu reddedildi: " . $dataResp['full']];
+    }
+
+    // Logo doğrudan https://akuzstickers.com/akuz-logo-badge.png üzerinden yüklenir.
+    // Ek (attachment) eklenmez; böylece Gmail veya mobil posta istemcilerinde altta 'akuz-logo.png' ek kutucuğu gözükmez.
+    $sanitizedHtml = str_replace('cid:akuz-logo@akuzstickers.com', 'https://akuzstickers.com/akuz-logo-badge.png', $html);
+
     $headers = "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <$fromEmail>\r\n";
     $headers .= "To: <$to>\r\n";
     $headers .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $headers .= "Content-Transfer-Encoding: 8bit\r\n";
     $headers .= "Date: " . date('r') . "\r\n";
 
-    fputs($socket, $headers . "\r\n" . $html . "\r\n.\r\n");
-    $sendResp = fgets($socket, 515);
+    fputs($socket, $headers . "\r\n" . $sanitizedHtml . "\r\n.\r\n");
+    $sendResp = smtpReadResponse($socket);
 
     fputs($socket, "QUIT\r\n");
+    smtpReadResponse($socket);
     fclose($socket);
 
-    if (substr($sendResp, 0, 3) === '250') {
-        return ['success' => true, 'messageId' => trim($sendResp)];
+    if ($sendResp['code'] === '250') {
+        return ['success' => true, 'messageId' => trim($sendResp['full'])];
     } else {
-        return ['success' => false, 'error' => "E-posta gönderim yanıtı: $sendResp"];
+        return ['success' => false, 'error' => "E-posta gönderim yanıtı: " . $sendResp['full']];
     }
 }
 
 // 1. SMTP TEST
 if ($route === 'test-smtp') {
     $cfg = $body['smtpConfig'] ?? [];
-    $host = $cfg['host'] ?? '';
-    $port = intval($cfg['port'] ?? 465);
-    $user = $cfg['user'] ?? '';
-    $pass = $cfg['pass'] ?? '';
+    $host = !empty($cfg['host']) ? trim($cfg['host']) : (getenv('SMTP_HOST') ?: 'mail.akuzstickers.com');
+    $port = !empty($cfg['port']) ? intval($cfg['port']) : 465;
+    $user = !empty($cfg['user']) ? trim($cfg['user']) : (getenv('SMTP_USER') ?: 'info@akuzstickers.com');
+    $pass = !empty($cfg['pass']) ? trim($cfg['pass']) : getenv('SMTP_PASS');
 
     if (empty($host) || empty($user) || empty($pass)) {
-        echo json_encode(['success' => false, 'error' => 'Host, kullanıcı adı ve şifre zorunludur.']);
+        echo json_encode(['success' => false, 'error' => 'Host, kullanıcı adı ve şifre zorunludur. Lütfen cPanel e-posta şifrenizi girin.']);
         exit;
     }
 
-    $socketHost = ($port === 465 ? 'ssl://' : '') . $host;
-    $socket = @fsockopen($socketHost, $port, $errno, $errstr, 12);
+    list($socket, $errno, $errstr) = smtpOpenConnection($host, $port, 15);
     if (!$socket) {
-        echo json_encode(['success' => false, 'error' => "Bağlantı hatası ($errno): $errstr. Port veya sunucu adresini kontrol edin."]);
+        echo json_encode(['success' => false, 'error' => "Bağlantı hatası ($errno): $errstr. Sunucu: $host:$port"]);
         exit;
     }
-    fgets($socket, 515);
-    fputs($socket, "EHLO localhost\r\n");
-    while ($line = fgets($socket, 515)) {
-        if (substr($line, 3, 1) === ' ') break;
-    }
-    fputs($socket, "AUTH LOGIN\r\n");
-    fgets($socket, 515);
-    fputs($socket, base64_encode($user) . "\r\n");
-    fgets($socket, 515);
-    fputs($socket, base64_encode($pass) . "\r\n");
-    $passResp = fgets($socket, 515);
+
+    $auth = smtpPerformHandshakeAndAuth($socket, $host, $port, $user, $pass);
     fputs($socket, "QUIT\r\n");
+    smtpReadResponse($socket);
     fclose($socket);
 
-    if (substr($passResp, 0, 3) === '235') {
-        echo json_encode(['success' => true, 'message' => 'cPanel SMTP sunucu bağlantısı başarıyla doğrulandı!']);
+    if ($auth['success']) {
+        echo json_encode(['success' => true, 'message' => 'cPanel SMTP sunucu bağlantısı ve kimlik doğrulama başarıyla doğrulandı!']);
     } else {
-        echo json_encode(['success' => false, 'error' => "Kimlik doğrulama hatası ($passResp). Lütfen kullanıcı adı ve şifrenizi kontrol edin."]);
+        echo json_encode(['success' => false, 'error' => $auth['error']]);
     }
     exit;
 }
@@ -586,11 +676,11 @@ if ($route === 'auth/login' || $route === 'auth.php' && ($body['action'] ?? '') 
     exit;
 }
 
-if ($route === 'auth/google') {
+if ($route === 'auth/google' || $route === 'google_auth' || $route === 'google_auth.php') {
     $usersFile = $dataDir . '/users.json';
     $users = readJson($usersFile, []);
     $email = strtolower(trim($body['email'] ?? ''));
-    $name = trim($body['name'] ?? '') ?: explode('@', $email)[0];
+    $name = trim($body['name'] ?? ($body['fullname'] ?? '')) ?: explode('@', $email)[0];
 
     if (empty($email)) {
         echo json_encode(['success' => false, 'error' => 'E-posta adresi eksik.']);
@@ -608,33 +698,68 @@ if ($route === 'auth/google') {
     }
 
     if (!$account) {
+        $userId = 'usr_' . time() . '_' . mt_rand(100, 999);
         $account = [
+            'id' => $userId,
+            'user_id' => $userId,
             'name' => $name,
+            'full_name' => $name,
             'email' => $email,
             'passwordHash' => 'google_oauth_verified',
             'phone' => '',
             'createdAt' => date('c'),
+            'auth_provider' => 'google',
+            'provider' => 'google',
+            'authProvider' => 'google',
+            'registeredVia' => 'google',
             'addresses' => [],
+            'cart' => [],
+            'favorites' => [],
         ];
         $users[] = $account;
         writeJson($usersFile, $users);
     } else {
+        $users[$foundIndex]['auth_provider'] = 'google';
+        $users[$foundIndex]['provider'] = 'google';
+        $users[$foundIndex]['authProvider'] = 'google';
+        $users[$foundIndex]['registeredVia'] = 'google';
         if (empty($account['name']) && !empty($name)) {
             $users[$foundIndex]['name'] = $name;
+            $users[$foundIndex]['full_name'] = $name;
             $account['name'] = $name;
-            writeJson($usersFile, $users);
         }
+        writeJson($usersFile, $users);
+    }
+
+    if (isset($db) && $db instanceof PDO) {
+        try {
+            $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ?");
+            $stmt->execute([$email]);
+            $existingMysql = $stmt->fetch();
+            if ($existingMysql) {
+                @$db->prepare("UPDATE users SET auth_provider = 'google' WHERE LOWER(email) = ?")->execute([$email]);
+            } else {
+                $randomPass = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
+                $ins = $db->prepare("INSERT INTO users (fullname, phone, email, password, auth_provider) VALUES (?, ?, ?, ?, 'google')");
+                $ins->execute([$name, '', $email, $randomPass]);
+            }
+        } catch (Exception $e) {}
     }
 
     echo json_encode([
         'success' => true,
         'user' => [
+            'id' => $account['id'] ?? ('usr_' . md5($email)),
             'name' => $account['name'] ?? $name,
+            'fullname' => $account['name'] ?? $name,
             'email' => $account['email'] ?? $email,
             'phone' => $account['phone'] ?? '',
             'addresses' => $account['addresses'] ?? [],
             'createdAt' => $account['createdAt'] ?? date('c'),
             'isGoogleUser' => true,
+            'authProvider' => 'google',
+            'provider' => 'google',
+            'registeredVia' => 'google',
         ],
     ]);
     exit;
@@ -822,15 +947,113 @@ if ($route === 'users') {
         echo json_encode(['success' => false, 'error' => 'Yetkisiz erişim.']);
         exit;
     }
+
     $usersFile = $dataDir . '/users.json';
     $users = readJson($usersFile, []);
+
+    // 1. Eğer MySQL veritabanı aktifse, MySQL'deki kullanıcıları da oku ve users.json ile tam eşitle
+    if (isset($db) && $db instanceof PDO) {
+        try {
+            $stmt = $db->query("SELECT * FROM users");
+            $mysqlUsers = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            $hasChanges = false;
+
+            foreach ($mysqlUsers as $mu) {
+                $mEmail = strtolower(trim($mu['email'] ?? ''));
+                if (empty($mEmail)) continue;
+
+                $foundIdx = -1;
+                foreach ($users as $idx => $ju) {
+                    if (strtolower(trim($ju['email'] ?? '')) === $mEmail) {
+                        $foundIdx = $idx;
+                        break;
+                    }
+                }
+
+                $mName = trim($mu['fullname'] ?? ($mu['name'] ?? ''));
+                $mPhone = trim($mu['phone'] ?? '');
+                $mAddresses = [];
+                if (!empty($mu['addresses'])) {
+                    $dec = json_decode($mu['addresses'], true);
+                    if (is_array($dec)) $mAddresses = $dec;
+                } elseif (!empty($mu['address'])) {
+                    $mAddresses = [['id' => 'addr-1', 'title' => 'Adres', 'fullAddress' => $mu['address'], 'isDefault' => true]];
+                }
+                $mCart = !empty($mu['cart']) ? (json_decode($mu['cart'], true) ?: []) : [];
+                $mFavs = !empty($mu['favorites']) ? (json_decode($mu['favorites'], true) ?: []) : [];
+                $isGoogle = ($mu['auth_provider'] ?? '') === 'google';
+
+                if ($foundIdx === -1) {
+                    $users[] = [
+                        'id' => $mu['id'] ? ('usr_' . $mu['id']) : ('usr_' . md5($mEmail)),
+                        'name' => $mName ?: explode('@', $mEmail)[0],
+                        'full_name' => $mName ?: explode('@', $mEmail)[0],
+                        'email' => $mEmail,
+                        'phone' => $mPhone,
+                        'createdAt' => $mu['created_at'] ?? date('c'),
+                        'auth_provider' => $isGoogle ? 'google' : 'local',
+                        'provider' => $isGoogle ? 'google' : 'local',
+                        'authProvider' => $isGoogle ? 'google' : 'local',
+                        'registeredVia' => $isGoogle ? 'google' : 'local',
+                        'passwordHash' => $isGoogle ? 'google_oauth_verified' : ($mu['password'] ?? ''),
+                        'addresses' => $mAddresses,
+                        'cart' => $mCart,
+                        'favorites' => $mFavs,
+                    ];
+                    $hasChanges = true;
+                } else {
+                    if ($isGoogle && ($users[$foundIdx]['authProvider'] ?? '') !== 'google') {
+                        $users[$foundIdx]['authProvider'] = 'google';
+                        $users[$foundIdx]['provider'] = 'google';
+                        $users[$foundIdx]['auth_provider'] = 'google';
+                        $hasChanges = true;
+                    }
+                }
+            }
+
+            if ($hasChanges) {
+                writeJson($usersFile, $users);
+            }
+        } catch (Exception $e) {
+            error_log("[MySQL Admin Users Merge Error] " . $e->getMessage());
+        }
+    }
+
+    // Kullanıcı Silme (DELETE veya ?delete=1)
+    if ($_SERVER['REQUEST_METHOD'] === 'DELETE' || isset($_GET['delete'])) {
+        $emailToDelete = strtolower(trim($_GET['email'] ?? $body['email'] ?? ''));
+        if (!empty($emailToDelete)) {
+            $users = array_values(array_filter($users, function($u) use ($emailToDelete) {
+                $uEmail = strtolower(trim($u['email'] ?? ''));
+                $uId = strtolower(trim($u['id'] ?? ''));
+                return $uEmail !== $emailToDelete && $uId !== $emailToDelete;
+            }));
+            writeJson($usersFile, $users);
+            if (isset($db) && $db instanceof PDO) {
+                try {
+                    $delStmt = $db->prepare("DELETE FROM users WHERE LOWER(email) = ?");
+                    $delStmt->execute([$emailToDelete]);
+                } catch (Exception $e) {}
+            }
+        }
+        echo json_encode(['success' => true, 'count' => count($users)]);
+        exit;
+    }
+
     $sanitized = array_map(function($u) {
+        $isGoogle = ($u['auth_provider'] ?? '') === 'google' || ($u['provider'] ?? '') === 'google' || ($u['authProvider'] ?? '') === 'google' || ($u['passwordHash'] ?? '') === 'google_oauth_verified';
         return [
-            'name' => $u['name'] ?? '',
+            'id' => $u['id'] ?? ('usr_' . md5($u['email'] ?? '')),
+            'name' => $u['name'] ?? $u['full_name'] ?? 'Kullanıcı',
             'email' => $u['email'] ?? '',
             'phone' => $u['phone'] ?? '',
-            'createdAt' => $u['createdAt'] ?? '',
+            'createdAt' => $u['createdAt'] ?? date('c'),
+            'authProvider' => $isGoogle ? 'google' : 'normal',
+            'provider' => $isGoogle ? 'google' : 'normal',
+            'registeredVia' => $isGoogle ? 'google' : 'normal',
             'addresses' => $u['addresses'] ?? [],
+            'cart' => $u['cart'] ?? [],
+            'favorites' => $u['favorites'] ?? [],
         ];
     }, $users);
     echo json_encode(['success' => true, 'users' => $sanitized]);

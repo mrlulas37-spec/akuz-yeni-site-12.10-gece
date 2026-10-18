@@ -142,16 +142,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            {cartItems.length > 0 && (
-              <button
-                type="button"
-                onClick={onClearCart}
-                className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                title="Sepeti Boşalt"
-              >
-                Temizle
-              </button>
-            )}
             <button
               onClick={handleSmoothClose}
               className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
@@ -198,8 +188,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   }}
                 />
               </div>
-              <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 font-medium">
-                <span>₺0</span>
+              <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1 font-medium">
+                <span className="font-bold text-slate-700 font-price">
+                  ₺{subtotal.toFixed(2).replace('.', ',')}
+                </span>
                 <span>₺{freeShippingThreshold.toFixed(0)} üzeri ÜCRETSİZ</span>
               </div>
             </div>
@@ -321,17 +313,26 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         {/* ALT BUTON: SEPETE GİT */}
         {cartItems.length > 0 && (
           <div className="p-4 sm:p-5 bg-white border-t border-slate-200/90 space-y-3 shrink-0">
-            {/* Ara Toplam */}
-            <div className="flex items-baseline justify-between">
-              <div>
-                <span className="text-xs text-slate-500 font-medium">Ara Toplam:</span>
-                <p className="text-[11px] text-slate-400 font-medium">
-                  Kargo Ücreti 🚚: {shippingFee === 0 ? 'Ücretsiz' : `₺${shippingFee.toFixed(2).replace('.', ',')}`}
-                </p>
+            {/* Fiyat Özeti: Ara Toplamda sadece ürünlerin fiyat toplamı, kargo ve genel toplam */}
+            <div className="space-y-1.5 pb-1">
+              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
+                <span>Ara Toplam:</span>
+                <span className="font-price text-slate-900 font-bold">
+                  ₺{subtotal.toFixed(2).replace('.', ',')}
+                </span>
               </div>
-              <span className="font-price text-xl font-extrabold text-[#ff0055]">
-                ₺{grandTotal.toFixed(2).replace('.', ',')}
-              </span>
+              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
+                <span>Kargo Ücreti 🚚:</span>
+                <span className={`font-price font-bold ${shippingFee === 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                  {shippingFee === 0 ? 'Ücretsiz' : `₺${shippingFee.toFixed(2).replace('.', ',')}`}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between pt-2 border-t border-slate-100">
+                <span className="text-sm font-extrabold text-slate-900">Genel Toplam:</span>
+                <span className="font-price text-xl font-black text-[#ff0055]">
+                  ₺{grandTotal.toFixed(2).replace('.', ',')}
+                </span>
+              </div>
             </div>
 
             {/* SEPETE GİT BUTONU (Kullanıcı isteği: sepetime tıklayınca sepete git olsun) */}

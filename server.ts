@@ -533,25 +533,16 @@ async function startServer() {
         },
       });
 
+      // E-posta içeriğindeki logo doğrudan https://akuzstickers.com/akuz-logo-badge.png üzerinden yüklenir.
+      // Kesinlikle ek (attachment) eklenmez; böylece Gmail veya e-posta gelen kutusunda dosya simgesi / "akuzlogopng" kutucuğu gözükmez.
+      const sanitizedHtml = (html || '').replace(/cid:akuz-logo@akuzstickers\.com/g, 'https://akuzstickers.com/akuz-logo-badge.png');
+
       const mailOptions: any = {
         from: `"${fromName}" <${fromEmail}>`,
         to,
         subject,
-        html,
+        html: sanitizedHtml,
       };
-
-      // Orijinal logoyu gömülü (CID inline attachment) olarak ekle
-      // Bu sayede Gmail, Outlook vb. dış bağlantıyı engellese bile logo kusursuz açılır
-      const logoPath = path.resolve(__dirname, 'public', 'akuz-logo-badge.png');
-      if (fs.existsSync(logoPath)) {
-        mailOptions.attachments = [
-          {
-            filename: 'akuz-logo.png',
-            path: logoPath,
-            cid: 'akuz-logo@akuzstickers.com', // getWelcomeEmailHtml içindeki cid referansı
-          },
-        ];
-      }
 
       const info = await transporter.sendMail(mailOptions);
       console.log(`[SMTP SUCCESS] E-posta başarıyla gönderildi: ${info.messageId}`);
@@ -990,6 +981,8 @@ async function startServer() {
       const merchant_ok_url = `${origin}/odeme-basarili?oid=${merchant_oid}`;
       const merchant_fail_url = `${origin}/odeme-basarisiz?oid=${merchant_oid}`;
 
+      const user_phone = (phone || '+905468758671').replace(/[^0-9+]/g, '');
+
       const params = new URLSearchParams({
         merchant_id,
         user_ip,
@@ -1000,7 +993,7 @@ async function startServer() {
         user_basket,
         user_name: (fullName || 'Müşteri').trim(),
         user_address: `${address || 'Teslimat Adresi'}, ${district || 'Nilüfer'}/${city || 'Bursa'}`,
-        user_phone: (phone || '+905468758671').replace(/[^0-9+]/g, ''),
+        user_phone,
         merchant_ok_url,
         merchant_fail_url,
         timeout_limit: '30',
@@ -1425,6 +1418,7 @@ async function startServer() {
         }] : [];
 
         const newAccount = {
+          id: 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
           name: cleanName,
           full_name: cleanName,
           email: cleanEmail,
@@ -1433,6 +1427,10 @@ async function startServer() {
           phone: phone || '',
           address: address || '',
           createdAt: new Date().toISOString(),
+          auth_provider: 'normal',
+          provider: 'normal',
+          authProvider: 'normal',
+          registeredVia: 'normal',
           addresses,
           cart: [],
           favorites: [],
@@ -1502,18 +1500,30 @@ async function startServer() {
         let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
         if (!account) {
           account = {
+            id: 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             name: cleanName,
             full_name: cleanName,
             email: cleanEmail,
+            passwordHash: 'google_oauth_verified',
             phone: phone || '',
             address: address || '',
             createdAt: new Date().toISOString(),
+            auth_provider: 'google',
+            provider: 'google',
+            authProvider: 'google',
+            registeredVia: 'google',
             addresses: [],
+            cart: [],
+            favorites: [],
           };
           users.push(account);
         } else {
           account.name = cleanName;
           account.full_name = cleanName;
+          if (!account.auth_provider) {
+            account.auth_provider = 'google';
+            account.provider = 'google';
+          }
         }
         writeJsonFile(USERS_FILE, users);
 
@@ -1561,13 +1571,20 @@ async function startServer() {
       }
 
       const newAccount = {
+        id: 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         name: cleanName,
         email: cleanEmail,
         passwordHash: hashPassword(password),
         plainPassword: password,
         phone: '',
         createdAt: new Date().toISOString(),
+        auth_provider: 'normal',
+        provider: 'normal',
+        authProvider: 'normal',
+        registeredVia: 'normal',
         addresses: [],
+        cart: [],
+        favorites: [],
       };
 
       users.push(newAccount);
@@ -1667,7 +1684,7 @@ async function startServer() {
       const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || 'AKUZ STICKERS';
       const fromEmail = smtpConfig?.fromEmail || userSmtp || 'info@akuzstickers.com';
 
-      const logoCid = 'cid:akuz-logo@akuzstickers.com';
+      const logoUrl = 'https://akuzstickers.com/akuz-logo-badge.png';
       const recoveryHtml = `
 <!DOCTYPE html>
 <html lang="tr">
@@ -1680,7 +1697,7 @@ async function startServer() {
     <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);border:1px solid #1e293b;">
       <tr>
         <td style="background-color:#ffffff;padding:32px 30px 24px;text-align:center;border-bottom:2px solid #f1f5f9;">
-          <img src="${logoCid}" alt="AKUZ Stickers" width="120" style="display:block;margin:0 auto;width:120px;max-width:120px;height:auto;border:0;">
+          <img src="${logoUrl}" alt="AKUZ Stickers" width="120" style="display:block;margin:0 auto;width:120px;max-width:120px;height:auto;border:0;">
         </td>
       </tr>
       <tr>
@@ -1745,17 +1762,6 @@ async function startServer() {
           subject: 'AKUZ Stickers Hesap Şifreniz 🔑',
           html: recoveryHtml,
         };
-
-        const logoPath = path.resolve(__dirname, 'public', 'akuz-logo-badge.png');
-        if (fs.existsSync(logoPath)) {
-          mailOptions.attachments = [
-            {
-              filename: 'akuz-logo.png',
-              path: logoPath,
-              cid: 'akuz-logo@akuzstickers.com',
-            },
-          ];
-        }
 
         await transporter.sendMail(mailOptions);
         console.log(`[PASSWORD EMAIL SENT VIA SMTP] Kime: ${cleanEmail}`);
@@ -1867,6 +1873,10 @@ async function startServer() {
           passwordHash: 'google_oauth_verified',
           phone: '',
           createdAt: new Date().toISOString(),
+          auth_provider: 'google',
+          provider: 'google',
+          authProvider: 'google',
+          registeredVia: 'google',
           addresses: [],
           cart: [],
           favorites: [],
@@ -2198,28 +2208,79 @@ async function startServer() {
   });
 
   // 4. KULLANICI LİSTESİ (Sadece Yetkili Admin Paneli Erişebilir - Kullanıcıların Sepet & Favorilerini de Getirir)
-  app.get('/api/users', (req, res) => {
+  app.get('/api/users', async (req, res) => {
     try {
       const adminToken = req.headers['x-admin-token'] || req.query.adminToken;
       if (adminToken !== 'akuz_admin_2026') {
         return res.status(403).json({ success: false, error: 'Yetkisiz erişim. Sadece yönetici paneli erişebilir.' });
       }
 
-      const users: any[] = readJsonFile(USERS_FILE, []);
+      let users: any[] = readJsonFile(USERS_FILE, []);
       const allCarts: Record<string, any[]> = readJsonFile(CARTS_FILE, {});
       const allFavs: Record<string, string[]> = readJsonFile(FAVORITES_FILE, {});
+
+      // MySQL bağlantısı varsa MySQL'deki kullanıcıları da oku ve users.json ile birleştir
+      if (mysqlPool) {
+        try {
+          const [mysqlRows]: any = await mysqlPool.query('SELECT * FROM users');
+          if (Array.isArray(mysqlRows) && mysqlRows.length > 0) {
+            let hasNew = false;
+            for (const mu of mysqlRows) {
+              const mEmail = (mu.email || '').trim().toLowerCase();
+              if (!mEmail) continue;
+              const found = users.find((u) => (u.email || '').trim().toLowerCase() === mEmail);
+              const isGoogle = mu.auth_provider === 'google';
+              if (!found) {
+                users.push({
+                  id: mu.id ? ('usr_' + mu.id) : ('usr_' + mEmail),
+                  user_id: mu.id ? ('usr_' + mu.id) : ('usr_' + mEmail),
+                  name: mu.fullname || mu.name || mEmail.split('@')[0],
+                  full_name: mu.fullname || mu.name || mEmail.split('@')[0],
+                  email: mEmail,
+                  phone: mu.phone || '',
+                  passwordHash: isGoogle ? 'google_oauth_verified' : (mu.password || ''),
+                  createdAt: mu.created_at || new Date().toISOString(),
+                  auth_provider: isGoogle ? 'google' : 'local',
+                  provider: isGoogle ? 'google' : 'local',
+                  authProvider: isGoogle ? 'google' : 'local',
+                  registeredVia: isGoogle ? 'google' : 'local',
+                  addresses: mu.addresses ? (typeof mu.addresses === 'string' ? JSON.parse(mu.addresses) : mu.addresses) : [],
+                  cart: mu.cart ? (typeof mu.cart === 'string' ? JSON.parse(mu.cart) : mu.cart) : [],
+                  favorites: mu.favorites ? (typeof mu.favorites === 'string' ? JSON.parse(mu.favorites) : mu.favorites) : [],
+                });
+                hasNew = true;
+              } else if (isGoogle && found.authProvider !== 'google') {
+                found.authProvider = 'google';
+                found.provider = 'google';
+                found.auth_provider = 'google';
+                hasNew = true;
+              }
+            }
+            if (hasNew) {
+              writeJsonFile(USERS_FILE, users);
+            }
+          }
+        } catch (e) {
+          console.warn('[MYSQL USERS MERGE WARN]', e);
+        }
+      }
 
       // Admin Paneli için kullanıcı sepeti ve favorileriyle birlikte tam profil
       const sanitized = users.map((u) => {
         const cleanEmail = (u.email || '').toLowerCase().trim();
         const userCart = (Array.isArray(u.cart) && u.cart.length > 0) ? u.cart : (allCarts[cleanEmail] || []);
         const userFavs = (Array.isArray(u.favorites) && u.favorites.length > 0) ? u.favorites : (allFavs[cleanEmail] || []);
+        const isGoogle = u.auth_provider === 'google' || u.provider === 'google' || u.authProvider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
 
         return {
-          name: u.name,
+          id: u.id || u.user_id || ('usr_' + cleanEmail),
+          name: u.name || u.full_name || 'Kullanıcı',
           email: u.email,
           phone: u.phone || '',
-          createdAt: u.createdAt,
+          createdAt: u.createdAt || new Date().toISOString(),
+          authProvider: isGoogle ? 'google' : 'normal',
+          provider: isGoogle ? 'google' : 'normal',
+          registeredVia: isGoogle ? 'google' : 'normal',
           addresses: u.addresses || [],
           cart: userCart,
           favorites: userFavs,
@@ -2276,10 +2337,21 @@ async function startServer() {
       if (adminToken !== 'akuz_admin_2026') {
         return res.status(403).json({ success: false, error: 'Yetkisiz erişim.' });
       }
-      const email = (req.query.email as string || '').trim().toLowerCase();
+      const email = (req.query.email as string || (req.body && req.body.email) || '').trim().toLowerCase();
       let users: any[] = readJsonFile(USERS_FILE, []);
       if (email) {
-        users = users.filter((u) => (u.email || '').toLowerCase() !== email);
+        users = users.filter((u) => (u.email || '').toLowerCase() !== email && (u.id || '') !== email);
+        // İlgili sepet ve favorileri de temizle
+        const allCarts: Record<string, any[]> = readJsonFile(CARTS_FILE, {});
+        const allFavs: Record<string, string[]> = readJsonFile(FAVORITES_FILE, {});
+        if (allCarts[email]) {
+          delete allCarts[email];
+          writeJsonFile(CARTS_FILE, allCarts);
+        }
+        if (allFavs[email]) {
+          delete allFavs[email];
+          writeJsonFile(FAVORITES_FILE, allFavs);
+        }
       } else {
         users = [];
       }

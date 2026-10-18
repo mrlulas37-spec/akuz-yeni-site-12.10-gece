@@ -52,6 +52,11 @@ import {
   Loader2,
   ShoppingCart,
   Heart,
+  MapPin,
+  Calendar,
+  Clock,
+  Filter,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   Product,
@@ -84,6 +89,28 @@ import {
 } from '../utils/emailService';
 import { createKargonomiShipment, testKargonomiConnection } from '../utils/kargonomiService';
 import { ThreeDDiscountCoin } from './ThreeDDiscountCoin';
+
+// Resmi 4 Renkli Google 'G' İkonu
+const GoogleGIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" className={className} fill="none">
+    <path
+      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      fill="#4285F4"
+    />
+    <path
+      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      fill="#34A853"
+    />
+    <path
+      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+      fill="#FBBC05"
+    />
+    <path
+      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+      fill="#EA4335"
+    />
+  </svg>
+);
 
 interface AdminPanelProps {
   products: Product[];
@@ -133,6 +160,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
 
+  // Kullanıcı Yönetimi State'leri
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userFilterType, setUserFilterType] = useState<'all' | 'google' | 'normal' | 'with-cart'>('all');
+  const [selectedUserDetail, setSelectedUserDetail] = useState<RegisteredAccount | null>(null);
+  const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+
+  // Canlı Kullanıcı Verisini Sunucudan Yenileme
+  const handleRefreshUsers = async (silent = false) => {
+    setIsRefreshingUsers(true);
+    try {
+      const res = await fetch('/api/users', {
+        headers: { 'x-admin-token': 'akuz_admin_2026' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.users)) {
+          if (onUpdateUsers) {
+            onUpdateUsers(data.users);
+          }
+          if (!silent) {
+            showNotification(`Kullanıcı listesi güncellendi (${data.users.length} kullanıcı).`);
+          }
+        }
+      }
+    } catch {
+      if (!silent) {
+        showNotification('Kullanıcı listesi güncellenirken hata oluştu.');
+      }
+    } finally {
+      setIsRefreshingUsers(false);
+    }
+  };
+
+  // Kullanıcılar sekmesi açıldığında otomatik yenile
+  useEffect(() => {
+    if (activeTab === 'users') {
+      handleRefreshUsers(true);
+    }
+  }, [activeTab]);
+
   // Özel Onay Modalı (window.confirm iframe içinde engellendiği için özel modal)
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -173,11 +240,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   };
 
-  const handleDeleteUserClick = (emailToDelete: string) => {
+  const handleDeleteUserClick = (emailToDelete: string, targetName?: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Kullanıcıyı Sil',
-      description: 'Kullanıcının kayıtlı hesabı ve adres bilgileri kalıcı olarak silinecektir.',
+      title: 'Kullanıcıyı Kalıcı Olarak Sil',
+      description: `"${targetName || emailToDelete}" kullanıcısının hesabı, adres bilgileri, sepeti ve tüm kayıt verileri sistemden kalıcı olarak silinecektir. Bu işlem geri alınamaz.`,
       targetName: emailToDelete,
       confirmText: 'Evet, Kullanıcıyı Sil',
       isDestructive: true,
@@ -188,11 +255,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             method: 'DELETE',
             headers: { 'x-admin-token': 'akuz_admin_2026' },
           });
-          const filtered = users.filter((u) => (u.email || '').toLowerCase() !== emailToDelete.toLowerCase());
+          const filtered = users.filter((u) => (u.email || '').toLowerCase() !== emailToDelete.toLowerCase() && (u.id || '') !== emailToDelete);
           if (onUpdateUsers) {
             onUpdateUsers(filtered);
           }
-          showNotification(`${emailToDelete} kullanıcısı silindi.`);
+          if (selectedUserDetail && ((selectedUserDetail.email || '').toLowerCase() === emailToDelete.toLowerCase() || selectedUserDetail.id === emailToDelete)) {
+            setSelectedUserDetail(null);
+          }
+          showNotification(`${emailToDelete} kullanıcısı ve tüm verileri silindi.`);
         } catch {
           showNotification('Kullanıcı silinemedi.');
         } finally {
@@ -1137,7 +1207,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     showNotification('Google OAuth 2.0 ayarları başarıyla kaydedildi.');
   };
 
-  const [testEmailTo, setTestEmailTo] = useState('mrlulas37@gmail.com');
+  const [testEmailTo, setTestEmailTo] = useState<string>(() => {
+    try {
+      return localStorage.getItem('akuz_admin_test_email') || 'mertopro123@gmail.com';
+    } catch {
+      return 'mertopro123@gmail.com';
+    }
+  });
+
+  const handleTestEmailChange = (val: string) => {
+    setTestEmailTo(val);
+    try {
+      localStorage.setItem('akuz_admin_test_email', val);
+    } catch {}
+  };
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; msg: string } | null>(null);
 
@@ -2969,129 +3052,627 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* ========================================================= */}
-          {/* 5. KULLANICILARI GÖRME */}
+          {/* 5. KULLANICILARI GÖRME & YÖNETME (Kayıt Şekli, Bilgileri, Silme) */}
           {/* ========================================================= */}
-          {activeTab === 'users' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
-                    <Users size={16} className="text-[#ff0055]" />
-                    <span>Kayıtlı Kullanıcılar ({users.length})</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Sitenize kayıt olan müşterilerin isimleri, e-posta adresleri ve kayıt tarihleri.
-                  </p>
-                </div>
+          {activeTab === 'users' && (() => {
+            // Filtreleme ve Arama Hesaplamaları
+            const cleanQuery = userSearchQuery.trim().toLowerCase();
+            
+            const googleUsersCount = users.filter((u) => {
+              const isGoogle = u.authProvider === 'google' || u.provider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
+              return isGoogle;
+            }).length;
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  {users.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handlePurgeAllUsersClick}
-                      disabled={isPurgingUsers}
-                      className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
-                    >
-                      <Trash2 size={14} />
-                      <span>{isPurgingUsers ? 'Siliniyor...' : 'Tüm Kullanıcıları Temizle'}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
+            const normalUsersCount = users.length - googleUsersCount;
+            const withCartCount = users.filter((u) => Array.isArray(u.cart) && u.cart.length > 0).length;
 
-              {users.length === 0 ? (
-                <div className="py-14 px-4 text-center">
-                  <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                    <Users size={26} />
+            const filteredUsers = users.filter((u) => {
+              const isGoogle = u.authProvider === 'google' || u.provider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
+              
+              // Kategori filtresi
+              if (userFilterType === 'google' && !isGoogle) return false;
+              if (userFilterType === 'normal' && isGoogle) return false;
+              if (userFilterType === 'with-cart' && (!Array.isArray(u.cart) || u.cart.length === 0)) return false;
+
+              // Arama sorgusu filtresi
+              if (cleanQuery) {
+                const matchName = (u.name || '').toLowerCase().includes(cleanQuery);
+                const matchEmail = (u.email || '').toLowerCase().includes(cleanQuery);
+                const matchPhone = (u.phone || '').toLowerCase().includes(cleanQuery);
+                const matchId = (u.id || '').toLowerCase().includes(cleanQuery);
+                return matchName || matchEmail || matchPhone || matchId;
+              }
+
+              return true;
+            });
+
+            return (
+              <div className="space-y-6">
+                
+                {/* 1. ÜST ÖZET İSTATİSTİK KARTLARI */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+                    <div className="flex items-center justify-between text-slate-500 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider">Toplam Üye</span>
+                      <Users size={18} className="text-[#ff0055]" />
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">{users.length}</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Sitede kayıtlı tüm hesaplar</p>
                   </div>
-                  <h4 className="text-base font-black text-slate-800">Kayıtlı Kullanıcı Bulunmuyor</h4>
-                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
-                    Sistemdeki tüm kayıtlı kullanıcılar başarıyla temizlendi (0 kullanıcı). Yeni müşteriler kayıt oldukça bu listede gerçek zamanlı olarak görüntülenecektir.
-                  </p>
+
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+                    <div className="flex items-center justify-between text-slate-500 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider">Google Girişi</span>
+                      <GoogleGIcon size={18} />
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">{googleUsersCount}</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Google hesabı ile kayıt olanlar</p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+                    <div className="flex items-center justify-between text-slate-500 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider">Normal Kayıt</span>
+                      <Mail size={18} className="text-blue-600" />
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">{normalUsersCount}</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">E-posta & şifre ile kayıt olanlar</p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+                    <div className="flex items-center justify-between text-slate-500 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider">Aktif Sepetliler</span>
+                      <ShoppingCart size={18} className="text-amber-500" />
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">{withCartCount}</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Sepetinde ürün bekleyenler</p>
+                  </div>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs sm:text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[11px] tracking-wider">
-                      <tr>
-                        <th className="py-3 px-4">Kullanıcı</th>
-                        <th className="py-3 px-4">E-posta</th>
-                        <th className="py-3 px-4">Telefon</th>
-                        <th className="py-3 px-4">Aktif Sepet</th>
-                        <th className="py-3 px-4">Favoriler</th>
-                        <th className="py-3 px-4">Kayıtlı Adresler</th>
-                        <th className="py-3 px-4">Kayıt Tarihi</th>
-                        <th className="py-3 px-4 text-right">İşlem</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {users.map((u, i) => (
-                        <tr key={i} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full bg-slate-800 text-white font-black flex items-center justify-center text-xs">
-                                {u.name.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="font-extrabold text-slate-900">{u.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-slate-700 font-semibold">{u.email}</td>
-                          <td className="py-3 px-4 text-slate-600">{u.phone || 'Girilmedi'}</td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {u.cart && u.cart.length > 0 ? (
-                              <div className="space-y-1">
-                                <span className="px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-bold text-xs inline-flex items-center gap-1">
-                                  <ShoppingCart size={11} className="text-amber-600" />
-                                  {u.cart.length} Ürün Sepette
+
+                {/* 2. ANA LİSTE KARTI & FİLTRELER */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                  
+                  {/* Başlık ve Eylemler */}
+                  <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black uppercase text-slate-900 flex items-center gap-2">
+                        <Users size={18} className="text-[#ff0055]" />
+                        <span>Kayıtlı Kullanıcılar & Üye Yönetimi ({filteredUsers.length})</span>
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Müşterilerin kayıt yöntemi (Google veya E-posta), iletişim ve adres bilgileri, sepet durumu ve hesap silme işlemleri.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleRefreshUsers(false)}
+                        disabled={isRefreshingUsers}
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                        title="Verileri Sunucudan Canlı Yenile"
+                      >
+                        <RefreshCw size={14} className={isRefreshingUsers ? 'animate-spin text-[#ff6600]' : ''} />
+                        <span>{isRefreshingUsers ? 'Yenileniyor...' : 'Yenile'}</span>
+                      </button>
+
+                      {users.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handlePurgeAllUsersClick}
+                          disabled={isPurgingUsers}
+                          className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                          <span>{isPurgingUsers ? 'Siliniyor...' : 'Tümünü Temizle'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Filtre ve Arama Çubuğu */}
+                  <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    {/* Arama Inputu */}
+                    <div className="relative flex-1 max-w-md">
+                      <input
+                        type="text"
+                        value={userSearchQuery}
+                        onChange={(e) => setUserSearchQuery(e.target.value)}
+                        placeholder="İsim, e-posta veya telefon ile ara..."
+                        className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#ff6600] text-slate-900"
+                      />
+                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      {userSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setUserSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filtreleme Butonları */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+                      <button
+                        type="button"
+                        onClick={() => setUserFilterType('all')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                          userFilterType === 'all'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        Tümü ({users.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUserFilterType('google')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                          userFilterType === 'google'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        <GoogleGIcon size={14} />
+                        <span>Google ({googleUsersCount})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUserFilterType('normal')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                          userFilterType === 'normal'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        <Mail size={13} className="text-blue-500" />
+                        <span>Normal ({normalUsersCount})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUserFilterType('with-cart')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                          userFilterType === 'with-cart'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        <ShoppingCart size={13} className="text-amber-500" />
+                        <span>Sepeti Dolu ({withCartCount})</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* KULLANICI LİSTESİ TABLOSU */}
+                  {users.length === 0 ? (
+                    <div className="py-16 px-4 text-center">
+                      <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 border border-slate-200">
+                        <Users size={30} />
+                      </div>
+                      <h4 className="text-base font-black text-slate-800">Kayıtlı Kullanıcı Bulunmuyor</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                        Sistemdeki tüm kayıtlı kullanıcılar temizlendi (0 üye). Siteden Google veya normal kayıt formunu dolduran müşteriler burada otomatik listelenecektir.
+                      </p>
+                    </div>
+                  ) : filteredUsers.length === 0 ? (
+                    <div className="py-14 px-4 text-center">
+                      <p className="text-sm font-bold text-slate-700">Aramanıza veya seçili filtreye uygun kullanıcı bulunamadı.</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserSearchQuery('');
+                          setUserFilterType('all');
+                        }}
+                        className="mt-3 px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                      >
+                        Filtreleri Temizle
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs sm:text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[11px] tracking-wider">
+                          <tr>
+                            <th className="py-3 px-4">Kullanıcı</th>
+                            <th className="py-3 px-4">Kayıt Şekli</th>
+                            <th className="py-3 px-4">E-posta & İletişim</th>
+                            <th className="py-3 px-4">Kayıt Tarihi</th>
+                            <th className="py-3 px-4">Adresler</th>
+                            <th className="py-3 px-4">Aktif Sepet</th>
+                            <th className="py-3 px-4">Favoriler</th>
+                            <th className="py-3 px-4 text-right">İşlemler</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredUsers.map((u, i) => {
+                            const isGoogle = u.authProvider === 'google' || u.provider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
+                            const cartItemsCount = Array.isArray(u.cart) ? u.cart.length : 0;
+                            const favsCount = Array.isArray(u.favorites) ? u.favorites.length : 0;
+                            const addrCount = Array.isArray(u.addresses) ? u.addresses.length : 0;
+
+                            let formattedDate = 'Belirtilmemiş';
+                            let formattedTime = '';
+                            if (u.createdAt) {
+                              try {
+                                const d = new Date(u.createdAt);
+                                formattedDate = d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                formattedTime = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                              } catch {}
+                            }
+
+                            return (
+                              <tr key={u.id || u.email || i} className="hover:bg-slate-50/80 transition-colors">
+                                {/* 1. Kullanıcı */}
+                                <td className="py-3.5 px-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-slate-900 text-white font-black flex items-center justify-center text-xs shadow-xs shrink-0">
+                                      {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <span className="font-extrabold text-slate-900 block truncate max-w-[150px]">
+                                        {u.name || 'İsimsiz Kullanıcı'}
+                                      </span>
+                                      {u.id && (
+                                        <span className="text-[10px] font-mono text-slate-400 block truncate max-w-[150px]">
+                                          #{u.id}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* 2. Kayıt Şekli (Google vs Normal) */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  {isGoogle ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-white text-slate-800 border border-slate-200 shadow-2xs">
+                                      <GoogleGIcon size={14} />
+                                      <span>Google Girişi</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
+                                      <Mail size={13} className="text-blue-600" />
+                                      <span>Normal Kayıt</span>
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* 3. E-posta & Telefon */}
+                                <td className="py-3.5 px-4">
+                                  <div className="space-y-0.5">
+                                    <span className="font-semibold text-slate-900 block font-mono text-xs truncate max-w-[200px]" title={u.email}>
+                                      {u.email}
+                                    </span>
+                                    <span className="text-slate-500 text-[11px] block">
+                                      {u.phone ? `📞 ${u.phone}` : 'Telefon yok'}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* 4. Kayıt Tarihi */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  <div className="text-xs">
+                                    <span className="font-semibold text-slate-800 block">{formattedDate}</span>
+                                    {formattedTime && (
+                                      <span className="text-[11px] text-slate-400 block">{formattedTime}</span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* 5. Kayıtlı Adresler */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  {addrCount > 0 ? (
+                                    <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs inline-flex items-center gap-1">
+                                      <MapPin size={12} className="text-emerald-600" />
+                                      <span>{addrCount} Adres Kayıtlı</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 text-xs">Adres Yok</span>
+                                  )}
+                                </td>
+
+                                {/* 6. Aktif Sepet */}
+                                <td className="py-3.5 px-4">
+                                  {cartItemsCount > 0 ? (
+                                    <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold text-xs inline-flex items-center gap-1 whitespace-nowrap">
+                                      <ShoppingCart size={12} className="text-amber-600" />
+                                      <span>{cartItemsCount} Ürün Sepette</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 text-xs">Sepet Boş</span>
+                                  )}
+                                </td>
+
+                                {/* 7. Favoriler */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  {favsCount > 0 ? (
+                                    <span className="px-2.5 py-1 rounded-lg bg-pink-50 border border-pink-200 text-[#ff0055] font-bold text-xs inline-flex items-center gap-1">
+                                      <Heart size={12} className="text-[#ff0055] fill-[#ff0055]" />
+                                      <span>{favsCount} Favori</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 text-xs">Favori Yok</span>
+                                  )}
+                                </td>
+
+                                {/* 8. İşlemler: Detay & Silme */}
+                                <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedUserDetail(u)}
+                                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-blue-100"
+                                      title="Kayıt Bilgilerini ve Sepeti Görüntüle"
+                                    >
+                                      <Eye size={16} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteUserClick(u.email, u.name)}
+                                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-100"
+                                      title="Bu Kullanıcıyı Kalıcı Olarak Sil"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                </div>
+
+                {/* ========================================================= */}
+                {/* 3. KULLANICI KAYIT DETAYLARI VE SEPET İNCELEME MODALI */}
+                {/* ========================================================= */}
+                {selectedUserDetail && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+                    <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-scaleUp">
+                      
+                      {/* Modal Başlık */}
+                      <div className="p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-white font-black text-lg shadow-inner">
+                            {selectedUserDetail.name ? selectedUserDetail.name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-base sm:text-lg font-black text-white">
+                                {selectedUserDetail.name || 'İsimsiz Kullanıcı'}
+                              </h3>
+                              {/* Kayıt Şekli Rozeti */}
+                              {selectedUserDetail.authProvider === 'google' || selectedUserDetail.provider === 'google' || selectedUserDetail.registeredVia === 'google' || selectedUserDetail.passwordHash === 'google_oauth_verified' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-white text-slate-900 shadow-xs">
+                                  <GoogleGIcon size={13} />
+                                  <span>Google ile Kayıtlı</span>
                                 </span>
-                                <p className="text-[10px] text-slate-500 font-medium max-w-xs truncate" title={u.cart.map((it: any) => it.product?.name || it.name || 'Sticker').join(', ')}>
-                                  {u.cart.map((it: any) => it.product?.name || it.name || 'Sticker').slice(0, 2).join(', ')}{u.cart.length > 2 ? '...' : ''}
-                                </p>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-500/20 text-blue-200 border border-blue-400/30">
+                                  <Mail size={12} className="text-blue-300" />
+                                  <span>Normal E-posta Kaydı</span>
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-300 mt-0.5 font-mono">
+                              {selectedUserDetail.email}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserDetail(null)}
+                          className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+
+                      {/* Modal Gövdesi */}
+                      <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-[#faf9f6]">
+                        
+                        {/* 1. Temel Hesap & Kayıt Bilgileri */}
+                        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+                          <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                            <ShieldCheck size={16} className="text-[#ff6600]" />
+                            <span>Kayıt ve Hesap Bilgileri</span>
+                          </h4>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Ad Soyad</span>
+                              <span className="font-extrabold text-slate-900 text-sm">{selectedUserDetail.name || 'Belirtilmedi'}</span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">E-posta Adresi</span>
+                              <span className="font-bold text-slate-900 font-mono text-sm break-all">{selectedUserDetail.email}</span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Telefon Numarası</span>
+                              <span className="font-bold text-slate-900 text-sm">
+                                {selectedUserDetail.phone ? selectedUserDetail.phone : 'Belirtilmedi'}
+                              </span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Kayıt Yöntemi (Hesap Türü)</span>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {selectedUserDetail.authProvider === 'google' || selectedUserDetail.provider === 'google' || selectedUserDetail.registeredVia === 'google' || selectedUserDetail.passwordHash === 'google_oauth_verified' ? (
+                                  <span className="font-extrabold text-slate-800 flex items-center gap-1">
+                                    <GoogleGIcon size={14} />
+                                    <span>Google Tek Tıkla Giriş / OAuth</span>
+                                  </span>
+                                ) : (
+                                  <span className="font-extrabold text-blue-700 flex items-center gap-1">
+                                    <Mail size={13} className="text-blue-600" />
+                                    <span>Normal E-posta & Şifre</span>
+                                  </span>
+                                )}
                               </div>
-                            ) : (
-                              <span className="text-slate-400 text-xs">Sepet Boş</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {u.favorites && u.favorites.length > 0 ? (
-                              <span className="px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-bold text-xs inline-flex items-center gap-1">
-                                <Heart size={11} className="text-rose-500 fill-rose-500" />
-                                {u.favorites.length} Ürün Favoride
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Kayıt Tarihi ve Saati</span>
+                              <span className="font-semibold text-slate-800 flex items-center gap-1">
+                                <Clock size={13} className="text-slate-400" />
+                                {selectedUserDetail.createdAt
+                                  ? new Date(selectedUserDetail.createdAt).toLocaleString('tr-TR', {
+                                      day: '2-digit',
+                                      month: 'long',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : 'Belirtilmemiş'}
                               </span>
-                            ) : (
-                              <span className="text-slate-400 text-xs">Favori Yok</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {u.addresses && u.addresses.length > 0 ? (
-                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-xs">
-                                {u.addresses.length} Adres Kayıtlı
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Kullanıcı ID / Kod</span>
+                              <span className="font-mono font-bold text-slate-600 text-xs">
+                                {selectedUserDetail.id || 'usr_auto'}
                               </span>
-                            ) : (
-                              <span className="text-slate-400">Adres Yok</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-slate-400 text-xs">
-                            {new Date(u.createdAt).toLocaleDateString('tr-TR')}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteUserClick(u.email)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Kullanıcıyı Sil"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. Kayıtlı Teslimat Adresleri */}
+                        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+                          <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                            <MapPin size={16} className="text-emerald-600" />
+                            <span>Kayıtlı Teslimat Adresleri ({selectedUserDetail.addresses?.length || 0})</span>
+                          </h4>
+
+                          {!selectedUserDetail.addresses || selectedUserDetail.addresses.length === 0 ? (
+                            <p className="text-xs text-slate-500 py-2">Kullanıcı henüz bir teslimat adresi kaydetmemiş.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {selectedUserDetail.addresses.map((addr, idx) => (
+                                <div key={idx} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 text-xs space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-extrabold text-slate-900">{addr.title || `Adres #${idx + 1}`}</span>
+                                    {addr.isDefault && (
+                                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                        Varsayılan
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="font-semibold text-slate-700">{addr.recipientName || selectedUserDetail.name} • {addr.phone || selectedUserDetail.phone}</p>
+                                  <p className="text-slate-600 leading-relaxed">{addr.fullAddress}</p>
+                                  <p className="text-slate-500 text-[11px] font-bold">{addr.district} / {addr.city}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 3. Aktif Sepetindeki Ürünler */}
+                        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+                          <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                            <ShoppingCart size={16} className="text-amber-500" />
+                            <span>Kullanıcının Sepetinde Bekleyen Ürünler ({selectedUserDetail.cart?.length || 0})</span>
+                          </h4>
+
+                          {!selectedUserDetail.cart || selectedUserDetail.cart.length === 0 ? (
+                            <p className="text-xs text-slate-500 py-2">Kullanıcının sepetinde şu an ürün bulunmuyor.</p>
+                          ) : (
+                            <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
+                              {selectedUserDetail.cart.map((cItem: any, cIdx: number) => {
+                                const pName = cItem.product?.name || cItem.name || 'Özel Sticker';
+                                const pPrice = cItem.calculatedPrice || cItem.product?.price || cItem.price || 0;
+                                const pQty = cItem.quantity || 1;
+                                return (
+                                  <div key={cIdx} className="p-3 flex items-center justify-between gap-3 text-xs">
+                                    <div className="min-w-0">
+                                      <span className="font-bold text-slate-900 block truncate">{pQty}x {pName}</span>
+                                      <span className="text-[11px] text-slate-500 block">
+                                        {cItem.selectedDimension || cItem.dimension || ''}
+                                        {cItem.selectedColor ? ` • ${cItem.selectedColor}` : ''}
+                                        {cItem.customText ? ` • "${cItem.customText}"` : ''}
+                                      </span>
+                                    </div>
+                                    <span className="font-extrabold text-[#ff0055] font-price shrink-0">
+                                      ₺{(pPrice * pQty).toFixed(2).replace('.', ',')}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 4. Kullanıcının Satın Aldığı Siparişler */}
+                        {(() => {
+                          const userOrders = orders.filter((o) => (o.customerEmail || '').toLowerCase() === (selectedUserDetail.email || '').toLowerCase());
+                          return (
+                            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
+                              <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                                <Package size={16} className="text-[#ff0055]" />
+                                <span>Kullanıcının Verdiği Siparişler ({userOrders.length})</span>
+                              </h4>
+
+                              {userOrders.length === 0 ? (
+                                <p className="text-xs text-slate-500 py-2">Bu kullanıcı henüz mağazamızdan sipariş vermemiş.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {userOrders.map((ord, oIdx) => (
+                                    <div key={oIdx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-3 text-xs">
+                                      <div>
+                                        <span className="font-mono font-black text-slate-900 block">#{ord.id}</span>
+                                        <span className="text-[11px] text-slate-500 block">{ord.date} • {ord.items.length} Kalem Ürün</span>
+                                      </div>
+                                      <div className="text-right">
+                                        <span className="font-black text-[#ff0055] font-price block">₺{ord.total.toFixed(2).replace('.', ',')}</span>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-800">
+                                          {ord.status}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                      </div>
+
+                      {/* Modal Alt Butonları */}
+                      <div className="p-4 sm:p-5 bg-white border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUserClick(selectedUserDetail.email, selectedUserDetail.name)}
+                          className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
+                        >
+                          <Trash2 size={15} />
+                          <span>Kullanıcıyı Kalıcı Sil</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserDetail(null)}
+                          className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                        >
+                          Kapat
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            );
+          })()}
 
           {/* ========================================================= */}
           {/* 6. NEDEN AKUZ STICKERS (4 KUTU DÜZENLEME) */}
@@ -3485,8 +4066,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <input
                     type="email"
                     value={testEmailTo}
-                    onChange={(e) => setTestEmailTo(e.target.value)}
-                    placeholder="Test edilecek e-posta adresi (örn: mrlulas37@gmail.com)"
+                    onChange={(e) => handleTestEmailChange(e.target.value)}
+                    placeholder="Test edilecek e-posta adresi (örn: mertopro123@gmail.com)"
                     className="w-full max-w-lg px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:bg-white focus:outline-none focus:border-emerald-600"
                   />
                 </div>

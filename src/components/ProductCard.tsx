@@ -226,12 +226,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         )}
       </div>
 
-      {/* Bottom Info Band - %20 Daha kompakt ve şık çerçeve yapısı */}
-      <div className="p-2.5 sm:p-3 md:p-3.5 bg-white flex flex-col justify-between flex-1 border-t border-slate-100">
+      {/* Bottom Info Band - Kompakt ve gereksiz boşlukları kesilmiş yapı */}
+      <div className={`${variant === 'popular' ? 'p-2 sm:p-2.5' : 'p-2.5 sm:p-3 md:p-3.5'} bg-white flex flex-col justify-between flex-1 border-t border-slate-100`}>
         <div>
           <h3
             onClick={handleProductSelect}
-            className="font-black text-[11px] sm:text-xs md:text-sm tracking-wide text-slate-900 uppercase cursor-pointer hover:text-[#ff6600] transition-colors line-clamp-2 min-h-[1.75rem] sm:min-h-[2.1rem] leading-snug sm:leading-tight"
+            className={`font-black ${variant === 'popular' ? 'text-[11px] sm:text-xs min-h-[1.4rem] sm:min-h-[1.65rem]' : 'text-[11px] sm:text-xs md:text-sm min-h-[1.75rem] sm:min-h-[2.1rem]'} tracking-wide text-slate-900 uppercase cursor-pointer hover:text-[#ff6600] transition-colors line-clamp-2 leading-snug sm:leading-tight`}
             title={product.name}
           >
             {product.name}
@@ -242,7 +242,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               {[1, 2, 3, 4, 5].map((s) => (
                 <Star
                   key={s}
-                  size={11}
+                  size={variant === 'popular' ? 10 : 11}
                   className={
                     count > 0 && s <= Math.round(avg)
                       ? 'fill-amber-400 text-amber-400'
@@ -258,14 +258,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* Price & Action */}
-        <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+        <div className={`${variant === 'popular' ? 'mt-1 pt-1.5' : 'mt-2 pt-2'} border-t border-slate-100 flex items-center justify-between`}>
           <div className="flex flex-col">
             {product.oldPrice > product.currentPrice && (
               <span className="text-[9px] sm:text-[10px] text-slate-400 line-through font-price font-medium">
                 ₺{product.oldPrice.toFixed(2).replace('.', ',')}
               </span>
             )}
-            <span className="font-extrabold text-xs sm:text-sm md:text-base text-red-600 font-price tracking-tight">
+            <span className={`font-extrabold ${variant === 'popular' ? 'text-xs sm:text-sm' : 'text-xs sm:text-sm md:text-base'} text-red-600 font-price tracking-tight`}>
               ₺{product.currentPrice.toFixed(2).replace('.', ',')}
             </span>
           </div>
@@ -276,7 +276,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               e.stopPropagation();
               onSelectProduct(product);
             }}
-            className="text-[10px] font-black uppercase text-slate-700 hover:text-white bg-slate-100 hover:bg-[#ff0055] px-2 py-1 rounded-sm transition-colors cursor-pointer"
+            className="text-[10px] font-black uppercase text-slate-700 hover:text-white bg-slate-100 hover:bg-[#ff0055] px-2 py-0.5 sm:py-1 rounded-sm transition-colors cursor-pointer"
           >
             İNCELE
           </button>

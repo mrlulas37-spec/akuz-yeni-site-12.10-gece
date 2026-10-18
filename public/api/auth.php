@@ -27,6 +27,103 @@ $address  = trim($data['address'] ?? '');
 $cart     = $data['cart'] ?? null;
 $favorites = $data['favorites'] ?? null;
 
+// 0. GOOGLE İLE GİRİŞ
+if ($action === 'google') {
+    if (empty($email)) {
+        echo json_encode(["status" => "error", "message" => "E-posta adresi eksik."]);
+        exit;
+    }
+    if (empty($fullname)) {
+        $fullname = explode('@', $email)[0];
+    }
+
+    $dataDir = __DIR__ . '/../../data_storage';
+    if (!is_dir($dataDir)) $dataDir = __DIR__ . '/../data_storage';
+    if (!is_dir($dataDir)) @mkdir($dataDir, 0755, true);
+    $usersFile = $dataDir . '/users.json';
+    $jsonUsers = file_exists($usersFile) ? json_decode(file_get_contents($usersFile), true) : [];
+    if (!is_array($jsonUsers)) $jsonUsers = [];
+
+    $foundIndex = -1;
+    foreach ($jsonUsers as $k => $ju) {
+        if (strtolower(trim($ju['email'] ?? '')) === $email) {
+            $foundIndex = $k;
+            break;
+        }
+    }
+
+    $targetUser = null;
+    if ($foundIndex !== -1) {
+        if (empty($jsonUsers[$foundIndex]['name']) || strpos($jsonUsers[$foundIndex]['name'], '@') !== false) {
+            $jsonUsers[$foundIndex]['name'] = $fullname;
+            $jsonUsers[$foundIndex]['full_name'] = $fullname;
+        }
+        $jsonUsers[$foundIndex]['auth_provider'] = 'google';
+        $jsonUsers[$foundIndex]['provider'] = 'google';
+        $jsonUsers[$foundIndex]['authProvider'] = 'google';
+        $jsonUsers[$foundIndex]['registeredVia'] = 'google';
+        $targetUser = $jsonUsers[$foundIndex];
+    } else {
+        $newUserId = 'usr_' . time() . '_' . mt_rand(100, 999);
+        $targetUser = [
+            'id' => $newUserId,
+            'user_id' => $newUserId,
+            'name' => $fullname,
+            'full_name' => $fullname,
+            'email' => $email,
+            'phone' => '',
+            'passwordHash' => 'google_oauth_verified',
+            'createdAt' => date('c'),
+            'auth_provider' => 'google',
+            'provider' => 'google',
+            'authProvider' => 'google',
+            'registeredVia' => 'google',
+            'addresses' => [],
+            'cart' => [],
+            'favorites' => [],
+        ];
+        $jsonUsers[] = $targetUser;
+    }
+    @file_put_contents($usersFile, json_encode($jsonUsers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    if (isset($db) && $db instanceof PDO) {
+        try {
+            $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ?");
+            $stmt->execute([$email]);
+            $existingMysql = $stmt->fetch();
+            if ($existingMysql) {
+                @$db->prepare("UPDATE users SET auth_provider = 'google' WHERE LOWER(email) = ?")->execute([$email]);
+            } else {
+                $randomPass = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
+                $ins = $db->prepare("INSERT INTO users (fullname, phone, email, password, auth_provider) VALUES (?, ?, ?, ?, 'google')");
+                $ins->execute([$fullname, '', $email, $randomPass]);
+            }
+        } catch (Exception $e) {}
+    }
+
+    echo json_encode([
+        "status" => "success",
+        "success" => true,
+        "message" => "Google ile giriş başarılı!",
+        "user" => [
+            "id" => $targetUser['id'] ?? ('usr_' . md5($email)),
+            "user_id" => $targetUser['id'] ?? ('usr_' . md5($email)),
+            "fullname" => $targetUser['name'] ?? $fullname,
+            "name" => $targetUser['name'] ?? $fullname,
+            "email" => $email,
+            "phone" => $targetUser['phone'] ?? '',
+            "addresses" => $targetUser['addresses'] ?? [],
+            "cart" => $targetUser['cart'] ?? [],
+            "favorites" => $targetUser['favorites'] ?? [],
+            "isGoogleUser" => true,
+            "authProvider" => "google",
+            "provider" => "google",
+            "registeredVia" => "google",
+        ]
+    ]);
+    exit;
+}
+
 // 1. PROFİL GÜNCELLEME (İsim, Telefon, Adresler, Sepet, Favoriler) - Hesaptaki tüm değişiklikler anında MySQL'e yazılır
 if ($action === 'update_profile' || $action === 'update' || $action === 'save_profile' || $cart !== null || $favorites !== null || (!empty($fullname) && !empty($email) && empty($password) && ($addresses !== null || !empty($phone)))) {
     if (empty($email)) {

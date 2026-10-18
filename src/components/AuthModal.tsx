@@ -10,6 +10,7 @@ import {
   getLastGoogleAccount,
   triggerGoogleAccountPicker,
   saveGoogleUserToCpanel,
+  triggerRegistrationWelcomeEmail,
 } from '../utils/auth';
 
 interface AuthModalProps {
@@ -77,6 +78,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           // İsim varsa doğrudan oturumu tamamla ve giriş yaptır
           if (user.name && user.name.trim().length >= 2) {
             const loginRes = await loginWithGoogleAccount(user.email, user.name);
+            triggerRegistrationWelcomeEmail(user.name, user.email);
             setIsLoading(false);
             setSuccessMessage(`Giriş başarılı! Hoş geldiniz, ${loginRes.user.name}`);
             setTimeout(() => {
@@ -124,6 +126,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       await saveGoogleUserToCpanel(trimmed, cleanEmail);
 
       const loginRes = await loginWithGoogleAccount(cleanEmail, trimmed);
+      triggerRegistrationWelcomeEmail(trimmed, cleanEmail);
       setIsLoading(false);
       setSuccessMessage(`Giriş başarılı! Hoş geldiniz, ${loginRes.user.name}`);
       setTimeout(() => {
@@ -247,6 +250,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setErrorMessage(res.error || 'Kayıt işlemi başarısız.');
       } else {
         console.log('[Kayıt Başarılı]:', res.message || res);
+        triggerRegistrationWelcomeEmail(registerName, email);
         // Kullanıcıyı bilgilendir ve giriş ekranına yönlendir
         setSuccessMessage(res.message || 'Kayıt başarılı, giriş yapabilirsiniz');
         setLoginPassword('');

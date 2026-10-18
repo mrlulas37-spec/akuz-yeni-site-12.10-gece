@@ -212,13 +212,13 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
   };
 
   return (
-    <section id="popular-products" className="py-3.5 sm:py-5 md:py-6 bg-slate-100/90 text-slate-900 border-b border-slate-200 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="popular-products" className="py-2 sm:py-2.5 md:py-3 bg-slate-100/90 text-slate-900 border-b border-slate-200 overflow-hidden">
+      <div className="w-full max-w-[1440px] mx-auto px-2.5 sm:px-4 lg:px-6">
         
-        {/* Section Header: Yüksekliği daraltılmış, tek satır ve net okunan başlık */}
-        <div className="flex items-center justify-between gap-2 sm:gap-4 mb-2.5 sm:mb-3.5 md:mb-4 pb-1.5 sm:pb-2 border-b border-slate-200/60">
+        {/* Section Header: Yüksekliği daraltılmış, kompakt, tek satır ve net okunan başlık */}
+        <div className="flex items-center justify-between gap-2 sm:gap-4 mb-1.5 sm:mb-2 pb-1 sm:pb-1.5 border-b border-slate-200/60">
           <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-xl md:text-2xl lg:text-3xl font-black italic tracking-tight sm:tracking-wide text-slate-900 uppercase font-display whitespace-nowrap truncate shrink-0">
+            <h2 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black italic tracking-tight sm:tracking-wide text-slate-900 uppercase font-display whitespace-nowrap truncate shrink-0">
               {title}
             </h2>
             <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ff6600]/10 text-[#ff6600]">
@@ -261,13 +261,13 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
           </div>
         </div>
 
-        {/* Products list with GPU transform - Yana doğru kesintisiz, sıfır kasma ile akan vitrin */}
+        {/* Products list with GPU transform - Yana doğru kesintisiz, boşlukları kırpılmış kompakt vitrin */}
         {products.length === 0 ? (
-          <div className="text-center py-6 bg-slate-50 rounded-lg border border-slate-200">
+          <div className="text-center py-4 bg-slate-50 rounded-lg border border-slate-200">
             <p className="text-slate-500 text-sm">Aradığınız kriterde ürün bulunamadı.</p>
             <button
               onClick={onViewAllClick}
-              className="mt-2.5 px-4 py-1.5 bg-[#ff0055] hover:bg-[#d90048] text-white rounded-md text-xs font-semibold transition-colors cursor-pointer"
+              className="mt-2 px-4 py-1.5 bg-[#ff0055] hover:bg-[#d90048] text-white rounded-md text-xs font-semibold transition-colors cursor-pointer"
             >
               Tüm Ürünleri Göster
             </button>
@@ -284,7 +284,7 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="relative overflow-hidden select-none -mx-2 sm:mx-0 px-2 sm:px-0 py-1 touch-pan-y"
+            className="relative overflow-hidden select-none -mx-2 sm:-mx-1 px-2 sm:px-1 py-0.5 touch-pan-y"
           >
             <div
               ref={trackRef}
@@ -292,17 +292,18 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
                 willChange: 'transform',
                 transform: 'translate3d(0, 0, 0)',
               }}
-              className="flex items-stretch gap-3 sm:gap-4 pb-1.5 pt-0.5"
+              className="flex items-stretch gap-2.5 sm:gap-3.5 pb-1 pt-0.5"
             >
               {repeatedProducts.map((product, idx) => (
                 <ProductCard
                   key={`${product.id}-loop-${idx}`}
                   product={product}
+                  variant="popular"
                   isFav={favoriteIds.includes(product.id)}
                   reviews={reviews}
                   onToggleFavorite={onToggleFavorite}
                   onSelectProduct={onSelectProduct}
-                  className="w-[190px] sm:w-[216px] shrink-0"
+                  className="w-[152px] sm:w-[172px] shrink-0"
                 />
               ))}
             </div>

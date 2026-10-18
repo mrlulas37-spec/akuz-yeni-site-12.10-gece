@@ -135,15 +135,7 @@ export const CartPage: React.FC<CartPageProps> = ({
             </div>
           </div>
 
-          {cartItems.length > 0 && (
-            <button
-              type="button"
-              onClick={onClearCart}
-              className="self-start sm:self-auto px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-            >
-              Sepeti Temizle
-            </button>
-          )}
+
         </div>
 
         {cartItems.length === 0 ? (

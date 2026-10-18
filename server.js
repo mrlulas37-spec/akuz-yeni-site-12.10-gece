@@ -457,23 +457,13 @@ async function startServer() {
           rejectUnauthorized: false
         }
       });
+      const sanitizedHtml = (html || "").replace(/cid:akuz-logo@akuzstickers\.com/g, "https://akuzstickers.com/akuz-logo-badge.png");
       const mailOptions = {
         from: `"${fromName}" <${fromEmail}>`,
         to,
         subject,
-        html
+        html: sanitizedHtml
       };
-      const logoPath = path.resolve(__dirname, "public", "akuz-logo-badge.png");
-      if (fs.existsSync(logoPath)) {
-        mailOptions.attachments = [
-          {
-            filename: "akuz-logo.png",
-            path: logoPath,
-            cid: "akuz-logo@akuzstickers.com"
-            // getWelcomeEmailHtml içindeki cid referansı
-          }
-        ];
-      }
       const info = await transporter.sendMail(mailOptions);
       console.log(`[SMTP SUCCESS] E-posta ba\u015Far\u0131yla g\xF6nderildi: ${info.messageId}`);
       return res.json({ success: true, messageId: info.messageId });
@@ -881,6 +871,7 @@ async function startServer() {
       const origin = `${protocol}://${host}`;
       const merchant_ok_url = `${origin}/odeme-basarili?oid=${merchant_oid}`;
       const merchant_fail_url = `${origin}/odeme-basarisiz?oid=${merchant_oid}`;
+      const user_phone = (phone || "+905468758671").replace(/[^0-9+]/g, "");
       const params = new URLSearchParams({
         merchant_id,
         user_ip,
@@ -891,7 +882,7 @@ async function startServer() {
         user_basket,
         user_name: (fullName || "M\xFC\u015Fteri").trim(),
         user_address: `${address || "Teslimat Adresi"}, ${district || "Nil\xFCfer"}/${city || "Bursa"}`,
-        user_phone: (phone || "+905468758671").replace(/[^0-9+]/g, ""),
+        user_phone,
         merchant_ok_url,
         merchant_fail_url,
         timeout_limit: "30",
@@ -912,6 +903,47 @@ async function startServer() {
       const data = await paytrRes.json();
       console.log(`[PAYTR TOKEN RESP] #${merchant_oid}:`, data);
       if (data.status === "success") {
+        try {
+          const isTest = test_mode === "1";
+          const newOrderRecord = {
+            id: merchant_oid.startsWith("AKUZ") ? merchant_oid : `AKUZ-${merchant_oid}`,
+            date: (/* @__PURE__ */ new Date()).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" }),
+            status: isTest ? "Haz\u0131rlan\u0131yor" : "\xD6deme Bekleniyor",
+            paymentStatus: isTest ? "\xD6dendi (PayTR Test)" : "Bekleniyor",
+            paymentMethod: isTest ? "PayTR Kredi / Banka Kart\u0131 (3D Secure Test)" : "PayTR Kredi / Banka Kart\u0131 (3D Secure)",
+            total: numericAmount,
+            customerName: (fullName || "M\xFC\u015Fteri").trim(),
+            customerPhone: user_phone,
+            customerEmail,
+            shippingAddress: `${address || "Teslimat Adresi"}, ${district || ""}/${city || ""}`,
+            items: (items || []).map((it) => ({
+              productName: it.productName || "AKUZ Sticker",
+              quantity: Number(it.quantity) || 1,
+              price: Number(it.price) || 0,
+              color: it.color || "",
+              dimension: it.dimension || "",
+              finish: it.finish || "",
+              customText: it.customText || ""
+            })),
+            paidAt: isTest ? (/* @__PURE__ */ new Date()).toISOString() : void 0,
+            isTestOrder: isTest,
+            createdAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          const orders = readJsonFile(ORDERS_FILE, []);
+          const existingIdx = orders.findIndex((o) => {
+            const cleanId = (o.id || "").replace(/[^a-zA-Z0-9]/g, "");
+            return cleanId === merchant_oid || o.id === merchant_oid;
+          });
+          if (existingIdx !== -1) {
+            orders[existingIdx] = { ...orders[existingIdx], ...newOrderRecord };
+          } else {
+            orders.unshift(newOrderRecord);
+          }
+          writeJsonFile(ORDERS_FILE, orders);
+          console.log(`[PAYTR TOKEN PRE-ORDER] #${newOrderRecord.id} sipari\u015F kayd\u0131 olu\u015Fturuldu (Test: ${isTest})`);
+        } catch (saveErr) {
+          console.warn("[PAYTR PRE-ORDER SAVE ERROR]", saveErr);
+        }
         return res.json({
           success: true,
           token: data.token,
@@ -963,17 +995,18 @@ async function startServer() {
       console.log(`[PAYTR CALLBACK SUCCESS] #${merchant_oid} Durum: ${status}`);
       if (status === "success") {
         const orders = readJsonFile(ORDERS_FILE, []);
+        const cleanOid = (merchant_oid || "").replace(/[^a-zA-Z0-9]/g, "");
         const idx = orders.findIndex((o) => {
           const cleanId = (o.id || "").replace(/[^a-zA-Z0-9]/g, "");
-          return cleanId === merchant_oid || o.id === merchant_oid;
+          return cleanId === cleanOid || cleanId.includes(cleanOid) || cleanOid.includes(cleanId);
         });
         if (idx !== -1) {
           orders[idx].status = "Haz\u0131rlan\u0131yor";
-          orders[idx].paymentStatus = "\xD6dendi";
+          orders[idx].paymentStatus = orders[idx].isTestOrder ? "\xD6dendi (PayTR Test)" : "\xD6dendi";
           orders[idx].paymentMethod = "PayTR Kredi/Banka Kart\u0131 (3D Secure)";
           orders[idx].paidAt = (/* @__PURE__ */ new Date()).toISOString();
           writeJsonFile(ORDERS_FILE, orders);
-          console.log(`[PAYTR CALLBACK] #${orders[idx].id} sipari\u015Fi \xF6dendi olarak i\u015Faretlendi.`);
+          console.log(`[PAYTR CALLBACK] #${orders[idx].id} sipari\u015Fi onayland\u0131 ve \xF6dendi olarak i\u015Faretlendi.`);
         }
       } else {
         console.log(`[PAYTR CALLBACK FAILED] #${merchant_oid}: ${failed_reason_code} - ${failed_reason_msg}`);
@@ -998,12 +1031,103 @@ async function startServer() {
     next();
   });
   app.all(["/odeme-basarili", "/api/paytr/success"], (req, res) => {
-    const oid = req.query.oid || req.body?.merchant_oid || "";
-    res.redirect(`/?payment_result=success&oid=${oid}`);
+    const rawOid = (req.query.oid || req.body?.merchant_oid || "").toString();
+    const cleanOid = rawOid.replace(/[^a-zA-Z0-9]/g, "");
+    try {
+      const orders = readJsonFile(ORDERS_FILE, []);
+      const idx = orders.findIndex((o) => {
+        const id = (o.id || "").replace(/[^a-zA-Z0-9]/g, "");
+        return cleanOid && (id.includes(cleanOid) || cleanOid.includes(id));
+      });
+      if (idx !== -1) {
+        orders[idx].status = "Haz\u0131rlan\u0131yor";
+        orders[idx].paymentStatus = orders[idx].paymentStatus?.includes("Test") ? "\xD6dendi (PayTR Test)" : "\xD6dendi";
+        orders[idx].paidAt = orders[idx].paidAt || (/* @__PURE__ */ new Date()).toISOString();
+        writeJsonFile(ORDERS_FILE, orders);
+        console.log(`[PAYTR SUCCESS REDIRECT] #${orders[idx].id} sipari\u015Fi veritaban\u0131nda onayland\u0131.`);
+      }
+    } catch (e) {
+      console.warn("[PAYTR SUCCESS REDIRECT DB UPDATE ERROR]", e);
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>\xD6deme Ba\u015Far\u0131l\u0131 - AKUZ Stickers</title>
+  <style>
+    body { background: #070a12; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { background: #131b2e; border: 1px solid #10b981; border-radius: 20px; padding: 32px; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    h2 { color: #10b981; margin: 0 0 12px; font-size: 22px; font-weight: 800; }
+    p { color: #94a3b8; font-size: 14px; margin: 0 0 16px; }
+    .loader { display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(16,185,129,0.2); border-radius: 50%; border-top-color: #10b981; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 44px; margin-bottom: 8px;">\u{1F389}</div>
+    <h2>\xD6demeniz Onayland\u0131!</h2>
+    <p>Sipari\u015Finiz ba\u015Far\u0131yla al\u0131nd\u0131 ve onayland\u0131. Ma\u011Faza ekran\u0131na aktar\u0131l\u0131yorsunuz...</p>
+    <div class="loader"></div>
+  </div>
+  <script>
+    try {
+      if (window.parent) {
+        window.parent.postMessage({ type: 'PAYTR_PAYMENT_SUCCESS', oid: '${cleanOid}' }, '*');
+      }
+    } catch(e) {}
+    var targetUrl = '/odeme?payment_result=success&oid=' + encodeURIComponent('${cleanOid}');
+    setTimeout(function() {
+      if (window.top && window.top !== window) {
+        window.top.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    }, 400);
+  </script>
+</body>
+</html>`);
   });
   app.all(["/odeme-basarisiz", "/api/paytr/fail"], (req, res) => {
-    const oid = req.query.oid || req.body?.merchant_oid || "";
-    res.redirect(`/odeme?payment_result=failed&oid=${oid}`);
+    const rawOid = (req.query.oid || req.body?.merchant_oid || "").toString();
+    const cleanOid = rawOid.replace(/[^a-zA-Z0-9]/g, "");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>\xD6deme Tamamlanamad\u0131 - AKUZ Stickers</title>
+  <style>
+    body { background: #070a12; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { background: #1e1520; border: 1px solid #ef4444; border-radius: 20px; padding: 32px; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    h2 { color: #ef4444; margin: 0 0 12px; font-size: 20px; font-weight: 800; }
+    p { color: #94a3b8; font-size: 13px; margin: 0 0 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 44px; margin-bottom: 8px;">\u26A0\uFE0F</div>
+    <h2>\xD6deme Tamamlanamad\u0131</h2>
+    <p>\xD6deme sayfas\u0131 yeniden a\xE7\u0131l\u0131yor, l\xFCtfen kart bilgilerinizi kontrol ediniz...</p>
+  </div>
+  <script>
+    try {
+      if (window.parent) {
+        window.parent.postMessage({ type: 'PAYTR_PAYMENT_FAILED', oid: '${cleanOid}' }, '*');
+      }
+    } catch(e) {}
+    var targetUrl = '/odeme?payment_result=failed&oid=' + encodeURIComponent('${cleanOid}');
+    setTimeout(function() {
+      if (window.top && window.top !== window) {
+        window.top.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    }, 500);
+  </script>
+</body>
+</html>`);
   });
   app.post("/api/paytr/simulate-test-transaction", async (req, res) => {
     try {
@@ -1116,6 +1240,7 @@ async function startServer() {
           isDefault: true
         }] : [];
         const newAccount = {
+          id: "usr_" + Date.now() + "_" + Math.floor(Math.random() * 1e3),
           name: cleanName,
           full_name: cleanName,
           email: cleanEmail,
@@ -1124,6 +1249,10 @@ async function startServer() {
           phone: phone || "",
           address: address || "",
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          auth_provider: "normal",
+          provider: "normal",
+          authProvider: "normal",
+          registeredVia: "normal",
           addresses,
           cart: [],
           favorites: []
@@ -1183,18 +1312,30 @@ async function startServer() {
         let account = users.find((u) => u.email.toLowerCase() === cleanEmail);
         if (!account) {
           account = {
+            id: "usr_" + Date.now() + "_" + Math.floor(Math.random() * 1e3),
             name: cleanName,
             full_name: cleanName,
             email: cleanEmail,
+            passwordHash: "google_oauth_verified",
             phone: phone || "",
             address: address || "",
             createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-            addresses: []
+            auth_provider: "google",
+            provider: "google",
+            authProvider: "google",
+            registeredVia: "google",
+            addresses: [],
+            cart: [],
+            favorites: []
           };
           users.push(account);
         } else {
           account.name = cleanName;
           account.full_name = cleanName;
+          if (!account.auth_provider) {
+            account.auth_provider = "google";
+            account.provider = "google";
+          }
         }
         writeJsonFile(USERS_FILE, users);
         return res.json({
@@ -1235,13 +1376,20 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Bu e-posta adresiyle kay\u0131tl\u0131 bir hesap zaten var. L\xFCtfen giri\u015F yap\u0131n." });
       }
       const newAccount = {
+        id: "usr_" + Date.now() + "_" + Math.floor(Math.random() * 1e3),
         name: cleanName,
         email: cleanEmail,
         passwordHash: hashPassword(password),
         plainPassword: password,
         phone: "",
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-        addresses: []
+        auth_provider: "normal",
+        provider: "normal",
+        authProvider: "normal",
+        registeredVia: "normal",
+        addresses: [],
+        cart: [],
+        favorites: []
       };
       users.push(newAccount);
       writeJsonFile(USERS_FILE, users);
@@ -1325,7 +1473,7 @@ async function startServer() {
       const passSmtp = smtpConfig?.pass || process.env.SMTP_PASS || "GvqrM6nWyfE9mMX";
       const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || "AKUZ STICKERS";
       const fromEmail = smtpConfig?.fromEmail || userSmtp || "info@akuzstickers.com";
-      const logoCid = "cid:akuz-logo@akuzstickers.com";
+      const logoUrl = "https://akuzstickers.com/akuz-logo-badge.png";
       const recoveryHtml = `
 <!DOCTYPE html>
 <html lang="tr">
@@ -1338,7 +1486,7 @@ async function startServer() {
     <table align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);border:1px solid #1e293b;">
       <tr>
         <td style="background-color:#ffffff;padding:32px 30px 24px;text-align:center;border-bottom:2px solid #f1f5f9;">
-          <img src="${logoCid}" alt="AKUZ Stickers" width="120" style="display:block;margin:0 auto;width:120px;max-width:120px;height:auto;border:0;">
+          <img src="${logoUrl}" alt="AKUZ Stickers" width="120" style="display:block;margin:0 auto;width:120px;max-width:120px;height:auto;border:0;">
         </td>
       </tr>
       <tr>
@@ -1401,16 +1549,6 @@ async function startServer() {
           subject: "AKUZ Stickers Hesap \u015Eifreniz \u{1F511}",
           html: recoveryHtml
         };
-        const logoPath = path.resolve(__dirname, "public", "akuz-logo-badge.png");
-        if (fs.existsSync(logoPath)) {
-          mailOptions.attachments = [
-            {
-              filename: "akuz-logo.png",
-              path: logoPath,
-              cid: "akuz-logo@akuzstickers.com"
-            }
-          ];
-        }
         await transporter.sendMail(mailOptions);
         console.log(`[PASSWORD EMAIL SENT VIA SMTP] Kime: ${cleanEmail}`);
       } else {
@@ -1501,6 +1639,10 @@ async function startServer() {
           passwordHash: "google_oauth_verified",
           phone: "",
           createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          auth_provider: "google",
+          provider: "google",
+          authProvider: "google",
+          registeredVia: "google",
           addresses: [],
           cart: [],
           favorites: [],
@@ -1756,24 +1898,73 @@ async function startServer() {
       return res.status(500).json({ success: false, error: err.message });
     }
   });
-  app.get("/api/users", (req, res) => {
+  app.get("/api/users", async (req, res) => {
     try {
       const adminToken = req.headers["x-admin-token"] || req.query.adminToken;
       if (adminToken !== "akuz_admin_2026") {
         return res.status(403).json({ success: false, error: "Yetkisiz eri\u015Fim. Sadece y\xF6netici paneli eri\u015Febilir." });
       }
-      const users = readJsonFile(USERS_FILE, []);
+      let users = readJsonFile(USERS_FILE, []);
       const allCarts = readJsonFile(CARTS_FILE, {});
       const allFavs = readJsonFile(FAVORITES_FILE, {});
+      if (mysqlPool) {
+        try {
+          const [mysqlRows] = await mysqlPool.query("SELECT * FROM users");
+          if (Array.isArray(mysqlRows) && mysqlRows.length > 0) {
+            let hasNew = false;
+            for (const mu of mysqlRows) {
+              const mEmail = (mu.email || "").trim().toLowerCase();
+              if (!mEmail) continue;
+              const found = users.find((u) => (u.email || "").trim().toLowerCase() === mEmail);
+              const isGoogle = mu.auth_provider === "google";
+              if (!found) {
+                users.push({
+                  id: mu.id ? "usr_" + mu.id : "usr_" + mEmail,
+                  user_id: mu.id ? "usr_" + mu.id : "usr_" + mEmail,
+                  name: mu.fullname || mu.name || mEmail.split("@")[0],
+                  full_name: mu.fullname || mu.name || mEmail.split("@")[0],
+                  email: mEmail,
+                  phone: mu.phone || "",
+                  passwordHash: isGoogle ? "google_oauth_verified" : mu.password || "",
+                  createdAt: mu.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+                  auth_provider: isGoogle ? "google" : "local",
+                  provider: isGoogle ? "google" : "local",
+                  authProvider: isGoogle ? "google" : "local",
+                  registeredVia: isGoogle ? "google" : "local",
+                  addresses: mu.addresses ? typeof mu.addresses === "string" ? JSON.parse(mu.addresses) : mu.addresses : [],
+                  cart: mu.cart ? typeof mu.cart === "string" ? JSON.parse(mu.cart) : mu.cart : [],
+                  favorites: mu.favorites ? typeof mu.favorites === "string" ? JSON.parse(mu.favorites) : mu.favorites : []
+                });
+                hasNew = true;
+              } else if (isGoogle && found.authProvider !== "google") {
+                found.authProvider = "google";
+                found.provider = "google";
+                found.auth_provider = "google";
+                hasNew = true;
+              }
+            }
+            if (hasNew) {
+              writeJsonFile(USERS_FILE, users);
+            }
+          }
+        } catch (e) {
+          console.warn("[MYSQL USERS MERGE WARN]", e);
+        }
+      }
       const sanitized = users.map((u) => {
         const cleanEmail = (u.email || "").toLowerCase().trim();
         const userCart = Array.isArray(u.cart) && u.cart.length > 0 ? u.cart : allCarts[cleanEmail] || [];
         const userFavs = Array.isArray(u.favorites) && u.favorites.length > 0 ? u.favorites : allFavs[cleanEmail] || [];
+        const isGoogle = u.auth_provider === "google" || u.provider === "google" || u.authProvider === "google" || u.registeredVia === "google" || u.passwordHash === "google_oauth_verified";
         return {
-          name: u.name,
+          id: u.id || u.user_id || "usr_" + cleanEmail,
+          name: u.name || u.full_name || "Kullan\u0131c\u0131",
           email: u.email,
           phone: u.phone || "",
-          createdAt: u.createdAt,
+          createdAt: u.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
+          authProvider: isGoogle ? "google" : "normal",
+          provider: isGoogle ? "google" : "normal",
+          registeredVia: isGoogle ? "google" : "normal",
           addresses: u.addresses || [],
           cart: userCart,
           favorites: userFavs,
@@ -1823,10 +2014,20 @@ async function startServer() {
       if (adminToken !== "akuz_admin_2026") {
         return res.status(403).json({ success: false, error: "Yetkisiz eri\u015Fim." });
       }
-      const email = (req.query.email || "").trim().toLowerCase();
+      const email = (req.query.email || req.body && req.body.email || "").trim().toLowerCase();
       let users = readJsonFile(USERS_FILE, []);
       if (email) {
-        users = users.filter((u) => (u.email || "").toLowerCase() !== email);
+        users = users.filter((u) => (u.email || "").toLowerCase() !== email && (u.id || "") !== email);
+        const allCarts = readJsonFile(CARTS_FILE, {});
+        const allFavs = readJsonFile(FAVORITES_FILE, {});
+        if (allCarts[email]) {
+          delete allCarts[email];
+          writeJsonFile(CARTS_FILE, allCarts);
+        }
+        if (allFavs[email]) {
+          delete allFavs[email];
+          writeJsonFile(FAVORITES_FILE, allFavs);
+        }
       } else {
         users = [];
       }

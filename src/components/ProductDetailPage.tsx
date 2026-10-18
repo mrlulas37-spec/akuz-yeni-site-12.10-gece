@@ -1047,13 +1047,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         
         {/* 1. POPÜLER ÜRÜNLER */}
         {popularProducts.length > 0 && (
-          <section className="pt-8 border-t border-slate-200">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg sm:text-2xl font-black text-slate-900 uppercase tracking-tight font-display">
+          <section className="pt-5 sm:pt-6 border-t border-slate-200">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base sm:text-xl font-black text-slate-900 uppercase tracking-tight font-display">
                 POPÜLER ÜRÜNLER
               </h2>
             </div>
-            <div className="flex items-stretch gap-4 sm:gap-6 overflow-x-auto no-scrollbar pb-4 pt-1 px-1">
+            <div className="flex items-stretch gap-3 sm:gap-4 overflow-x-auto no-scrollbar pb-2 pt-0.5 px-0.5">
               {popularProducts.map((p) => {
                 const isFav = favoriteIds.includes(p.id);
                 const pRevs = reviews.filter((r) => r.productId === p.id);
@@ -1065,13 +1065,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   <div
                     key={p.id}
                     onClick={() => onSelectProduct(p)}
-                    className="w-[220px] sm:w-[250px] shrink-0 bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-[#ff0055]/50 shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col group cursor-pointer"
+                    className="w-[152px] sm:w-[172px] shrink-0 bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-[#ff0055]/50 shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col group cursor-pointer"
                   >
-                    <div className="relative aspect-square w-full bg-[#fbfbfb] p-4 flex items-center justify-center border-b border-slate-100">
+                    <div className="relative aspect-square w-full bg-[#fbfbfb] p-2 flex items-center justify-center border-b border-slate-100">
                       <StickerGraphic
                         type={p.svgType}
                         imageUrl={p.imageUrl}
-                        className="w-full h-full max-h-[140px] object-contain group-hover:scale-105 transition-transform"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
                       <button
                         type="button"
@@ -1079,24 +1079,24 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                           e.stopPropagation();
                           onToggleFavorite(p);
                         }}
-                        className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/90 text-slate-400 hover:text-rose-500 flex items-center justify-center shadow-xs cursor-pointer"
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 text-slate-400 hover:text-rose-500 flex items-center justify-center shadow-xs cursor-pointer"
                       >
                         <Heart
-                          size={17}
+                          size={15}
                           className={isFav ? 'text-rose-500 fill-rose-500' : 'text-slate-400'}
                         />
                       </button>
                     </div>
-                    <div className="p-3.5 flex flex-col justify-between flex-1">
+                    <div className="p-2 sm:p-2.5 flex flex-col justify-between flex-1">
                       <h4 className="text-xs font-black text-slate-900 uppercase truncate group-hover:text-[#ff0055] transition-colors">
                         {p.name}
                       </h4>
-                      <div className="flex items-center gap-1.5 mt-1">
+                      <div className="flex items-center gap-1.5 mt-0.5">
                         <div className="flex items-center text-amber-400 text-xs">
                           {[1, 2, 3, 4, 5].map((s) => (
                             <Star
                               key={s}
-                              size={11}
+                              size={10}
                               className={
                                 pRevs.length > 0 && s <= Math.round(Number(pAvg))
                                   ? 'fill-amber-400 text-amber-400'
@@ -1105,15 +1105,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                             />
                           ))}
                         </div>
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-400 font-mono">
                           ({pRevs.length})
                         </span>
                       </div>
-                      <div className="mt-2 pt-2 border-t border-slate-100 flex items-baseline justify-between">
-                        <span className="text-[#ff0055] font-extrabold text-sm font-mono">
+                      <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-baseline justify-between">
+                        <span className="text-[#ff0055] font-extrabold text-xs sm:text-sm font-mono">
                           ₺{p.currentPrice.toFixed(2).replace('.', ',')}
                         </span>
-                        <span className="text-[11px] font-bold text-slate-400 flex items-center gap-0.5">
+                        <span className="text-[10px] font-bold text-slate-400 flex items-center gap-0.5">
                           İncele &rarr;
                         </span>
                       </div>
