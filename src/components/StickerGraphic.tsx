@@ -208,7 +208,8 @@ export const StickerGraphic: React.FC<StickerGraphicProps> = ({
         } transition-all duration-300 group-hover:scale-105 ${
           isLoading ? 'opacity-85 scale-[0.99]' : 'opacity-100 scale-100'
         }`}
-        loading="eager"
+        loading="lazy"
+        decoding="async"
       />
     </div>
   );

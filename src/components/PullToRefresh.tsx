@@ -20,18 +20,6 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ disabled = false }
   useEffect(() => {
     if (disabled || typeof window === 'undefined') return;
 
-    const handleTouchStart = (e: TouchEvent) => {
-      // Sadece sayfanın tam en üstündeyken çekme hareketini başlat
-      const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-      if (scrollY <= 0 && !isRefreshing) {
-        startYRef.current = e.touches[0].clientY;
-        currentYRef.current = e.touches[0].clientY;
-        isPullingRef.current = true;
-      } else {
-        isPullingRef.current = false;
-      }
-    };
-
     const handleTouchMove = (e: TouchEvent) => {
       if (!isPullingRef.current || isRefreshing) return;
 
@@ -40,6 +28,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ disabled = false }
         isPullingRef.current = false;
         setPullDistance(0);
         setIsPulling(false);
+        window.removeEventListener('touchmove', handleTouchMove);
         return;
       }
 
@@ -63,6 +52,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ disabled = false }
     };
 
     const handleTouchEnd = () => {
+      window.removeEventListener('touchmove', handleTouchMove);
       if (!isPullingRef.current) return;
       isPullingRef.current = false;
 
@@ -90,8 +80,20 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ disabled = false }
       }
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      // Sadece sayfanın tam en üstündeyken çekme hareketini başlat
+      const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+      if (scrollY <= 0 && !isRefreshing) {
+        startYRef.current = e.touches[0].clientY;
+        currentYRef.current = e.touches[0].clientY;
+        isPullingRef.current = true;
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      } else {
+        isPullingRef.current = false;
+      }
+    };
+
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
 

@@ -472,6 +472,55 @@ button, a {
   will-change: clip-path, transform, opacity;
 }
 
+/* Neden AKUZ - Hızlı Kargo Mini Yol Üzerinde Kesintisiz Giden Kargo Arabası Döngüsü */
+@keyframes cargoRoadDriveLoop {
+  0% {
+    left: -100px;
+    opacity: 0.9;
+  }
+  2% {
+    opacity: 1;
+  }
+  98% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% + 25px);
+    opacity: 0.9;
+  }
+}
+
+.animate-cargo-road-loop {
+  animation: cargoRoadDriveLoop 3.8s linear infinite;
+  will-change: left;
+}
+
+@keyframes truckSuspensionBounce {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-1.2px);
+  }
+}
+
+.animate-truck-bounce {
+  animation: truckSuspensionBounce 0.22s ease-in-out infinite;
+}
+
+@keyframes roadDashesFlow {
+  0% {
+    background-position-x: 0px;
+  }
+  100% {
+    background-position-x: -36px;
+  }
+}
+
+.animate-road-stripes {
+  animation: roadDashesFlow 0.8s linear infinite;
+}
+
 .animate-sticker-adhere {
   animation: stickerAdhereBLtoTR 2.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
   transform-origin: bottom left;
@@ -725,5 +774,131 @@ a:active p,
   letter-spacing: 0.02em;
 }
 
+/* ==========================================================================
+   14. ELİT 3D DÖNEN İNDİRİM SEMBOLÜ (%) ANİMASYONLARI
+   "YUVARLAK butonlarda indirimli butonun resmini sadece indirim sembolünün 3d bir şekilde etrafında dönmesi olarak yap elit bir animasyon olsun"
+   ========================================================================== */
 
+@keyframes eliteDiscountSpin {
+  0% {
+    transform: perspective(680px) rotateX(12deg) rotateY(0deg) rotateZ(-3deg) translateY(-1px);
+  }
+  25% {
+    transform: perspective(680px) rotateX(7deg) rotateY(90deg) rotateZ(1deg) translateY(1.5px);
+  }
+  50% {
+    transform: perspective(680px) rotateX(12deg) rotateY(180deg) rotateZ(3deg) translateY(-1px);
+  }
+  75% {
+    transform: perspective(680px) rotateX(15deg) rotateY(270deg) rotateZ(-1deg) translateY(1.5px);
+  }
+  100% {
+    transform: perspective(680px) rotateX(12deg) rotateY(360deg) rotateZ(-3deg) translateY(-1px);
+  }
+}
 
+@keyframes eliteGlintSweep {
+  0%, 100% {
+    transform: translateX(-140%) rotate(25deg);
+    opacity: 0;
+  }
+  18%, 32% {
+    transform: translateX(140%) rotate(25deg);
+    opacity: 0.95;
+  }
+  50%, 65% {
+    transform: translateX(-140%) rotate(25deg);
+    opacity: 0;
+  }
+  72%, 86% {
+    transform: translateX(140%) rotate(25deg);
+    opacity: 0.95;
+  }
+}
+
+@keyframes eliteShadowPulse {
+  0%, 50%, 100% {
+    transform: rotateX(72deg) scaleX(0.92) scaleY(0.7);
+    opacity: 0.65;
+  }
+  25%, 75% {
+    transform: rotateX(72deg) scaleX(0.48) scaleY(0.95);
+    opacity: 0.38;
+  }
+}
+
+@keyframes eliteAuraPulse {
+  0%, 100% {
+    transform: scale(1.05);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.85;
+  }
+}
+
+.animate-elite-discount-spin {
+  animation: eliteDiscountSpin 4.2s cubic-bezier(0.42, 0.05, 0.45, 0.95) infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.animate-elite-glint-sweep {
+  animation: eliteGlintSweep 4.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-elite-shadow {
+  animation: eliteShadowPulse 4.2s cubic-bezier(0.42, 0.05, 0.45, 0.95) infinite;
+  will-change: transform, opacity;
+}
+
+.animate-elite-aura {
+  animation: eliteAuraPulse 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Eski animasyon uyumluluğu */
+.animate-discount-coin-3d {
+  animation: eliteDiscountSpin 4.2s cubic-bezier(0.42, 0.05, 0.45, 0.95) infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.animate-discount-glint {
+  animation: eliteGlintSweep 4.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-discount-aura {
+  animation: eliteAuraPulse 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* ========================================================================= */
+/* ESKİ & DÜŞÜK DONANIMLI TELEFONLAR İÇİN ULTRA HIZLANDIRMA & PERFORMANS      */
+/* ========================================================================= */
+
+/* 1. Ekran dışındaki ağır bölümlerin render yükünü atlayarak CPU/GPU rahatlatma */
+.perf-section-lazy {
+  content-visibility: auto;
+  contain-intrinsic-size: 380px;
+}
+
+/* 2. Eski telefonlarda (ekran genişliği < 768px) GPU kasmasını önleyen optimizasyonlar */
+@media (max-width: 768px) {
+  /* Ağır Gaussian Backdrop Blur filtreleri eski mobil GPU'ları kilitler; düz şeffaflık çok daha akıcıdır */
+  .backdrop-blur-md,
+  .backdrop-blur-sm,
+  .backdrop-blur-xs,
+  .backdrop-blur-\[2px\] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Donanım hızlandırmalı pürüzsüz dokunmatik kaydırma */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

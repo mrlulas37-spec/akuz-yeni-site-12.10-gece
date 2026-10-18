@@ -33,8 +33,9 @@
       "titleLine1": "Katalog",
       "titleLine2": "Tüm Ürünler",
       "bgGradient": "bg-slate-900 text-white",
-      "cardImageUrl": "/products/IMG_1141.jpeg",
-      "subtitle": "Tüm Sticker Koleksiyonu"
+      "cardImageUrl": "/uploads/prod_1792267770453_4d3aa7.jpg",
+      "subtitle": "Tüm Sticker Koleksiyonu",
+      "imageUrl": "/uploads/prod_1792267765590_506db4.jpg"
     },
     {
       "id": "discount",
@@ -49,8 +50,8 @@
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-      "imageUrl": "/products/IMG_1278.jpeg",
-      "cardImageUrl": "/products/IMG_1278.jpeg",
+      "imageUrl": "/uploads/prod_1792267264910_d3639f.jpg",
+      "cardImageUrl": "/uploads/prod_1792267252889_745185.jpg",
       "subtitle": "İmza, Portre & Özel Tasarımlar"
     },
     {
@@ -103,14 +104,14 @@
     "port": 465,
     "secure": true,
     "user": "info@akuzstickers.com",
-    "pass": "",
-    "fromName": "AKUZ Stickers",
+    "pass": "GvqrM6nWyfE9mMX",
+    "fromName": "AKUZ STICKERS",
     "fromEmail": "info@akuzstickers.com",
     "enabled": true
   },
   "kargonomiSettings": {
     "apiToken": "Ly2mGS6WC2iDAuwdC2C5D9omqnsJkjBZIO4qeJMIe8175aa3",
-    "apiUrl": "https://app.kargonomi.com.tr/api/v1",
+    "apiUrl": "https://api.kargonomi.com",
     "enabled": true,
     "autoCreateOnOrder": true,
     "senderName": "AKUZ Stickers",

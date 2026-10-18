@@ -182,6 +182,9 @@ export interface Order {
   trackingNumber?: string;
   carrierName?: string;
   kargonomiShipmentId?: string;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  paidAt?: string;
   items: {
     productName: string;
     quantity: number;

@@ -61,10 +61,29 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
 
     let animationFrameId: number;
     let lastTime = performance.now();
-    // Sakin, rahat izlenebilir, yavaşlatılmış akış hızı (saniyede 22 piksel)
     const SPEED = 22;
+    let isVisibleInViewport = true;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        isVisibleInViewport = entry.isIntersecting;
+        if (isVisibleInViewport) {
+          lastTime = performance.now();
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = requestAnimationFrame(step);
+        }
+      },
+      { threshold: 0.05 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
 
     const step = (now: number) => {
+      if (!isVisibleInViewport) return;
+
       const dt = Math.min(now - lastTime, 50); // Maksimum 50ms (sekme geçişi gecikmesini önler)
       lastTime = now;
 
@@ -114,6 +133,7 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      observer.disconnect();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
     };

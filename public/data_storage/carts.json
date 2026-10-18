@@ -1,0 +1,106 @@
+{
+  "test_mert": [],
+  "test@akuz.com": [
+    {
+      "product": {
+        "id": "ataturk-imza",
+        "name": "Atatürk İmzası"
+      },
+      "quantity": 1,
+      "selectedColor": "Beyaz"
+    }
+  ],
+  "testuser@example.com": [],
+  "client_1792265614573_psl5tue": [
+    {
+      "product": {
+        "id": "bagajdan-bakan-canavar-sticker",
+        "name": "BAGAJDAN BAKAN CANAVAR",
+        "slug": "bagajdan-bakan-canavar",
+        "category": "araba",
+        "currentPrice": 49,
+        "oldPrice": 89,
+        "rating": 0,
+        "reviewsCount": 0,
+        "isPopular": true,
+        "isDiscounted": true,
+        "tag": "YENİ ÜRÜN",
+        "description": "Bagaj kapağından, araba camından veya kaportadan sinsice bakan gözleriyle dikkat çeken canavar tasarımı çıkartma folyo. Güneşe, yıkamaya ve hava koşullarına dayanıklı yüksek kaliteli vinil sticker.",
+        "svgType": "logo",
+        "imageUrl": "/products/IMG_1141.jpeg",
+        "images": [
+          "/products/IMG_1141.jpeg",
+          "/products/IMG_1142.jpeg"
+        ],
+        "dimensions": [
+          "15x10 cm",
+          "20x13 cm",
+          "25x16 cm",
+          "30x20 cm"
+        ],
+        "colors": [
+          {
+            "name": "Siyah",
+            "hex": "#111827"
+          },
+          {
+            "name": "Beyaz",
+            "hex": "#ffffff"
+          },
+          {
+            "name": "Hologramlı",
+            "hex": "linear-gradient(135deg, #a78bfa 0%, #38bdf8 35%, #ec4899 70%, #facc15 100%)"
+          },
+          {
+            "name": "Kırmızı",
+            "hex": "#dc2626"
+          },
+          {
+            "name": "Mavi",
+            "hex": "#2563eb"
+          },
+          {
+            "name": "Gold",
+            "hex": "#d97706"
+          },
+          {
+            "name": "Gümüş",
+            "hex": "#94a3b8"
+          },
+          {
+            "name": "Yeşil",
+            "hex": "#16a34a"
+          },
+          {
+            "name": "Sarı",
+            "hex": "#eab308"
+          },
+          {
+            "name": "Mor",
+            "hex": "#9333ea"
+          },
+          {
+            "name": "Lacivert",
+            "hex": "#1e3a8a"
+          },
+          {
+            "name": "Turuncu",
+            "hex": "#ea580c"
+          }
+        ],
+        "finishes": [
+          "Mat",
+          "Parlak"
+        ],
+        "colorImages": {
+          "Siyah": "/products/IMG_1141.jpeg"
+        }
+      },
+      "quantity": 1,
+      "selectedColor": "Siyah",
+      "selectedDimension": "15x10 cm",
+      "selectedFinish": "Parlak",
+      "calculatedPrice": 49
+    }
+  ]
+}

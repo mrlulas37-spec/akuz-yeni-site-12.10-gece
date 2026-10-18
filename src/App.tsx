@@ -61,19 +61,20 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
     ? current.categories
     : INITIAL_CATEGORY_CIRCLES;
 
-  const categories = INITIAL_CATEGORY_CIRCLES.map((baseCat) => {
-    const inc = incomingCats.find((c) => c.id === baseCat.id);
-    const cur = currentCats.find((c) => c.id === baseCat.id);
-    const finalImageUrl = inc?.imageUrl !== undefined ? inc.imageUrl : (cur?.imageUrl !== undefined ? cur.imageUrl : baseCat.imageUrl);
-    const finalCardImageUrl = inc?.cardImageUrl || cur?.cardImageUrl || baseCat.cardImageUrl;
-    return {
-      ...baseCat,
-      ...(cur || {}),
-      ...(inc || {}),
-      imageUrl: finalImageUrl,
-      cardImageUrl: finalCardImageUrl,
-    };
-  });
+  let categories: CategoryCircleItem[] = [];
+  if (incomingCats.length > 0) {
+    categories = incomingCats.map((inc) => {
+      const base = INITIAL_CATEGORY_CIRCLES.find((b) => b.id === inc.id);
+      return {
+        ...(base || {}),
+        ...inc,
+      };
+    });
+  } else if (currentCats.length > 0) {
+    categories = currentCats;
+  } else {
+    categories = INITIAL_CATEGORY_CIRCLES;
+  }
 
   const whyAkuzCards = (Array.isArray(incoming.whyAkuzCards) && incoming.whyAkuzCards.length > 0)
     ? incoming.whyAkuzCards
@@ -138,6 +139,9 @@ export default function App() {
   // Kullanıcı İsteği: Yukarıdan aşağı kaydırınca veya reload atıldığında ana sayfaya atmasın, bulunulan sayfayı yenilesin
   const [currentPath, setCurrentPath] = useState<string>(() => {
     try {
+      if (typeof window !== 'undefined' && window.location.search.includes('payment_result=')) {
+        return '/odeme';
+      }
       return window.location.pathname || '/';
     } catch {
       return '/';
@@ -524,6 +528,7 @@ export default function App() {
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
   const [legalDocType, setLegalDocType] = useState<string | null>(null);
   const [isFastLoading, setIsFastLoading] = useState(false);
+  const [isSiteReady, setIsSiteReady] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggingOutRef = useRef(false);
   const [cartToast, setCartToast] = useState<{
@@ -731,6 +736,10 @@ export default function App() {
   }, [products]);
 
   const handleUpdateProducts = (updated: Product[]) => {
+    if (!Array.isArray(updated) || updated.length === 0) {
+      console.warn('[PROTECTION] Boş ürün listesi kaydedilmedi.');
+      return;
+    }
     setProducts(updated);
     safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(updated));
     // Host merkezi veritabanına kaydet
@@ -742,6 +751,10 @@ export default function App() {
   };
 
   const handleUpdateSiteSettings = (settings: SiteSettings) => {
+    if (!settings || typeof settings !== 'object' || Object.keys(settings).length === 0) {
+      console.warn('[PROTECTION] Boş site ayarı kaydedilmedi.');
+      return;
+    }
     setSiteSettings(settings);
     saveStoredSiteSettings(settings);
     // Host merkezi veritabanına ayarları kaydet
@@ -762,6 +775,12 @@ export default function App() {
         colors: colors,
       }))
     );
+    // Host merkezi veritabanına renk paletini kaydet
+    fetch('/api/colors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ colors }),
+    }).catch((e) => console.warn('[HOST DB] Renkler sunucuya kaydedilemedi:', e));
   };
 
   // Determine current active product by slug if URL is /:slug
@@ -1084,8 +1103,8 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f3ec] text-slate-800 font-sans selection:bg-[#ff6600] selection:text-white overflow-x-clip w-full">
       
-      {/* 0. GİRİŞ YÜKLENME ANİMASYONU (Renksizden su dolar gibi renklenen logo animasyonu) */}
-      <PageLoader />
+      {/* 0. GİRİŞ YÜKLENME ANİMASYONU (Tüm fontlar, yazılar ve varlıklar %100 hazır olmadan asla açılmaz) */}
+      <PageLoader onComplete={() => setIsSiteReady(true)} />
 
       {/* 0.0 HIZLI AKUZ YÜKLENME SİMGESİ (1 sn, akuz yazısı, ürün veya yuvarlak tıklandığında) */}
       <FastAkuzLoader
@@ -1093,6 +1112,9 @@ export default function App() {
         onFinished={() => setIsFastLoading(false)}
         message="AKUZ Yükleniyor..."
       />
+
+      {/* TÜM SİTE İÇERİĞİ (Fontlar, görseller ve animasyonlar %100 hazır olunca pürüzsüzce açılır) */}
+      <div className={`flex flex-col min-h-screen w-full transition-opacity duration-500 ease-in-out ${isSiteReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
 
       {/* 0.1 PULL TO REFRESH (Aşağı çekince sayfayı yenileme özelliği) */}
       <PullToRefresh
@@ -1406,30 +1428,44 @@ export default function App() {
             title="POPÜLER ÜRÜNLER"
           />
 
-          {/* NEDEN AKUZ STICKERS? (4 Kutu) */}
-          <WhyAkuzSection cards={siteSettings.whyAkuzCards} />
+          {/* NEDEN AKUZ STICKERS? (3 Kutu) */}
+          <div className="perf-section-lazy">
+            <WhyAkuzSection
+              cards={siteSettings.whyAkuzCards}
+              onNavigateToCatalog={() => {
+                navigateTo('/katalog');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+            />
+          </div>
 
           {/* HAKKIMIZDA BÖLÜMÜ */}
-          <AboutSection paragraphs={siteSettings.aboutParagraphs} />
+          <div className="perf-section-lazy">
+            <AboutSection paragraphs={siteSettings.aboutParagraphs} />
+          </div>
 
           {/* İLETİŞİM BÖLÜMÜ */}
-          <ContactSection
-            description={siteSettings.contactDescription}
-            email={siteSettings.contactEmail}
-            whatsapp={siteSettings.contactWhatsApp}
-            address={siteSettings.contactAddress}
-          />
+          <div className="perf-section-lazy">
+            <ContactSection
+              description={siteSettings.contactDescription}
+              email={siteSettings.contactEmail}
+              whatsapp={siteSettings.contactWhatsApp}
+              address={siteSettings.contactAddress}
+            />
+          </div>
         </main>
       )}
 
       {/* 3. EN ALT KISIM (FOOTER - Admin panelindeyken gizlenir) */}
       {currentPath !== '/admin' && (
-        <Footer
-          onOpenLegal={(type) => setLegalDocType(type)}
-          onScrollToTop={handleScrollToTop}
-          onNavigateToCatalog={() => navigateTo('/katalog')}
-          onNavigate={(path) => navigateTo(path)}
-        />
+        <div className="perf-section-lazy">
+          <Footer
+            onOpenLegal={(type) => setLegalDocType(type)}
+            onScrollToTop={handleScrollToTop}
+            onNavigateToCatalog={() => navigateTo('/katalog')}
+            onNavigate={(path) => navigateTo(path)}
+          />
+        </div>
       )}
 
       {/* Search Modal */}
@@ -1555,6 +1591,7 @@ export default function App() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

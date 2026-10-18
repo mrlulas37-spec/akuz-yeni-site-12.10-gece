@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import nodemailer from 'nodemailer';
 import path from 'path';
@@ -191,17 +192,22 @@ async function syncMysqlFavorites(email: string, userId: string, favs: string[])
 }
 
 // Yardımcı dosya okuma/yazma fonksiyonları (Dosya silinse dahi yedeklerden anında kurtarma garantisi)
+// Yardımcı dosya okuma/yazma fonksiyonları (Dosya silinse dahi yedeklerden anında kurtarma garantisi)
 function readJsonFile<T>(filePath: string, fallback: T): T {
   const backupPath = filePath + '.bak';
   const fileName = path.basename(filePath);
-  const archiveBackupPath = path.join(BACKUPS_DIR, `${fileName}.bak`);
 
   // 1. Ana dosyadan okumayı dene
   try {
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, 'utf-8');
       if (raw && raw.trim().length > 0) {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 0 && filePath === PRODUCTS_FILE) {
+          console.warn(`[DATA GUARD] ${filePath} boş dizi içeriyor, yedeklerden kurtarılıyor...`);
+        } else {
+          return parsed;
+        }
       }
     }
   } catch (err) {
@@ -214,29 +220,40 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
       const rawBackup = fs.readFileSync(backupPath, 'utf-8');
       if (rawBackup && rawBackup.trim().length > 0) {
         const parsed = JSON.parse(rawBackup);
-        // Ana dosya silinmiş veya hasar görmüşse yedekten hemen yeniden oluştur
-        fs.writeFileSync(filePath, rawBackup, 'utf-8');
-        console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmişti, .bak yedeğinden başarıyla geri yüklendi.`);
-        return parsed;
+        if (!(Array.isArray(parsed) && parsed.length === 0 && filePath === PRODUCTS_FILE)) {
+          fs.writeFileSync(filePath, rawBackup, 'utf-8');
+          console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmişti, .bak yedeğinden başarıyla geri yüklendi.`);
+          return parsed;
+        }
       }
     }
   } catch (err) {
     console.warn(`[DATA RESTORE WARN] ${backupPath} okunamadı:`, err);
   }
 
-  // 3. Arşiv klasöründeki yedekten kurtarmayı dene (backups/...)
+  // 3. Arşiv klasöründeki zaman damgalı en güncel geçerli yedekten kurtar
   try {
-    if (fs.existsSync(archiveBackupPath)) {
-      const rawArchive = fs.readFileSync(archiveBackupPath, 'utf-8');
-      if (rawArchive && rawArchive.trim().length > 0) {
-        const parsed = JSON.parse(rawArchive);
-        fs.writeFileSync(filePath, rawArchive, 'utf-8');
-        console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmişti, archive yedeğinden başarıyla geri yüklendi.`);
-        return parsed;
+    if (fs.existsSync(BACKUPS_DIR)) {
+      const files = fs.readdirSync(BACKUPS_DIR)
+        .filter((f) => f.startsWith(fileName))
+        .sort((a, b) => b.localeCompare(a)); // En yeni en başta
+
+      for (const bFile of files) {
+        try {
+          const rawArchive = fs.readFileSync(path.join(BACKUPS_DIR, bFile), 'utf-8');
+          if (rawArchive && rawArchive.trim().length > 0) {
+            const parsed = JSON.parse(rawArchive);
+            if (!(Array.isArray(parsed) && parsed.length === 0 && filePath === PRODUCTS_FILE)) {
+              fs.writeFileSync(filePath, rawArchive, 'utf-8');
+              console.log(`[DATA RESTORE SUCCESS] ${filePath} arşivi (${bFile}) üzerinden başarıyla kurtarıldı.`);
+              return parsed;
+            }
+          }
+        } catch {}
       }
     }
   } catch (err) {
-    console.warn(`[DATA RESTORE WARN] ${archiveBackupPath} okunamadı:`, err);
+    console.warn(`[DATA RESTORE WARN] Arşiv taranamadı:`, err);
   }
 
   return fallback;
@@ -244,19 +261,54 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
 
 function writeJsonFile<T>(filePath: string, data: T): void {
   try {
+    const fileName = path.basename(filePath);
+
+    // KORUMA KURALI 1: Ürün listesi asla boş bir diziyle ezilemez
+    if (filePath === PRODUCTS_FILE && Array.isArray(data) && data.length === 0) {
+      console.warn(`[SECURITY GUARD] ${filePath} boş liste ile ezilmeye çalışıldı! İşlem engellendi.`);
+      return;
+    }
+
+    // KORUMA KURALI 2: Ayar dosyası asla null veya boş bir obje ile ezilemez
+    if (filePath === SETTINGS_FILE && (!data || (typeof data === 'object' && Object.keys(data).length === 0))) {
+      console.warn(`[SECURITY GUARD] ${filePath} boş ayar objesi ile ezilmeye çalışıldı! İşlem engellendi.`);
+      return;
+    }
+
     const serialized = JSON.stringify(data, null, 2);
-    // 1. Ana dosyaya yaz
+
+    // 1. Önce mevcut sağlam dosyanın bir yedeğini arşivle
+    if (fs.existsSync(filePath)) {
+      try {
+        const currentContent = fs.readFileSync(filePath, 'utf-8');
+        if (currentContent && currentContent.trim().length > 2) {
+          fs.writeFileSync(filePath + '.bak', currentContent, 'utf-8');
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          fs.writeFileSync(path.join(BACKUPS_DIR, `${fileName}_${timestamp}.json`), currentContent, 'utf-8');
+        }
+      } catch (backupErr) {
+        console.warn(`[BACKUP WARN] ${filePath} yedeklenemedi:`, backupErr);
+      }
+    }
+
+    // 2. Ana dosyaya yaz
     fs.writeFileSync(filePath, serialized, 'utf-8');
 
-    // 2. Yanındaki .bak dosyasına yaz (Dosya silinmelerine karşı anında kurtarma katmanı)
+    // 3. .bak dosyasını da yeni veriyle güncelle
     try {
       fs.writeFileSync(filePath + '.bak', serialized, 'utf-8');
     } catch {}
 
-    // 3. backups/ arşiv klasörüne kalıcı kopyasını al
+    // 4. Arşiv klasöründeki eski yedekleri sınırla (en fazla 30 dosya tut)
     try {
-      const fileName = path.basename(filePath);
-      fs.writeFileSync(path.join(BACKUPS_DIR, `${fileName}.bak`), serialized, 'utf-8');
+      const allBackups = fs.readdirSync(BACKUPS_DIR)
+        .filter((f) => f.startsWith(fileName))
+        .sort((a, b) => b.localeCompare(a));
+      if (allBackups.length > 30) {
+        for (const oldFile of allBackups.slice(30)) {
+          fs.unlinkSync(path.join(BACKUPS_DIR, oldFile));
+        }
+      }
     } catch {}
   } catch (err) {
     console.error(`[DATA WRITE ERROR] ${filePath}:`, err);
@@ -294,14 +346,51 @@ async function startServer() {
   }
   app.use('/uploads', express.static(UPLOADS_DIR));
 
+  // Helper: Önizleme verilerini anında kaynak kodlara ve cPanel dosyalarına senkronize et
+  const runDataSync = () => {
+    try {
+      const syncScript = path.resolve(__dirname, 'scripts', 'sync-preview-data.cjs');
+      if (fs.existsSync(syncScript)) {
+        execSync(`node "${syncScript}"`, { stdio: 'inherit' });
+      }
+    } catch (syncErr: any) {
+      console.warn('[PREVIEW SYNC ERROR]', syncErr.message);
+    }
+  };
+
   // cPanel İndirme Rotaları (res.download ile doğrudan indirme tetikle - her zaman güncel taze dosya)
   const ensureAndSendZip = (zipName: string, req: express.Request, res: express.Response) => {
     const filePath = path.resolve(__dirname, 'cpanel_archives', zipName);
-    const shouldRebuild = req.query.rebuild === '1' || !fs.existsSync(filePath);
+    let isStale = false;
+
+    if (fs.existsSync(filePath)) {
+      try {
+        const zipMtime = fs.statSync(filePath).mtimeMs;
+        const checkFiles = [
+          SETTINGS_FILE,
+          PRODUCTS_FILE,
+          path.join(DATA_DIR, 'global_colors.json'),
+          path.resolve(__dirname, 'src', 'data', 'products.ts'),
+          path.resolve(__dirname, 'src', 'utils', 'adminStore.ts')
+        ];
+        for (const cf of checkFiles) {
+          if (fs.existsSync(cf) && fs.statSync(cf).mtimeMs > zipMtime) {
+            isStale = true;
+            break;
+          }
+        }
+      } catch {
+        isStale = true;
+      }
+    } else {
+      isStale = true;
+    }
+
+    const shouldRebuild = req.query.rebuild === '1' || isStale;
 
     if (shouldRebuild) {
       try {
-        console.log(`[CPANEL DOWNLOAD] ${zipName} indirilmeden önce güncel paket derleniyor...`);
+        console.log(`[CPANEL DOWNLOAD] ${zipName} indirilmeden önce güncel paket derleniyor (isStale: ${isStale})...`);
         const scriptPath = path.resolve(__dirname, 'scripts', 'package-cpanel.py');
         execSync(`python3 "${scriptPath}"`, { stdio: 'inherit' });
       } catch (err: any) {
@@ -407,15 +496,15 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'Alıcı e-posta adresi (to) zorunludur.' });
       }
 
-      // Formdan gelen ayarları önceliklendir. Formda pass boşsa env fallback yapma!
-      const host = smtpConfig?.host !== undefined ? smtpConfig.host.trim() : (process.env.SMTP_HOST || '');
+      // Formdan gelen ayarları önceliklendir.
+      const host = smtpConfig?.host !== undefined && smtpConfig.host.trim() ? smtpConfig.host.trim() : (process.env.SMTP_HOST || 'mail.akuzstickers.com');
       const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465);
       const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig.secure) : (port === 465);
-      const user = smtpConfig?.user !== undefined ? smtpConfig.user.trim() : (process.env.SMTP_USER || '');
-      // Eğer kullanıcı formdan pass gönderdiyse (boş bile olsa) o kullanılır, aksi halde env değişkenine bakılır
-      const pass = smtpConfig?.pass !== undefined ? smtpConfig.pass.trim() : (process.env.SMTP_PASS || '');
-      const fromName = smtpConfig?.fromName ? smtpConfig.fromName.trim() : (process.env.SMTP_FROM_NAME || 'AKUZ Stickers');
-      const fromEmail = smtpConfig?.fromEmail ? smtpConfig.fromEmail.trim() : (user || 'info@akuzstickers.com');
+      const user = smtpConfig?.user !== undefined && smtpConfig.user.trim() ? smtpConfig.user.trim() : (process.env.SMTP_USER || 'info@akuzstickers.com');
+      // Eğer kullanıcı formdan pass gönderdiyse ve doluysa o kullanılır, aksi halde env/varsayılan şifreye bakılır
+      const pass = smtpConfig?.pass !== undefined && smtpConfig.pass.trim() ? smtpConfig.pass.trim() : (process.env.SMTP_PASS || 'GvqrM6nWyfE9mMX');
+      const fromName = smtpConfig?.fromName && smtpConfig.fromName.trim() ? smtpConfig.fromName.trim() : (process.env.SMTP_FROM_NAME || 'AKUZ STICKERS');
+      const fromEmail = smtpConfig?.fromEmail && smtpConfig.fromEmail.trim() ? smtpConfig.fromEmail.trim() : (user || 'info@akuzstickers.com');
 
       currentHost = host;
       currentPort = port;
@@ -530,23 +619,114 @@ async function startServer() {
   });
 
   // ==========================================
-  // KARGONOMİ KARGO ENTEGRASYONU API
+  // KARGONOMİ ENTEGRASYONU - TÜRKİYE İL / İLÇE VE GÖNDERİ MOTORU
   // ==========================================
+  function normalizeKargonomiUrl(url?: string): string {
+    if (!url) return 'https://app.kargonomi.com.tr/api/v1';
+    let clean = url.trim().replace(/\/+$/, '');
+    if (clean === 'https://api.kargonomi.com' || clean === 'http://api.kargonomi.com') {
+      return 'https://app.kargonomi.com.tr/api/v1';
+    }
+    if (clean === 'https://api.kargonomi.com.tr' || clean === 'http://api.kargonomi.com.tr') {
+      return 'https://app.kargonomi.com.tr/api/v1';
+    }
+    if (clean.includes('kargonomi') && !clean.includes('/api/v1')) {
+      return clean.replace('api.kargonomi.com', 'app.kargonomi.com.tr') + '/api/v1';
+    }
+    return clean;
+  }
+
+  function normalizeTrText(text: string): string {
+    return String(text || '')
+      .replace(/İ/g, 'i')
+      .replace(/I/g, 'ı')
+      .toLowerCase()
+      .trim()
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ı/g, 'i')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  const TURKEY_PROVINCE_STATE_IDS: Record<string, number> = {
+    adana: 1, adiyaman: 2, afyonkarahisar: 3, afyon: 3, agri: 4, amasya: 5, ankara: 6, antalya: 7,
+    artvin: 8, aydin: 9, balikesir: 10, bilecik: 11, bingol: 12, bitlis: 13, bolu: 14, burdur: 15,
+    bursa: 16, canakkale: 17, cankiri: 18, corum: 19, denizli: 20, diyarbakir: 21, edirne: 22,
+    elazig: 23, erzincan: 24, erzurum: 25, eskisehir: 26, gaziantep: 27, giresun: 28, gumushane: 29,
+    hakkari: 30, hatay: 31, isparta: 32, mersin: 33, icel: 33, istanbul: 34, izmir: 35, kars: 36,
+    kastamonu: 37, kayseri: 38, kirklareli: 39, kirsehir: 40, kocaeli: 41, izmit: 41, konya: 42,
+    kutahya: 43, malatya: 44, manisa: 45, kahramanmaras: 46, maras: 46, mardin: 47, mugla: 48,
+    mus: 49, nevsehir: 50, nigde: 51, ordu: 52, rize: 53, sakarya: 54, adapazari: 54, samsun: 55,
+    siirt: 56, sinop: 57, sivas: 58, tekirdag: 59, tokat: 60, trabzon: 61, tunceli: 62,
+    sanliurfa: 63, urfa: 63, usak: 64, van: 65, yozgat: 66, zonguldak: 67, aksaray: 68,
+    bayburt: 69, karaman: 70, kirikkale: 71, batman: 72, sirnak: 73, bartin: 74, ardahan: 75,
+    igdir: 76, yalova: 77, karabuk: 78, kilis: 79, osmaniye: 80, duzce: 81,
+  };
+
+  const kargonomiCitiesCache = new Map<number, Array<{ id: number; name: string }>>();
+
+  async function resolveKargonomiCityAndDistrict(
+    cityName: string,
+    districtName: string,
+    apiToken: string,
+    baseUrl: string
+  ): Promise<{ stateId: number; cityId: number }> {
+    const normCity = normalizeTrText(cityName);
+    let stateId = TURKEY_PROVINCE_STATE_IDS[normCity] || 16; // Varsayılan Bursa (16)
+
+    let districtList = kargonomiCitiesCache.get(stateId);
+    if (!districtList || districtList.length === 0) {
+      try {
+        const res = await fetch(`${baseUrl}/cities/${stateId}`, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+        });
+        if (res.ok) {
+          districtList = await res.json();
+          if (Array.isArray(districtList) && districtList.length > 0) {
+            kargonomiCitiesCache.set(stateId, districtList);
+          }
+        }
+      } catch (e) {
+        console.warn('[KARGONOMI CITIES FETCH WARN]', e);
+      }
+    }
+
+    const normDistrict = normalizeTrText(districtName);
+    let cityId = 703; // Varsayılan Nilüfer
+
+    if (Array.isArray(districtList) && districtList.length > 0) {
+      const matched = districtList.find((d) => normalizeTrText(d.name) === normDistrict);
+      if (matched) {
+        cityId = matched.id;
+      } else {
+        cityId = districtList[0].id;
+      }
+    }
+
+    return { stateId, cityId };
+  }
+
   const DEFAULT_KARGONOMI_TOKEN = process.env.KARGONOMI_TOKEN || 'Ly2mGS6WC2iDAuwdC2C5D9omqnsJkjBZIO4qeJMIe8175aa3';
-  const DEFAULT_KARGONOMI_URL = process.env.KARGONOMI_API_URL || 'https://app.kargonomi.com.tr/api/v1';
+  const DEFAULT_KARGONOMI_URL = normalizeKargonomiUrl(process.env.KARGONOMI_API_URL || 'https://api.kargonomi.com');
 
   // Kargonomi Token ve Bağlantı Testi
   app.post('/api/kargonomi/test', async (req, res) => {
     try {
       const { token, apiUrl } = req.body;
       const apiToken = token || DEFAULT_KARGONOMI_TOKEN;
-      const baseUrl = apiUrl || DEFAULT_KARGONOMI_URL;
+      const baseUrl = normalizeKargonomiUrl(apiUrl || DEFAULT_KARGONOMI_URL);
 
       if (!apiToken) {
         return res.status(400).json({ success: false, message: 'Kargonomi API token bulunamadı.' });
       }
 
-      // Kargonomi API'ye Bearer token ile istek at
       const response = await fetch(`${baseUrl}/shipments?per_page=1`, {
         method: 'GET',
         headers: {
@@ -576,46 +756,96 @@ async function startServer() {
     }
   });
 
-  // Kargonomi Kargo Gönderisi Oluşturma
+  // Telefon numarasını 10 haneli standart Türk cep telefonu formatına getir (Kargonomi standardı)
+  function cleanTrPhone(phone: any): string {
+    let clean = String(phone || '5468758671').replace(/[^0-9]/g, '');
+    if (clean.startsWith('90') && clean.length === 12) {
+      clean = clean.slice(2);
+    }
+    if (clean.startsWith('0') && clean.length === 11) {
+      clean = clean.slice(1);
+    }
+    if (clean.length === 10) {
+      return clean;
+    }
+    return '5468758671';
+  }
+
+  // Kargonomi Kargo Gönderisi Oluşturma (Gerçek Kargonomi API v1 Shipment Entegrasyonu)
   app.post('/api/kargonomi/create-shipment', async (req, res) => {
     try {
       const { payload, config } = req.body;
       const apiToken = config?.apiToken || DEFAULT_KARGONOMI_TOKEN;
-      const baseUrl = config?.apiUrl || DEFAULT_KARGONOMI_URL;
+      const baseUrl = normalizeKargonomiUrl(config?.apiUrl || DEFAULT_KARGONOMI_URL);
 
       if (!apiToken) {
         return res.status(400).json({
           success: false,
-          message: 'Kargonomi Token eksik.',
+          message: 'Kargonomi API token bulunamadı.',
         });
       }
 
-      // Kargonomi Shipment Request Body
-      const shipmentData = {
-        order_number: payload.orderId,
-        carrier: payload.carrier || config?.defaultCarrier || 'mng',
-        receiver: {
-          name: payload.recipientName,
-          phone: payload.recipientPhone,
-          address: payload.recipientAddress,
-          city: payload.recipientCity,
-          district: payload.recipientDistrict,
-        },
-        sender: {
-          name: config?.senderName || 'AKUZ Stickers',
-          phone: config?.senderPhone || '+90 546 875 86 71',
-          address: config?.senderAddress || 'Cumhuriyet Mah. No: 12',
-          city: config?.senderCity || 'Bursa',
-          district: config?.senderDistrict || 'Nilüfer',
-        },
-        package: {
-          type: 'box',
-          desi: 1,
-          description: payload.itemsDescription || 'Sticker / Çıkartma Paketi',
+      // Alıcı İl ve İlçesini ayrıştır
+      let targetCity = payload.recipientCity || '';
+      let targetDistrict = payload.recipientDistrict || '';
+
+      if (payload.recipientAddress) {
+        const parts = String(payload.recipientAddress).split(',');
+        const lastPart = parts[parts.length - 1] || '';
+        if (lastPart.includes('/')) {
+          const [d, c] = lastPart.split('/');
+          if (d.trim()) targetDistrict = d.trim();
+          if (c.trim()) targetCity = c.trim();
+        }
+      }
+
+      const { stateId: buyerStateId, cityId: buyerCityId } = await resolveKargonomiCityAndDistrict(
+        targetCity || 'Bursa',
+        targetDistrict || 'Nilüfer',
+        apiToken,
+        baseUrl
+      );
+
+      // Gönderici İl ve İlçesini çözümle
+      const senderCityName = config?.senderCity || 'Bursa';
+      const senderDistrictName = config?.senderDistrict || 'Nilüfer';
+      const { stateId: senderStateId, cityId: senderCityId } = await resolveKargonomiCityAndDistrict(
+        senderCityName,
+        senderDistrictName,
+        apiToken,
+        baseUrl
+      );
+
+      const cleanBuyerPhone = cleanTrPhone(payload.recipientPhone);
+      const cleanSenderPhone = cleanTrPhone(config?.senderPhone);
+
+      // Gönderici TCKN / VKN (Kargonomi 11 karakter TCKN doğrulaması ister)
+      const senderTaxNumber = config?.senderTaxNumber || '28782200920';
+
+      const shipmentPayload = {
+        shipment: {
+          ecommerce_provider_order_no: String(payload.orderId || ('AKUZ' + Date.now())),
+          sender_name: config?.senderName || 'AKUZ Stickers',
+          sender_phone: cleanSenderPhone,
+          sender_address: config?.senderAddress || 'Üçevler Mah. 10.(220) SK. Küçük Sanayi no:17/1',
+          sender_state_id: senderStateId || 16, // Varsayılan Bursa
+          sender_city_id: senderCityId || 703, // Varsayılan Nilüfer
+          sender_tax_number: senderTaxNumber,
+          buyer_name: (payload.recipientName || 'Değerli Müşterimiz').trim(),
+          buyer_phone: cleanBuyerPhone,
+          buyer_address: (payload.recipientAddress || 'Teslimat Adresi').trim(),
+          buyer_state_id: buyerStateId,
+          buyer_city_id: buyerCityId,
+          packages: [
+            {
+              desi: 1,
+              content: payload.itemsDescription || 'AKUZ Sticker Paketi',
+            },
+          ],
         },
       };
 
-      console.log('[KARGONOMI] Gönderi oluşturuluyor:', shipmentData);
+      console.log('[KARGONOMI API REQ] Gönderi oluşturuluyor:', JSON.stringify(shipmentPayload));
 
       const response = await fetch(`${baseUrl}/shipments`, {
         method: 'POST',
@@ -624,62 +854,53 @@ async function startServer() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiToken}`,
         },
-        body: JSON.stringify(shipmentData),
+        body: JSON.stringify(shipmentPayload),
       });
 
       const responseText = await response.text();
       let responseJson: any = null;
       try {
         responseJson = JSON.parse(responseText);
-      } catch {
-        // text format
-      }
+      } catch {}
 
-      if (response.ok && responseJson) {
+      console.log(`[KARGONOMI API RESP ${response.status}]`, responseText);
+
+      if (response.ok && responseJson && responseJson.id) {
+        const shipmentId = String(responseJson.id);
+        const barcode = responseJson.shipment_packages?.[0]?.barcode || shipmentId;
         const trackingNumber =
+          responseJson.shipping_webservice_tracking_code ||
           responseJson.tracking_number ||
-          responseJson.data?.tracking_number ||
-          responseJson.barcode ||
-          responseJson.data?.barcode ||
-          ('KRG' + Math.floor(100000000 + Math.random() * 900000000));
-
-        const trackingUrl =
-          responseJson.tracking_url ||
-          responseJson.data?.tracking_url ||
-          `https://kargonomi.com/kargo-takip?no=${trackingNumber}`;
+          barcode;
 
         return res.json({
           success: true,
-          message: 'Kargonomi kargo kaydı başarıyla oluşturuldu!',
+          message: `Kargonomi kargo kaydı başarıyla oluşturuldu! (Kayıt No: #${shipmentId})`,
+          shipmentId,
+          barcode,
           trackingNumber,
-          trackingUrl,
+          trackingUrl: `https://kargonomi.com/kargo-takip?no=${trackingNumber}`,
           carrier: payload.carrier || config?.defaultCarrier || 'MNG Kargo',
-          shipmentId: responseJson.id || responseJson.data?.id || payload.orderId,
           raw: responseJson,
         });
       } else {
-        // Eğer test tokenı veya demo aşamasındaysa bile yöneticiye takip kodu üreterek operasyonu aksatmaz
-        console.warn('[KARGONOMI API ERROR]', response.status, responseText);
-        const fallbackTracking = 'KRG' + Math.floor(100000000 + Math.random() * 900000000);
-        return res.json({
-          success: true,
-          simulated: true,
-          trackingNumber: fallbackTracking,
-          trackingUrl: `https://kargonomi.com/kargo-takip?no=${fallbackTracking}`,
-          carrier: payload.carrier || config?.defaultCarrier || 'MNG Kargo',
-          message: `Kargonomi kargo fişi oluşturuldu (${response.status === 200 ? 'Başarılı' : 'Token onaylandı'}). Takip No: ${fallbackTracking}`,
+        const errorMsg =
+          responseJson?.message ||
+          (responseJson?.errors ? Object.values(responseJson.errors).flat().join(', ') : '') ||
+          `Kargonomi sunucusu isteği kabul etmedi (HTTP ${response.status}).`;
+
+        console.error('[KARGONOMI API FAIL]', response.status, errorMsg);
+        return res.status(400).json({
+          success: false,
+          message: `Kargonomi Hatası: ${errorMsg}`,
           raw: responseJson || responseText,
         });
       }
     } catch (err: any) {
       console.error('[KARGONOMI EXCEPTION]', err);
-      const fallbackTracking = 'KRG' + Math.floor(100000000 + Math.random() * 900000000);
-      return res.json({
-        success: true,
-        simulated: true,
-        trackingNumber: fallbackTracking,
-        carrier: 'MNG Kargo',
-        message: `Kargo kaydı oluşturuldu. Takip No: ${fallbackTracking}`,
+      return res.status(500).json({
+        success: false,
+        message: `Kargonomi sunucu hatası: ${err.message || 'Bağlantı kurulamadı.'}`,
       });
     }
   });
@@ -804,6 +1025,51 @@ async function startServer() {
       console.log(`[PAYTR TOKEN RESP] #${merchant_oid}:`, data);
 
       if (data.status === 'success') {
+        // Siparişi veritabanına hazırla / kaydet (Test modundaysa veya ödeme tamamlandığında sipariş kaybolmasın)
+        try {
+          const isTest = test_mode === '1';
+          const newOrderRecord = {
+            id: merchant_oid.startsWith('AKUZ') ? merchant_oid : `AKUZ-${merchant_oid}`,
+            date: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
+            status: isTest ? 'Hazırlanıyor' : 'Ödeme Bekleniyor',
+            paymentStatus: isTest ? 'Ödendi (PayTR Test)' : 'Bekleniyor',
+            paymentMethod: isTest ? 'PayTR Kredi / Banka Kartı (3D Secure Test)' : 'PayTR Kredi / Banka Kartı (3D Secure)',
+            total: numericAmount,
+            customerName: (fullName || 'Müşteri').trim(),
+            customerPhone: user_phone,
+            customerEmail: customerEmail,
+            shippingAddress: `${address || 'Teslimat Adresi'}, ${district || ''}/${city || ''}`,
+            items: (items || []).map((it: any) => ({
+              productName: it.productName || 'AKUZ Sticker',
+              quantity: Number(it.quantity) || 1,
+              price: Number(it.price) || 0,
+              color: it.color || '',
+              dimension: it.dimension || '',
+              finish: it.finish || '',
+              customText: it.customText || '',
+            })),
+            paidAt: isTest ? new Date().toISOString() : undefined,
+            isTestOrder: isTest,
+            createdAt: new Date().toISOString(),
+          };
+
+          const orders: any[] = readJsonFile(ORDERS_FILE, []);
+          const existingIdx = orders.findIndex((o) => {
+            const cleanId = (o.id || '').replace(/[^a-zA-Z0-9]/g, '');
+            return cleanId === merchant_oid || o.id === merchant_oid;
+          });
+
+          if (existingIdx !== -1) {
+            orders[existingIdx] = { ...orders[existingIdx], ...newOrderRecord };
+          } else {
+            orders.unshift(newOrderRecord);
+          }
+          writeJsonFile(ORDERS_FILE, orders);
+          console.log(`[PAYTR TOKEN PRE-ORDER] #${newOrderRecord.id} sipariş kaydı oluşturuldu (Test: ${isTest})`);
+        } catch (saveErr) {
+          console.warn('[PAYTR PRE-ORDER SAVE ERROR]', saveErr);
+        }
+
         return res.json({
           success: true,
           token: data.token,
@@ -874,18 +1140,19 @@ async function startServer() {
       if (status === 'success') {
         // Siparişi bul ve ödendi olarak güncelle
         const orders: any[] = readJsonFile(ORDERS_FILE, []);
+        const cleanOid = (merchant_oid || '').replace(/[^a-zA-Z0-9]/g, '');
         const idx = orders.findIndex((o) => {
           const cleanId = (o.id || '').replace(/[^a-zA-Z0-9]/g, '');
-          return cleanId === merchant_oid || o.id === merchant_oid;
+          return cleanId === cleanOid || cleanId.includes(cleanOid) || cleanOid.includes(cleanId);
         });
 
         if (idx !== -1) {
           orders[idx].status = 'Hazırlanıyor';
-          orders[idx].paymentStatus = 'Ödendi';
+          orders[idx].paymentStatus = orders[idx].isTestOrder ? 'Ödendi (PayTR Test)' : 'Ödendi';
           orders[idx].paymentMethod = 'PayTR Kredi/Banka Kartı (3D Secure)';
           orders[idx].paidAt = new Date().toISOString();
           writeJsonFile(ORDERS_FILE, orders);
-          console.log(`[PAYTR CALLBACK] #${orders[idx].id} siparişi ödendi olarak işaretlendi.`);
+          console.log(`[PAYTR CALLBACK] #${orders[idx].id} siparişi onaylandı ve ödendi olarak işaretlendi.`);
         }
       } else {
         console.log(`[PAYTR CALLBACK FAILED] #${merchant_oid}: ${failed_reason_code} - ${failed_reason_msg}`);
@@ -915,15 +1182,111 @@ async function startServer() {
     next();
   });
 
-  // Ödeme Başarılı / Başarısız Yönlendirme Sayfaları
+  // Ödeme Başarılı / Başarısız Yönlendirme Sayfaları (iFrame dışına güvenli çıkış ve sipariş onayı)
   app.all(['/odeme-basarili', '/api/paytr/success'], (req, res) => {
-    const oid = req.query.oid || req.body?.merchant_oid || '';
-    res.redirect(`/?payment_result=success&oid=${oid}`);
+    const rawOid = (req.query.oid || req.body?.merchant_oid || '').toString();
+    const cleanOid = rawOid.replace(/[^a-zA-Z0-9]/g, '');
+
+    // Siparişi veritabanında hemen 'Hazırlanıyor' ve 'Ödendi' olarak onayla
+    try {
+      const orders: any[] = readJsonFile(ORDERS_FILE, []);
+      const idx = orders.findIndex((o) => {
+        const id = (o.id || '').replace(/[^a-zA-Z0-9]/g, '');
+        return cleanOid && (id.includes(cleanOid) || cleanOid.includes(id));
+      });
+
+      if (idx !== -1) {
+        orders[idx].status = 'Hazırlanıyor';
+        orders[idx].paymentStatus = orders[idx].paymentStatus?.includes('Test') ? 'Ödendi (PayTR Test)' : 'Ödendi';
+        orders[idx].paidAt = orders[idx].paidAt || new Date().toISOString();
+        writeJsonFile(ORDERS_FILE, orders);
+        console.log(`[PAYTR SUCCESS REDIRECT] #${orders[idx].id} siparişi veritabanında onaylandı.`);
+      }
+    } catch (e) {
+      console.warn('[PAYTR SUCCESS REDIRECT DB UPDATE ERROR]', e);
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Ödeme Başarılı - AKUZ Stickers</title>
+  <style>
+    body { background: #070a12; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { background: #131b2e; border: 1px solid #10b981; border-radius: 20px; padding: 32px; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    h2 { color: #10b981; margin: 0 0 12px; font-size: 22px; font-weight: 800; }
+    p { color: #94a3b8; font-size: 14px; margin: 0 0 16px; }
+    .loader { display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(16,185,129,0.2); border-radius: 50%; border-top-color: #10b981; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 44px; margin-bottom: 8px;">🎉</div>
+    <h2>Ödemeniz Onaylandı!</h2>
+    <p>Siparişiniz başarıyla alındı ve onaylandı. Mağaza ekranına aktarılıyorsunuz...</p>
+    <div class="loader"></div>
+  </div>
+  <script>
+    try {
+      if (window.parent) {
+        window.parent.postMessage({ type: 'PAYTR_PAYMENT_SUCCESS', oid: '${cleanOid}' }, '*');
+      }
+    } catch(e) {}
+    var targetUrl = '/odeme?payment_result=success&oid=' + encodeURIComponent('${cleanOid}');
+    setTimeout(function() {
+      if (window.top && window.top !== window) {
+        window.top.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    }, 400);
+  </script>
+</body>
+</html>`);
   });
 
   app.all(['/odeme-basarisiz', '/api/paytr/fail'], (req, res) => {
-    const oid = req.query.oid || req.body?.merchant_oid || '';
-    res.redirect(`/odeme?payment_result=failed&oid=${oid}`);
+    const rawOid = (req.query.oid || req.body?.merchant_oid || '').toString();
+    const cleanOid = rawOid.replace(/[^a-zA-Z0-9]/g, '');
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Ödeme Tamamlanamadı - AKUZ Stickers</title>
+  <style>
+    body { background: #070a12; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .card { background: #1e1520; border: 1px solid #ef4444; border-radius: 20px; padding: 32px; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    h2 { color: #ef4444; margin: 0 0 12px; font-size: 20px; font-weight: 800; }
+    p { color: #94a3b8; font-size: 13px; margin: 0 0 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 44px; margin-bottom: 8px;">⚠️</div>
+    <h2>Ödeme Tamamlanamadı</h2>
+    <p>Ödeme sayfası yeniden açılıyor, lütfen kart bilgilerinizi kontrol ediniz...</p>
+  </div>
+  <script>
+    try {
+      if (window.parent) {
+        window.parent.postMessage({ type: 'PAYTR_PAYMENT_FAILED', oid: '${cleanOid}' }, '*');
+      }
+    } catch(e) {}
+    var targetUrl = '/odeme?payment_result=failed&oid=' + encodeURIComponent('${cleanOid}');
+    setTimeout(function() {
+      if (window.top && window.top !== window) {
+        window.top.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    }, 500);
+  </script>
+</body>
+</html>`);
   });
 
   // PayTR Otomatik Test İşlemi Simülatörü ve Doğrulama
@@ -1296,12 +1659,12 @@ async function startServer() {
       const settings: any = readJsonFile(SETTINGS_FILE, null);
       const smtpConfig = settings?.smtpSettings;
 
-      const host = smtpConfig?.host || process.env.SMTP_HOST;
+      const host = smtpConfig?.host || process.env.SMTP_HOST || 'mail.akuzstickers.com';
       const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465);
       const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig.secure) : (port === 465);
-      const userSmtp = smtpConfig?.user || process.env.SMTP_USER;
-      const passSmtp = smtpConfig?.pass || process.env.SMTP_PASS;
-      const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || 'AKUZ Stickers';
+      const userSmtp = smtpConfig?.user || process.env.SMTP_USER || 'info@akuzstickers.com';
+      const passSmtp = smtpConfig?.pass || process.env.SMTP_PASS || 'GvqrM6nWyfE9mMX';
+      const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || 'AKUZ STICKERS';
       const fromEmail = smtpConfig?.fromEmail || userSmtp || 'info@akuzstickers.com';
 
       const logoCid = 'cid:akuz-logo@akuzstickers.com';
@@ -2235,11 +2598,13 @@ async function startServer() {
   app.post('/api/products', (req, res) => {
     try {
       const { products } = req.body;
-      if (!Array.isArray(products)) {
-        return res.status(400).json({ success: false, error: 'Ürün listesi dizi olmalıdır.' });
+      if (!Array.isArray(products) || products.length === 0) {
+        return res.status(400).json({ success: false, error: 'Ürün listesi boş olamaz. Mevcut ürünlerin kazara silinmesini önlemek için işlem durduruldu.' });
       }
       writeJsonFile(PRODUCTS_FILE, products);
       console.log(`[PRODUCTS SAVED TO HOST] Toplam ${products.length} ürün güncellendi.`);
+
+      runDataSync();
       return res.json({ success: true, count: products.length });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
@@ -2258,6 +2623,8 @@ async function startServer() {
       products = products.filter((p) => p.id !== id && p.slug !== id);
       writeJsonFile(PRODUCTS_FILE, products);
       console.log(`[PRODUCT DELETED ON HOST] ID: ${id}. Kalan ürün: ${products.length} (Önceki: ${beforeCount})`);
+      runDataSync();
+
       return res.json({ success: true, count: products.length, deletedId: id });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
@@ -2286,7 +2653,34 @@ async function startServer() {
       }
       writeJsonFile(SETTINGS_FILE, settings);
       console.log(`[SETTINGS SAVED TO HOST] Site ayarları sunucuya kaydedildi.`);
+      runDataSync();
       return res.json({ success: true, message: 'Ayarlar başarıyla host sunucusuna kaydedildi.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 8b. GLOBAL RENK PALETİ API
+  const COLORS_FILE = path.join(DATA_DIR, 'global_colors.json');
+  app.get('/api/colors', (_req, res) => {
+    try {
+      const colors = readJsonFile(COLORS_FILE, []);
+      return res.json({ success: true, colors });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/colors', (req, res) => {
+    try {
+      const { colors } = req.body;
+      if (!Array.isArray(colors)) {
+        return res.status(400).json({ success: false, error: 'Renk listesi dizi olmalıdır.' });
+      }
+      writeJsonFile(COLORS_FILE, colors);
+      console.log(`[COLORS SAVED TO HOST] Renk paleti güncellendi (${colors.length} renk).`);
+      runDataSync();
+      return res.json({ success: true, count: colors.length });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }

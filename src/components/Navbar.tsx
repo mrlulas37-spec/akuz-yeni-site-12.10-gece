@@ -179,7 +179,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-[#f8f6f0]/95 backdrop-blur-md border-b border-[#e5e2d8] shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
+    <header className="sticky top-0 z-40 bg-[#f8f6f0] border-b border-[#e5e2d8] shadow-xs">
       {/* 0. SAYFANIN EN ÜSTÜNDEKİ TURUNCU ŞERİT (Sağdan Sola Doğru Orta Yavaşlıkta %20 Daha Yavaş Akan Döngü) */}
       <div className="w-full bg-[#ff6600] text-white py-1.5 sm:py-2 overflow-hidden relative shadow-xs border-b border-orange-700/30 select-none">
         <div className="flex items-center gap-10 sm:gap-14 w-max animate-top-ticker-rtl">

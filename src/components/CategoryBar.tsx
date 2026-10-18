@@ -1,6 +1,7 @@
 import React from 'react';
 import { LayoutGrid, Percent, Car, Bike, Sparkles, Compass } from 'lucide-react';
 import { Product, CategoryCircleItem } from '../types';
+import { ThreeDDiscountCoin } from './ThreeDDiscountCoin';
 
 interface CategoryBarProps {
   selectedCategory: Product['category'] | 'all';
@@ -51,7 +52,9 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
 
   const defaultIcons: Record<string, React.ReactNode> = {
     all: <LayoutGrid size={30} strokeWidth={2.2} />,
-    discount: <Percent size={30} strokeWidth={2.4} />,
+    discount: (
+      <ThreeDDiscountCoin size={48} />
+    ),
     ataturk: (
       <img
         src="/products/IMG_1278.jpeg"
@@ -154,6 +157,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
     const isClicked = clickedId === cat.id;
     const customImg = cat.imageUrl;
     const isAtaturk = cat.id === 'ataturk';
+    const isDiscount = cat.id === 'discount';
 
     return (
       <button
@@ -166,7 +170,9 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
         {/* Dairesel Kategori İkonu - Tıklanınca Sadece Şık Turuncu Yanar */}
         <div
           className={`w-[66px] h-[66px] sm:w-[76px] sm:h-[76px] md:w-[84px] md:h-[84px] rounded-full flex items-center justify-center transition-all duration-150 shadow-sm overflow-hidden ${
-            cat.bgGradient
+            isDiscount
+              ? 'bg-[radial-gradient(circle_at_center,_#2b0d14_0%,_#140508_55%,_#050204_100%)] text-white border border-amber-500/30'
+              : cat.bgGradient
           } ${
             isClicked
               ? 'ring-4 ring-[#ff6600] shadow-[0_0_18px_rgba(255,102,0,0.85)]'
@@ -174,10 +180,16 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
               ? 'ring-3 ring-[#ff6600] ring-offset-2 shadow-[0_0_10px_rgba(255,102,0,0.4)]'
               : isAtaturk
               ? 'ring-2 ring-amber-400/90 shadow-[0_0_12px_rgba(250,204,21,0.55)] group-hover:ring-amber-300'
+              : isDiscount
+              ? 'ring-2 ring-amber-500/70 shadow-[0_0_14px_rgba(245,158,11,0.35)] group-hover:ring-amber-400 group-hover:shadow-[0_0_18px_rgba(245,158,11,0.6)]'
               : 'group-hover:shadow-md group-hover:ring-2 group-hover:ring-[#ff6600]/60'
           }`}
         >
-          {customImg ? (
+          {isDiscount ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <ThreeDDiscountCoin size={54} />
+            </div>
+          ) : customImg ? (
             <img
               src={customImg}
               alt={cat.titleLine1}
@@ -198,12 +210,18 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
                 ? 'text-[#ff6600] font-extrabold'
                 : isAtaturk
                 ? 'text-amber-500 font-extrabold'
+                : isDiscount
+                ? 'text-rose-600 font-extrabold'
                 : 'text-slate-800 group-hover:text-[#ff6600]'
             }`}
             title={cat.titleLine1}
           >
             {isAtaturk && !isClicked && !isSelected ? (
               <span className="animate-ataturk-gold-shimmer">
+                {cat.titleLine1}
+              </span>
+            ) : isDiscount && !isClicked && !isSelected ? (
+              <span className="text-rose-600 font-black">
                 {cat.titleLine1}
               </span>
             ) : (
@@ -219,17 +237,19 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
                   ? 'text-orange-600 font-semibold'
                   : isAtaturk
                   ? 'text-amber-700 font-bold'
-                  : 'text-slate-500 group-hover:text-[#ff6600]'
-              }`}
-              title={cat.titleLine2}
-            >
-              {cat.titleLine2}
-            </p>
-          )}
-        </div>
-      </button>
-    );
-  };
+                : isDiscount
+                ? 'text-rose-600/90 font-bold'
+                : 'text-slate-500 group-hover:text-[#ff6600]'
+            }`}
+            title={cat.titleLine2}
+          >
+            {cat.titleLine2}
+          </p>
+        )}
+      </div>
+    </button>
+  );
+};
 
   return (
     <section className="bg-[#f8f6f0] border-b border-[#e5e2d8] py-3 sm:py-3.5 shadow-2xs">

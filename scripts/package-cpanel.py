@@ -23,7 +23,16 @@ for folder in [PUBLIC_DIR, DIST_DIR]:
                 except Exception:
                     pass
 
-print("[1/4] Building Vite & esbuild server...")
+# 1b. PRE-BUILD SYNC: Sync all preview edits from data_storage into src/ & public/
+print("[0/4] Syncing preview edits from data_storage into src/ & public/...")
+sync_script = os.path.join(BASE_DIR, 'scripts', 'sync-preview-data.cjs')
+if os.path.exists(sync_script):
+    try:
+        subprocess.run(['node', sync_script], cwd=BASE_DIR, check=True)
+    except Exception as e:
+        print(f"[SYNC WARN] Could not run sync-preview-data.cjs: {e}")
+
+print("[1/4] Building Vite & esbuild server with latest preview data...")
 subprocess.run(['npm', 'run', 'build'], cwd=BASE_DIR, check=True)
 
 # README_KURULUM.txt content

@@ -337,20 +337,34 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   const shippingFee = (subtotal === 0 || isFreeShippingQualified) ? 0 : standardShippingFee;
   const grandTotal = subtotal + shippingFee;
 
-  // PayTR Başarılı/Başarısız Dönüş Takibi
+  // PayTR Başarılı/Başarısız Dönüş Takibi ve Webhook / Message Dinleyici
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const paytrResult = params.get('payment_result');
     const oid = params.get('oid');
     if (paytrResult === 'success') {
       const orderIdToUse = oid ? `AKUZ-${oid.replace(/^AKUZ/, '')}` : ('AKUZ-' + Math.floor(1000 + Math.random() * 9000));
-      handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', orderIdToUse);
+      handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', orderIdToUse, true);
       window.history.replaceState({}, '', window.location.pathname);
     } else if (paytrResult === 'failed') {
       setPaytrError('Ödeme işlemi bankanız veya PayTR tarafından onaylanamadı. Lütfen kart bilgilerinizi kontrol ediniz.');
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, []);
+
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PAYTR_PAYMENT_SUCCESS') {
+        const customOid = event.data.oid ? `AKUZ-${event.data.oid.replace(/^AKUZ/, '')}` : (pendingOrderId || ('AKUZ-' + Math.floor(1000 + Math.random() * 9000)));
+        setIsPaytrModalOpen(false);
+        handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', customOid, true);
+      } else if (event.data?.type === 'PAYTR_PAYMENT_FAILED') {
+        setIsPaytrModalOpen(false);
+        setPaytrError('Ödeme işlemi tamamlanamadı. Lütfen kart bilgilerinizi kontrol ediniz.');
+      }
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [pendingOrderId, cartItems, fullName, phone, email, fullAddress, city, district, neighborhood]);
 
   // PayTR Ödeme Oturumu Başlat (Gerçek Token Al & iFrame Aç)
   const handleInitiatePaytrPayment = async () => {
@@ -367,6 +381,29 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       ? `${neighborhood.trim()} Mah., ${fullAddress.trim()}`
       : fullAddress.trim();
     const finalPhone = `${selectedCountryCode} ${phone.trim()}`;
+    const cleanEmail = email ? email.trim() : '';
+
+    // Sayfa yönlendirmesi veya iframe döngüsünde verilerin kaybolmaması için yerel hafızaya yedekle
+    const pendingCheckoutData = {
+      orderId: generatedOrderId,
+      fullName: fullName.trim(),
+      phone: finalPhone,
+      email: cleanEmail,
+      city: city.trim(),
+      district: district.trim(),
+      neighborhood: neighborhood.trim(),
+      fullAddress: fullAddress.trim(),
+      shippingAddress: `${finalAddress}, ${district.trim()}/${city.trim()}`,
+      orderNote,
+      cartItems,
+      grandTotal,
+      subtotal,
+      shippingFee,
+    };
+    try {
+      sessionStorage.setItem('akuz_pending_checkout', JSON.stringify(pendingCheckoutData));
+      localStorage.setItem('akuz_pending_checkout', JSON.stringify(pendingCheckoutData));
+    } catch (e) {}
 
     try {
       const response = await fetch('/api/paytr/create-token', {
@@ -375,16 +412,21 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         body: JSON.stringify({
           orderId: generatedOrderId,
           fullName: fullName.trim(),
-          email: email.trim(),
+          email: cleanEmail,
           phone: finalPhone,
           address: finalAddress,
           city: city.trim(),
           district: district.trim(),
           totalAmount: grandTotal,
+          orderNote,
           items: cartItems.map((item) => ({
             productName: item.product.name,
             quantity: item.quantity,
             price: getItemPrice(item),
+            color: item.selectedColor,
+            dimension: item.selectedDimension,
+            finish: item.selectedFinish,
+            customText: item.customText,
           })),
         }),
       });
@@ -410,12 +452,16 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     handleInitiatePaytrPayment();
   };
 
-  const handleExecuteOrder = (methodLabel: string = 'PayTR Kredi / Banka Kartı (3D Secure)', customOrderId?: string) => {
-    if (!validateOrderForm()) return;
-    setFormError('');
-
-    const newOrderId = customOrderId || ('AKUZ-' + Math.floor(1000 + Math.random() * 9000));
-    const orderItems = cartItems.map((item) => ({
+  const handleExecuteOrder = (
+    methodLabel: string = 'PayTR Kredi / Banka Kartı (3D Secure)',
+    customOrderId?: string,
+    skipValidation: boolean = false
+  ) => {
+    let nameToUse = fullName.trim();
+    let phoneToUse = `${selectedCountryCode} ${phone.trim()}`;
+    let emailToUse = email ? email.trim() : '';
+    let addressToUse = `${neighborhood.trim() ? `${neighborhood.trim()} Mah., ` : ''}${fullAddress.trim()}, ${district.trim()}/${city.trim()}`;
+    let itemsToUse = cartItems.map((item) => ({
       productName: item.product.name,
       quantity: item.quantity,
       color: item.selectedColor,
@@ -424,23 +470,58 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       customText: item.customText,
       price: getItemPrice(item),
     }));
+    let grandTotalToUse = grandTotal;
+    let orderNoteToUse = orderNote;
 
-    const cleanEmail = email ? email.trim() : '';
-    const finalAddress = neighborhood.trim()
-      ? `${neighborhood.trim()} Mah., ${fullAddress.trim()}`
-      : fullAddress.trim();
-    const finalPhone = `${selectedCountryCode} ${phone.trim()}`;
+    // Eğer yeniden yönlendirme ile dönüldüyse ve React state sıfırlanmışsa, kaydedilen taslaktan kurtar
+    if (!nameToUse || itemsToUse.length === 0) {
+      try {
+        const raw = sessionStorage.getItem('akuz_pending_checkout') || localStorage.getItem('akuz_pending_checkout');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (!nameToUse && parsed.fullName) nameToUse = parsed.fullName;
+          if ((!phoneToUse || phoneToUse.length < 5) && parsed.phone) phoneToUse = parsed.phone;
+          if (!emailToUse && parsed.email) emailToUse = parsed.email;
+          if (parsed.shippingAddress) addressToUse = parsed.shippingAddress;
+          if (itemsToUse.length === 0 && Array.isArray(parsed.cartItems) && parsed.cartItems.length > 0) {
+            itemsToUse = parsed.cartItems.map((it: any) => ({
+              productName: it.product?.name || it.productName || 'AKUZ Sticker',
+              quantity: it.quantity || 1,
+              color: it.selectedColor || it.color || '',
+              dimension: it.selectedDimension || it.dimension || '',
+              finish: it.selectedFinish || it.finish || '',
+              customText: it.customText || '',
+              price: it.price || (getItemPrice ? getItemPrice(it) : 0),
+            }));
+          }
+          if (parsed.grandTotal) grandTotalToUse = parsed.grandTotal;
+          if (parsed.orderNote) orderNoteToUse = parsed.orderNote;
+        }
+      } catch (e) {
+        console.warn('Could not restore pending checkout', e);
+      }
+    }
+
+    if (!skipValidation) {
+      if (!validateOrderForm()) return;
+    }
+    setFormError('');
+
+    const newOrderId = customOrderId || ('AKUZ-' + Math.floor(1000 + Math.random() * 9000));
+    const isPaytrTest = siteSettings?.paytrSettings?.testMode || methodLabel.includes('Test');
 
     const newOrder: Order = {
       id: newOrderId,
       date: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
       status: 'Hazırlanıyor',
-      total: grandTotal,
-      customerName: fullName.trim(),
-      customerPhone: finalPhone,
-      customerEmail: cleanEmail,
-      shippingAddress: `${finalAddress}, ${district}/${city}`,
-      items: orderItems,
+      paymentStatus: isPaytrTest ? 'Ödendi (PayTR Test)' : 'Ödendi',
+      paymentMethod: methodLabel,
+      total: grandTotalToUse,
+      customerName: nameToUse || 'Değerli Müşterimiz',
+      customerPhone: phoneToUse,
+      customerEmail: emailToUse,
+      shippingAddress: addressToUse,
+      items: itemsToUse,
     };
 
     // 1. Merkezi Host Sunucusuna Kaydet
@@ -1302,6 +1383,26 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       : `PayTR ile Güvenli Öde (${grandTotal.toFixed(2).replace('.', ',')} TL)`}
                   </span>
                 </button>
+
+                {siteSettings?.paytrSettings?.testMode && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 text-amber-900 font-semibold text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                      <span>Test Modu Aktif</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!validateOrderForm()) return;
+                        const customOid = 'AKUZ-TEST-' + Math.floor(1000 + Math.random() * 9000);
+                        handleExecuteOrder('PayTR Kredi / Banka Kartı (Test Modu)', customOid, true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-xs"
+                    >
+                      🧪 Test Siparişini Hemen Onayla
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
@@ -1333,6 +1434,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                       3D SECURE
                     </span>
+                    {siteSettings?.paytrSettings?.testMode && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        TEST MODU
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-300">
                     Tutar: <strong className="text-white font-mono">{grandTotal.toFixed(2)} TL</strong> · AKUZ Stickers
@@ -1353,6 +1459,26 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 <X size={18} />
               </button>
             </div>
+
+            {/* Test Modu Bilgi ve Hızlı Onay Çubuğu */}
+            {siteSettings?.paytrSettings?.testMode && (
+              <div className="bg-amber-950/80 border-b border-amber-500/30 px-4 py-2 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-amber-200">
+                <span className="text-[11px] text-amber-300 font-medium">
+                  🧪 PayTR Test Modu devrede: Test kartı ile ödeyebilir veya hemen onaylayabilirsiniz.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPaytrModalOpen(false);
+                    const customOid = pendingOrderId ? `AKUZ-${pendingOrderId.replace(/^AKUZ/, '')}` : ('AKUZ-' + Math.floor(1000 + Math.random() * 9000));
+                    handleExecuteOrder('PayTR Kredi / Banka Kartı (Test Modu)', customOid, true);
+                  }}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg cursor-pointer transition-colors whitespace-nowrap shadow-xs"
+                >
+                  ✓ Test Ödemesini Hemen Onayla
+                </button>
+              </div>
+            )}
 
             {/* iFrame Container */}
             <div className="flex-1 bg-slate-100 overflow-y-auto p-1 sm:p-3 min-h-[560px] sm:min-h-[620px]">
@@ -1386,7 +1512,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   onClick={() => {
                     setIsPaytrModalOpen(false);
                     const customOid = pendingOrderId ? `AKUZ-${pendingOrderId.replace(/^AKUZ/, '')}` : undefined;
-                    handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', customOid);
+                    handleExecuteOrder('PayTR Kredi / Banka Kartı (3D Secure)', customOid, true);
                   }}
                   className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                 >

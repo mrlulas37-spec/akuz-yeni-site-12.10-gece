@@ -11,20 +11,23 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
   const [isVisible, setIsVisible] = useState(true);
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [runId, setRunId] = useState(0);
+
   const animationFrameRef = useRef<number | null>(null);
   const onCompleteRef = useRef(onComplete);
+  const resourcesReadyRef = useRef(false);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
-  // Manual replay listener
+  // Manuel tetikleyici dinleyici (Örn: Logoya tıklayınca veya test ederken tekrar oynatma)
   useEffect(() => {
     const handleReplay = () => {
       setIsFadingOut(false);
       setProgress(4);
       setPhase(0);
       setIsVisible(true);
+      resourcesReadyRef.current = false;
       setRunId((prev) => prev + 1);
     };
 
@@ -32,39 +35,112 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
     return () => window.removeEventListener('akuz:play-loader', handleReplay);
   }, []);
 
-  // 60FPS Canlı Sinüs Dalga & Sıvı Yükselme Animasyonu (Hızlı ve akıcı)
+  // 1. GERÇEK KAYNAK VE FONT KONTROLÜ (Yavaş internette hiçbir yazı veya animasyon bozuk açılmasın)
+  useEffect(() => {
+    if (!isVisible) return;
+    resourcesReadyRef.current = false;
+
+    let isMounted = true;
+    const startTime = performance.now();
+
+    const loadAllCriticalResources = async () => {
+      try {
+        // A. Yazı Tipleri (Google Fonts Montserrat, Plus Jakarta Sans, Syne ve dekoratif fontlar)
+        if (typeof document !== 'undefined' && 'fonts' in document) {
+          try {
+            await (document as any).fonts.ready;
+          } catch (e) {
+            console.warn('[FONT READY CHECK]', e);
+          }
+        }
+
+        // B. Kritik Görsellerin Belleğe Alınması (Logo badge, rozet)
+        const criticalImages = ['/akuz-logo-badge.png', '/akuz-logo-badge.svg'];
+        const imagePromises = criticalImages.map(
+          (src) =>
+            new Promise((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve(true);
+              img.onerror = () => resolve(false);
+              img.src = src;
+            })
+        );
+        await Promise.all(imagePromises);
+
+        // C. DOM Hazırlığı (Sayfa iskeletinin tam boyanması)
+        if (document.readyState !== 'complete') {
+          await new Promise((resolve) => {
+            window.addEventListener('load', resolve, { once: true });
+          });
+        }
+
+        // D. Minimum Animasyon Süresi (Akıcı ve dengeli su dalgası formu için ideal süre)
+        const elapsed = performance.now() - startTime;
+        const minAnimTime = 1100;
+        if (elapsed < minAnimTime) {
+          await new Promise((r) => setTimeout(r, minAnimTime - elapsed));
+        }
+
+        if (isMounted) {
+          resourcesReadyRef.current = true;
+        }
+      } catch (err) {
+        console.warn('[RESOURCE PRELOADER ERROR]', err);
+        if (isMounted) {
+          resourcesReadyRef.current = true;
+        }
+      }
+    };
+
+    loadAllCriticalResources();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isVisible, runId]);
+
+  // 2. 60 FPS Canlı Sinüs Dalgası & %0'dan %100'e Tamamen Orantılı ve Dengeli Akış
   useEffect(() => {
     if (!isVisible) return;
 
-    let startTime: number | null = null;
-    const duration = 1300; // Tam 1.3 saniye yüklenme animasyonu süresi
+    let currentPercent = 4;
     let currentPhase = 0;
+    const animStartTime = performance.now();
+    const animDuration = 1750; // 1.75 saniyede %0'dan %100'e tamamen eşit, dengeli ve orantılı doluş
 
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      const rawProgress = Math.min(1, elapsed / duration);
+    const animate = (now: number) => {
+      const elapsed = Math.max(0, now - animStartTime);
+      const isReady = resourcesReadyRef.current;
 
-      // Doğal, yumuşak başlayan ve biten su dolumu ivmesi
-      const easeProgress = 1 - Math.pow(1 - rawProgress, 1.4);
+      // Tamamen orantılı lineer ilerleme (ani hızlanma veya yarısından patlama yok)
+      let targetProgress = 4 + (elapsed / animDuration) * 96;
 
-      const currentPercent = Math.min(100, Math.round(easeProgress * 100));
-      setProgress(currentPercent);
+      // İnternet henüz kaynakları tamamlamadıysa %88'de zarifçe beklesin:
+      if (!isReady && targetProgress > 88) {
+        targetProgress = 88;
+      }
 
-      currentPhase += 0.09;
+      currentPercent = Math.min(100, Math.max(currentPercent, targetProgress));
+
+      const roundedPercent = Math.min(100, Math.floor(currentPercent));
+      setProgress(roundedPercent);
+
+      currentPhase += 0.085;
       setPhase(currentPhase);
 
-      if (rawProgress < 1) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-      } else {
-        // %100 dolduğunda logo parıldasın ve ardından pürüzsüzce mağaza açılsın
+      if (currentPercent >= 99.8 && isReady) {
+        setProgress(100);
+        // Logo %100 dolduğunda kullanıcının ışıltıyı görebilmesi için kısa duraklama (~280ms)
+        // Ardından ana sayfa 500ms yumuşak geçişle açılır
         setTimeout(() => {
           setIsFadingOut(true);
+          if (onCompleteRef.current) onCompleteRef.current();
           setTimeout(() => {
             setIsVisible(false);
-            if (onCompleteRef.current) onCompleteRef.current();
-          }, 350);
-        }, 180);
+          }, 500);
+        }, 280);
+      } else {
+        animationFrameRef.current = requestAnimationFrame(animate);
       }
     };
 
@@ -78,11 +154,14 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
   }, [isVisible, runId]);
 
   const handleQuickDismiss = () => {
-    setIsFadingOut(true);
-    setTimeout(() => {
-      setIsVisible(false);
+    // Sadece kaynaklar hazırsa veya acil geçiş istenirse kapat
+    if (resourcesReadyRef.current || progress > 80) {
       if (onCompleteRef.current) onCompleteRef.current();
-    }, 250);
+      setIsFadingOut(true);
+      setTimeout(() => {
+        setIsVisible(false);
+      }, 250);
+    }
   };
 
   // Dalga Kapalı Alan Yolu (Renkli logoyu su dalgası şeklinde keser)
@@ -97,7 +176,8 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
     const steps = 28;
     for (let i = 0; i <= steps; i++) {
       const x = (i / steps) * 100;
-      const yWave = yBase +
+      const yWave =
+        yBase +
         Math.sin((x / 100) * Math.PI * 3.5 + wavePhase) * currentAmp +
         Math.sin((x / 100) * Math.PI * 1.8 + wavePhase * 1.3) * (currentAmp * 0.35);
       d += ` L ${x.toFixed(2)} ${yWave.toFixed(2)}`;
@@ -125,7 +205,8 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
     const steps = 22;
     for (let i = 0; i <= steps; i++) {
       const x = xStart + (i / steps) * (xEnd - xStart);
-      const yWave = yBase +
+      const yWave =
+        yBase +
         Math.sin((x / 100) * Math.PI * 3.5 + wavePhase) * currentAmp +
         Math.sin((x / 100) * Math.PI * 1.8 + wavePhase * 1.3) * (currentAmp * 0.35);
       d += i === 0 ? `M ${x.toFixed(2)} ${yWave.toFixed(2)}` : ` L ${x.toFixed(2)} ${yWave.toFixed(2)}`;
@@ -145,19 +226,18 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
     <aside
       aria-label="Yükleniyor"
       onClick={handleQuickDismiss}
-      className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[#070a12] select-none cursor-pointer transition-opacity duration-600 ease-out ${
+      className={`fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-[#070a12] select-none cursor-pointer transition-opacity duration-500 ease-in-out ${
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
     >
       {/* Canlı Atmosferik Neon Işımaları */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-80 h-80 sm:w-96 sm:h-96 bg-[#ff4400]/25 rounded-full blur-3xl opacity-90 animate-pulse" />
-        <div className="w-64 h-64 bg-[#ff0055]/20 rounded-full blur-2xl opacity-75" />
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+        <div className="w-80 h-80 sm:w-96 sm:h-96 bg-[#ff4400]/20 rounded-full blur-3xl opacity-80 animate-pulse" />
+        <div className="w-64 h-64 bg-[#ff0055]/15 rounded-full blur-2xl opacity-60" />
       </div>
 
       {/* SADECE LOGO - Canlı, zengin ve parlak neon renklerle su dolumu */}
-      <div className="relative w-56 h-56 sm:w-64 sm:h-64 md:w-76 md:h-76 flex items-center justify-center">
-        
+      <div className="relative w-52 h-52 sm:w-64 sm:h-64 md:w-72 md:h-72 flex items-center justify-center">
         <svg
           viewBox="0 0 100 100"
           className="w-full h-full object-contain pointer-events-none select-none"
@@ -226,7 +306,7 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
               fill="url(#secondaryLiquidGrad)"
             />
 
-            {/* 3. KATMAN: PARLAK NEON TURUNCU SIVI KÜTLESİ (Suyun içi rengarenk ve capcanlı) */}
+            {/* 3. KATMAN: PARLAK NEON TURUNCU SIVI KÜTLESİ */}
             <path
               d={mainWavePath}
               fill="url(#primaryLiquidGrad)"
@@ -256,28 +336,28 @@ export const PageLoader: React.FC<PageLoaderProps> = ({ onComplete, forceShow = 
               <g>
                 <circle
                   cx={36 + Math.sin(phase * 1.5) * 3}
-                  cy={Math.max(100 - progress + 6, 100 - (progress * 0.75))}
+                  cy={Math.max(100 - progress + 6, 100 - progress * 0.75)}
                   r="1.2"
                   fill="#ffffff"
                   style={{ filter: 'drop-shadow(0 0 2px #ff7700)' }}
                 />
                 <circle
                   cx={52 + Math.cos(phase * 1.3) * 4}
-                  cy={Math.max(100 - progress + 9, 100 - (progress * 0.52))}
+                  cy={Math.max(100 - progress + 9, 100 - progress * 0.52)}
                   r="1.6"
                   fill="#ffaa00"
                   style={{ filter: 'drop-shadow(0 0 3px #ff3300)' }}
                 />
                 <circle
                   cx={64 + Math.sin(phase * 1.8) * 3}
-                  cy={Math.max(100 - progress + 5, 100 - (progress * 0.82))}
+                  cy={Math.max(100 - progress + 5, 100 - progress * 0.82)}
                   r="1.1"
                   fill="#ffffff"
                   style={{ filter: 'drop-shadow(0 0 2px #ff0055)' }}
                 />
                 <circle
                   cx={44 + Math.cos(phase * 1.7) * 2.5}
-                  cy={Math.max(100 - progress + 14, 100 - (progress * 0.4))}
+                  cy={Math.max(100 - progress + 14, 100 - progress * 0.4)}
                   r="1.3"
                   fill="#ff7700"
                   style={{ filter: 'drop-shadow(0 0 2px #ffffff)' }}

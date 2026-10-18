@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import nodemailer from "nodemailer";
 import path from "path";
@@ -23,20 +24,25 @@ const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const CARTS_FILE = path.join(DATA_DIR, "carts.json");
 const FAVORITES_FILE = path.join(DATA_DIR, "favorites.json");
 const GOOGLE_CREDENTIALS_FILE = path.join(DATA_DIR, "google_credentials.json");
+const hasMysqlConfig = Boolean(process.env.DB_HOST || process.env.MYSQL_HOST);
 const MYSQL_CONFIG = {
-  host: process.env.DB_HOST || process.env.MYSQL_HOST || "localhost",
-  user: process.env.DB_USER || process.env.MYSQL_USER || "akuzstic_data",
-  password: process.env.DB_PASS || process.env.MYSQL_PASSWORD || "Mert830801?",
-  database: process.env.DB_NAME || process.env.MYSQL_DATABASE || "akuzstic_data",
+  host: process.env.DB_HOST || process.env.MYSQL_HOST || "",
+  user: process.env.DB_USER || process.env.MYSQL_USER || "",
+  password: process.env.DB_PASS || process.env.MYSQL_PASSWORD || "",
+  database: process.env.DB_NAME || process.env.MYSQL_DATABASE || "",
   waitForConnections: true,
   connectionLimit: 5,
   connectTimeout: 4e3
 };
 let mysqlPool = null;
-try {
-  mysqlPool = mysql.createPool(MYSQL_CONFIG);
-} catch (e) {
-  console.warn("[MYSQL POOL INIT WARN]", e);
+if (hasMysqlConfig && MYSQL_CONFIG.host && MYSQL_CONFIG.user) {
+  try {
+    mysqlPool = mysql.createPool(MYSQL_CONFIG);
+  } catch (e) {
+    console.warn("[MYSQL POOL INIT WARN]", e);
+  }
+} else {
+  console.log("[AI Studio] MySQL credentials not supplied in env \u2014 utilizing persistent JSON file storage layer");
 }
 async function ensureMysqlSchema() {
   if (!mysqlPool) return;
@@ -176,12 +182,16 @@ async function syncMysqlFavorites(email, userId, favs) {
 function readJsonFile(filePath, fallback) {
   const backupPath = filePath + ".bak";
   const fileName = path.basename(filePath);
-  const archiveBackupPath = path.join(BACKUPS_DIR, `${fileName}.bak`);
   try {
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, "utf-8");
       if (raw && raw.trim().length > 0) {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 0 && filePath === PRODUCTS_FILE) {
+          console.warn(`[DATA GUARD] ${filePath} bo\u015F dizi i\xE7eriyor, yedeklerden kurtar\u0131l\u0131yor...`);
+        } else {
+          return parsed;
+        }
       }
     }
   } catch (err) {
@@ -192,40 +202,75 @@ function readJsonFile(filePath, fallback) {
       const rawBackup = fs.readFileSync(backupPath, "utf-8");
       if (rawBackup && rawBackup.trim().length > 0) {
         const parsed = JSON.parse(rawBackup);
-        fs.writeFileSync(filePath, rawBackup, "utf-8");
-        console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmi\u015Fti, .bak yede\u011Finden ba\u015Far\u0131yla geri y\xFCklendi.`);
-        return parsed;
+        if (!(Array.isArray(parsed) && parsed.length === 0 && filePath === PRODUCTS_FILE)) {
+          fs.writeFileSync(filePath, rawBackup, "utf-8");
+          console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmi\u015Fti, .bak yede\u011Finden ba\u015Far\u0131yla geri y\xFCklendi.`);
+          return parsed;
+        }
       }
     }
   } catch (err) {
     console.warn(`[DATA RESTORE WARN] ${backupPath} okunamad\u0131:`, err);
   }
   try {
-    if (fs.existsSync(archiveBackupPath)) {
-      const rawArchive = fs.readFileSync(archiveBackupPath, "utf-8");
-      if (rawArchive && rawArchive.trim().length > 0) {
-        const parsed = JSON.parse(rawArchive);
-        fs.writeFileSync(filePath, rawArchive, "utf-8");
-        console.log(`[DATA RESTORE SUCCESS] ${filePath} silinmi\u015Fti, archive yede\u011Finden ba\u015Far\u0131yla geri y\xFCklendi.`);
-        return parsed;
+    if (fs.existsSync(BACKUPS_DIR)) {
+      const files = fs.readdirSync(BACKUPS_DIR).filter((f) => f.startsWith(fileName)).sort((a, b) => b.localeCompare(a));
+      for (const bFile of files) {
+        try {
+          const rawArchive = fs.readFileSync(path.join(BACKUPS_DIR, bFile), "utf-8");
+          if (rawArchive && rawArchive.trim().length > 0) {
+            const parsed = JSON.parse(rawArchive);
+            if (!(Array.isArray(parsed) && parsed.length === 0 && filePath === PRODUCTS_FILE)) {
+              fs.writeFileSync(filePath, rawArchive, "utf-8");
+              console.log(`[DATA RESTORE SUCCESS] ${filePath} ar\u015Fivi (${bFile}) \xFCzerinden ba\u015Far\u0131yla kurtar\u0131ld\u0131.`);
+              return parsed;
+            }
+          }
+        } catch {
+        }
       }
     }
   } catch (err) {
-    console.warn(`[DATA RESTORE WARN] ${archiveBackupPath} okunamad\u0131:`, err);
+    console.warn(`[DATA RESTORE WARN] Ar\u015Fiv taranamad\u0131:`, err);
   }
   return fallback;
 }
 function writeJsonFile(filePath, data) {
   try {
+    const fileName = path.basename(filePath);
+    if (filePath === PRODUCTS_FILE && Array.isArray(data) && data.length === 0) {
+      console.warn(`[SECURITY GUARD] ${filePath} bo\u015F liste ile ezilmeye \xE7al\u0131\u015F\u0131ld\u0131! \u0130\u015Flem engellendi.`);
+      return;
+    }
+    if (filePath === SETTINGS_FILE && (!data || typeof data === "object" && Object.keys(data).length === 0)) {
+      console.warn(`[SECURITY GUARD] ${filePath} bo\u015F ayar objesi ile ezilmeye \xE7al\u0131\u015F\u0131ld\u0131! \u0130\u015Flem engellendi.`);
+      return;
+    }
     const serialized = JSON.stringify(data, null, 2);
+    if (fs.existsSync(filePath)) {
+      try {
+        const currentContent = fs.readFileSync(filePath, "utf-8");
+        if (currentContent && currentContent.trim().length > 2) {
+          fs.writeFileSync(filePath + ".bak", currentContent, "utf-8");
+          const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+          fs.writeFileSync(path.join(BACKUPS_DIR, `${fileName}_${timestamp}.json`), currentContent, "utf-8");
+        }
+      } catch (backupErr) {
+        console.warn(`[BACKUP WARN] ${filePath} yedeklenemedi:`, backupErr);
+      }
+    }
     fs.writeFileSync(filePath, serialized, "utf-8");
     try {
       fs.writeFileSync(filePath + ".bak", serialized, "utf-8");
     } catch {
     }
     try {
-      const fileName = path.basename(filePath);
-      fs.writeFileSync(path.join(BACKUPS_DIR, `${fileName}.bak`), serialized, "utf-8");
+      const allBackups = fs.readdirSync(BACKUPS_DIR).filter((f) => f.startsWith(fileName)).sort((a, b) => b.localeCompare(a));
+      if (allBackups.length > 30) {
+        for (const oldFile of allBackups.slice(30)) {
+          fs.unlinkSync(path.join(BACKUPS_DIR, oldFile));
+        }
+      }
     } catch {
     }
   } catch (err) {
@@ -254,12 +299,45 @@ async function startServer() {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
   app.use("/uploads", express.static(UPLOADS_DIR));
+  const runDataSync = () => {
+    try {
+      const syncScript = path.resolve(__dirname, "scripts", "sync-preview-data.cjs");
+      if (fs.existsSync(syncScript)) {
+        execSync(`node "${syncScript}"`, { stdio: "inherit" });
+      }
+    } catch (syncErr) {
+      console.warn("[PREVIEW SYNC ERROR]", syncErr.message);
+    }
+  };
   const ensureAndSendZip = (zipName, req, res) => {
     const filePath = path.resolve(__dirname, "cpanel_archives", zipName);
-    const shouldRebuild = req.query.rebuild === "1" || !fs.existsSync(filePath);
+    let isStale = false;
+    if (fs.existsSync(filePath)) {
+      try {
+        const zipMtime = fs.statSync(filePath).mtimeMs;
+        const checkFiles = [
+          SETTINGS_FILE,
+          PRODUCTS_FILE,
+          path.join(DATA_DIR, "global_colors.json"),
+          path.resolve(__dirname, "src", "data", "products.ts"),
+          path.resolve(__dirname, "src", "utils", "adminStore.ts")
+        ];
+        for (const cf of checkFiles) {
+          if (fs.existsSync(cf) && fs.statSync(cf).mtimeMs > zipMtime) {
+            isStale = true;
+            break;
+          }
+        }
+      } catch {
+        isStale = true;
+      }
+    } else {
+      isStale = true;
+    }
+    const shouldRebuild = req.query.rebuild === "1" || isStale;
     if (shouldRebuild) {
       try {
-        console.log(`[CPANEL DOWNLOAD] ${zipName} indirilmeden \xF6nce g\xFCncel paket derleniyor...`);
+        console.log(`[CPANEL DOWNLOAD] ${zipName} indirilmeden \xF6nce g\xFCncel paket derleniyor (isStale: ${isStale})...`);
         const scriptPath = path.resolve(__dirname, "scripts", "package-cpanel.py");
         execSync(`python3 "${scriptPath}"`, { stdio: "inherit" });
       } catch (err) {
@@ -349,13 +427,13 @@ async function startServer() {
       if (!to) {
         return res.status(400).json({ success: false, error: "Al\u0131c\u0131 e-posta adresi (to) zorunludur." });
       }
-      const host = smtpConfig?.host !== void 0 ? smtpConfig.host.trim() : process.env.SMTP_HOST || "";
+      const host = smtpConfig?.host !== void 0 && smtpConfig.host.trim() ? smtpConfig.host.trim() : process.env.SMTP_HOST || "mail.akuzstickers.com";
       const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
       const secure = smtpConfig?.secure !== void 0 ? Boolean(smtpConfig.secure) : port === 465;
-      const user = smtpConfig?.user !== void 0 ? smtpConfig.user.trim() : process.env.SMTP_USER || "";
-      const pass = smtpConfig?.pass !== void 0 ? smtpConfig.pass.trim() : process.env.SMTP_PASS || "";
-      const fromName = smtpConfig?.fromName ? smtpConfig.fromName.trim() : process.env.SMTP_FROM_NAME || "AKUZ Stickers";
-      const fromEmail = smtpConfig?.fromEmail ? smtpConfig.fromEmail.trim() : user || "info@akuzstickers.com";
+      const user = smtpConfig?.user !== void 0 && smtpConfig.user.trim() ? smtpConfig.user.trim() : process.env.SMTP_USER || "info@akuzstickers.com";
+      const pass = smtpConfig?.pass !== void 0 && smtpConfig.pass.trim() ? smtpConfig.pass.trim() : process.env.SMTP_PASS || "GvqrM6nWyfE9mMX";
+      const fromName = smtpConfig?.fromName && smtpConfig.fromName.trim() ? smtpConfig.fromName.trim() : process.env.SMTP_FROM_NAME || "AKUZ STICKERS";
+      const fromEmail = smtpConfig?.fromEmail && smtpConfig.fromEmail.trim() ? smtpConfig.fromEmail.trim() : user || "info@akuzstickers.com";
       currentHost = host;
       currentPort = port;
       currentUser = user;
@@ -454,13 +532,154 @@ async function startServer() {
       });
     }
   });
+  function normalizeKargonomiUrl(url) {
+    if (!url) return "https://app.kargonomi.com.tr/api/v1";
+    let clean = url.trim().replace(/\/+$/, "");
+    if (clean === "https://api.kargonomi.com" || clean === "http://api.kargonomi.com") {
+      return "https://app.kargonomi.com.tr/api/v1";
+    }
+    if (clean === "https://api.kargonomi.com.tr" || clean === "http://api.kargonomi.com.tr") {
+      return "https://app.kargonomi.com.tr/api/v1";
+    }
+    if (clean.includes("kargonomi") && !clean.includes("/api/v1")) {
+      return clean.replace("api.kargonomi.com", "app.kargonomi.com.tr") + "/api/v1";
+    }
+    return clean;
+  }
+  function normalizeTrText(text) {
+    return String(text || "").replace(/İ/g, "i").replace(/I/g, "\u0131").toLowerCase().trim().replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  const TURKEY_PROVINCE_STATE_IDS = {
+    adana: 1,
+    adiyaman: 2,
+    afyonkarahisar: 3,
+    afyon: 3,
+    agri: 4,
+    amasya: 5,
+    ankara: 6,
+    antalya: 7,
+    artvin: 8,
+    aydin: 9,
+    balikesir: 10,
+    bilecik: 11,
+    bingol: 12,
+    bitlis: 13,
+    bolu: 14,
+    burdur: 15,
+    bursa: 16,
+    canakkale: 17,
+    cankiri: 18,
+    corum: 19,
+    denizli: 20,
+    diyarbakir: 21,
+    edirne: 22,
+    elazig: 23,
+    erzincan: 24,
+    erzurum: 25,
+    eskisehir: 26,
+    gaziantep: 27,
+    giresun: 28,
+    gumushane: 29,
+    hakkari: 30,
+    hatay: 31,
+    isparta: 32,
+    mersin: 33,
+    icel: 33,
+    istanbul: 34,
+    izmir: 35,
+    kars: 36,
+    kastamonu: 37,
+    kayseri: 38,
+    kirklareli: 39,
+    kirsehir: 40,
+    kocaeli: 41,
+    izmit: 41,
+    konya: 42,
+    kutahya: 43,
+    malatya: 44,
+    manisa: 45,
+    kahramanmaras: 46,
+    maras: 46,
+    mardin: 47,
+    mugla: 48,
+    mus: 49,
+    nevsehir: 50,
+    nigde: 51,
+    ordu: 52,
+    rize: 53,
+    sakarya: 54,
+    adapazari: 54,
+    samsun: 55,
+    siirt: 56,
+    sinop: 57,
+    sivas: 58,
+    tekirdag: 59,
+    tokat: 60,
+    trabzon: 61,
+    tunceli: 62,
+    sanliurfa: 63,
+    urfa: 63,
+    usak: 64,
+    van: 65,
+    yozgat: 66,
+    zonguldak: 67,
+    aksaray: 68,
+    bayburt: 69,
+    karaman: 70,
+    kirikkale: 71,
+    batman: 72,
+    sirnak: 73,
+    bartin: 74,
+    ardahan: 75,
+    igdir: 76,
+    yalova: 77,
+    karabuk: 78,
+    kilis: 79,
+    osmaniye: 80,
+    duzce: 81
+  };
+  const kargonomiCitiesCache = /* @__PURE__ */ new Map();
+  async function resolveKargonomiCityAndDistrict(cityName, districtName, apiToken, baseUrl) {
+    const normCity = normalizeTrText(cityName);
+    let stateId = TURKEY_PROVINCE_STATE_IDS[normCity] || 16;
+    let districtList = kargonomiCitiesCache.get(stateId);
+    if (!districtList || districtList.length === 0) {
+      try {
+        const res = await fetch(`${baseUrl}/cities/${stateId}`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${apiToken}`
+          }
+        });
+        if (res.ok) {
+          districtList = await res.json();
+          if (Array.isArray(districtList) && districtList.length > 0) {
+            kargonomiCitiesCache.set(stateId, districtList);
+          }
+        }
+      } catch (e) {
+        console.warn("[KARGONOMI CITIES FETCH WARN]", e);
+      }
+    }
+    const normDistrict = normalizeTrText(districtName);
+    let cityId = 703;
+    if (Array.isArray(districtList) && districtList.length > 0) {
+      const matched = districtList.find((d) => normalizeTrText(d.name) === normDistrict);
+      if (matched) {
+        cityId = matched.id;
+      } else {
+        cityId = districtList[0].id;
+      }
+    }
+    return { stateId, cityId };
+  }
   const DEFAULT_KARGONOMI_TOKEN = process.env.KARGONOMI_TOKEN || "Ly2mGS6WC2iDAuwdC2C5D9omqnsJkjBZIO4qeJMIe8175aa3";
-  const DEFAULT_KARGONOMI_URL = process.env.KARGONOMI_API_URL || "https://app.kargonomi.com.tr/api/v1";
+  const DEFAULT_KARGONOMI_URL = normalizeKargonomiUrl(process.env.KARGONOMI_API_URL || "https://api.kargonomi.com");
   app.post("/api/kargonomi/test", async (req, res) => {
     try {
       const { token, apiUrl } = req.body;
       const apiToken = token || DEFAULT_KARGONOMI_TOKEN;
-      const baseUrl = apiUrl || DEFAULT_KARGONOMI_URL;
+      const baseUrl = normalizeKargonomiUrl(apiUrl || DEFAULT_KARGONOMI_URL);
       if (!apiToken) {
         return res.status(400).json({ success: false, message: "Kargonomi API token bulunamad\u0131." });
       }
@@ -491,41 +710,83 @@ async function startServer() {
       });
     }
   });
+  function cleanTrPhone(phone) {
+    let clean = String(phone || "5468758671").replace(/[^0-9]/g, "");
+    if (clean.startsWith("90") && clean.length === 12) {
+      clean = clean.slice(2);
+    }
+    if (clean.startsWith("0") && clean.length === 11) {
+      clean = clean.slice(1);
+    }
+    if (clean.length === 10) {
+      return clean;
+    }
+    return "5468758671";
+  }
   app.post("/api/kargonomi/create-shipment", async (req, res) => {
     try {
       const { payload, config } = req.body;
       const apiToken = config?.apiToken || DEFAULT_KARGONOMI_TOKEN;
-      const baseUrl = config?.apiUrl || DEFAULT_KARGONOMI_URL;
+      const baseUrl = normalizeKargonomiUrl(config?.apiUrl || DEFAULT_KARGONOMI_URL);
       if (!apiToken) {
         return res.status(400).json({
           success: false,
-          message: "Kargonomi Token eksik."
+          message: "Kargonomi API token bulunamad\u0131."
         });
       }
-      const shipmentData = {
-        order_number: payload.orderId,
-        carrier: payload.carrier || config?.defaultCarrier || "mng",
-        receiver: {
-          name: payload.recipientName,
-          phone: payload.recipientPhone,
-          address: payload.recipientAddress,
-          city: payload.recipientCity,
-          district: payload.recipientDistrict
-        },
-        sender: {
-          name: config?.senderName || "AKUZ Stickers",
-          phone: config?.senderPhone || "+90 546 875 86 71",
-          address: config?.senderAddress || "Cumhuriyet Mah. No: 12",
-          city: config?.senderCity || "Bursa",
-          district: config?.senderDistrict || "Nil\xFCfer"
-        },
-        package: {
-          type: "box",
-          desi: 1,
-          description: payload.itemsDescription || "Sticker / \xC7\u0131kartma Paketi"
+      let targetCity = payload.recipientCity || "";
+      let targetDistrict = payload.recipientDistrict || "";
+      if (payload.recipientAddress) {
+        const parts = String(payload.recipientAddress).split(",");
+        const lastPart = parts[parts.length - 1] || "";
+        if (lastPart.includes("/")) {
+          const [d, c] = lastPart.split("/");
+          if (d.trim()) targetDistrict = d.trim();
+          if (c.trim()) targetCity = c.trim();
+        }
+      }
+      const { stateId: buyerStateId, cityId: buyerCityId } = await resolveKargonomiCityAndDistrict(
+        targetCity || "Bursa",
+        targetDistrict || "Nil\xFCfer",
+        apiToken,
+        baseUrl
+      );
+      const senderCityName = config?.senderCity || "Bursa";
+      const senderDistrictName = config?.senderDistrict || "Nil\xFCfer";
+      const { stateId: senderStateId, cityId: senderCityId } = await resolveKargonomiCityAndDistrict(
+        senderCityName,
+        senderDistrictName,
+        apiToken,
+        baseUrl
+      );
+      const cleanBuyerPhone = cleanTrPhone(payload.recipientPhone);
+      const cleanSenderPhone = cleanTrPhone(config?.senderPhone);
+      const senderTaxNumber = config?.senderTaxNumber || "28782200920";
+      const shipmentPayload = {
+        shipment: {
+          ecommerce_provider_order_no: String(payload.orderId || "AKUZ" + Date.now()),
+          sender_name: config?.senderName || "AKUZ Stickers",
+          sender_phone: cleanSenderPhone,
+          sender_address: config?.senderAddress || "\xDC\xE7evler Mah. 10.(220) SK. K\xFC\xE7\xFCk Sanayi no:17/1",
+          sender_state_id: senderStateId || 16,
+          // Varsayılan Bursa
+          sender_city_id: senderCityId || 703,
+          // Varsayılan Nilüfer
+          sender_tax_number: senderTaxNumber,
+          buyer_name: (payload.recipientName || "De\u011Ferli M\xFC\u015Fterimiz").trim(),
+          buyer_phone: cleanBuyerPhone,
+          buyer_address: (payload.recipientAddress || "Teslimat Adresi").trim(),
+          buyer_state_id: buyerStateId,
+          buyer_city_id: buyerCityId,
+          packages: [
+            {
+              desi: 1,
+              content: payload.itemsDescription || "AKUZ Sticker Paketi"
+            }
+          ]
         }
       };
-      console.log("[KARGONOMI] G\xF6nderi olu\u015Fturuluyor:", shipmentData);
+      console.log("[KARGONOMI API REQ] G\xF6nderi olu\u015Fturuluyor:", JSON.stringify(shipmentPayload));
       const response = await fetch(`${baseUrl}/shipments`, {
         method: "POST",
         headers: {
@@ -533,7 +794,7 @@ async function startServer() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiToken}`
         },
-        body: JSON.stringify(shipmentData)
+        body: JSON.stringify(shipmentPayload)
       });
       const responseText = await response.text();
       let responseJson = null;
@@ -541,40 +802,35 @@ async function startServer() {
         responseJson = JSON.parse(responseText);
       } catch {
       }
-      if (response.ok && responseJson) {
-        const trackingNumber = responseJson.tracking_number || responseJson.data?.tracking_number || responseJson.barcode || responseJson.data?.barcode || "KRG" + Math.floor(1e8 + Math.random() * 9e8);
-        const trackingUrl = responseJson.tracking_url || responseJson.data?.tracking_url || `https://kargonomi.com/kargo-takip?no=${trackingNumber}`;
+      console.log(`[KARGONOMI API RESP ${response.status}]`, responseText);
+      if (response.ok && responseJson && responseJson.id) {
+        const shipmentId = String(responseJson.id);
+        const barcode = responseJson.shipment_packages?.[0]?.barcode || shipmentId;
+        const trackingNumber = responseJson.shipping_webservice_tracking_code || responseJson.tracking_number || barcode;
         return res.json({
           success: true,
-          message: "Kargonomi kargo kayd\u0131 ba\u015Far\u0131yla olu\u015Fturuldu!",
+          message: `Kargonomi kargo kayd\u0131 ba\u015Far\u0131yla olu\u015Fturuldu! (Kay\u0131t No: #${shipmentId})`,
+          shipmentId,
+          barcode,
           trackingNumber,
-          trackingUrl,
+          trackingUrl: `https://kargonomi.com/kargo-takip?no=${trackingNumber}`,
           carrier: payload.carrier || config?.defaultCarrier || "MNG Kargo",
-          shipmentId: responseJson.id || responseJson.data?.id || payload.orderId,
           raw: responseJson
         });
       } else {
-        console.warn("[KARGONOMI API ERROR]", response.status, responseText);
-        const fallbackTracking = "KRG" + Math.floor(1e8 + Math.random() * 9e8);
-        return res.json({
-          success: true,
-          simulated: true,
-          trackingNumber: fallbackTracking,
-          trackingUrl: `https://kargonomi.com/kargo-takip?no=${fallbackTracking}`,
-          carrier: payload.carrier || config?.defaultCarrier || "MNG Kargo",
-          message: `Kargonomi kargo fi\u015Fi olu\u015Fturuldu (${response.status === 200 ? "Ba\u015Far\u0131l\u0131" : "Token onayland\u0131"}). Takip No: ${fallbackTracking}`,
+        const errorMsg = responseJson?.message || (responseJson?.errors ? Object.values(responseJson.errors).flat().join(", ") : "") || `Kargonomi sunucusu iste\u011Fi kabul etmedi (HTTP ${response.status}).`;
+        console.error("[KARGONOMI API FAIL]", response.status, errorMsg);
+        return res.status(400).json({
+          success: false,
+          message: `Kargonomi Hatas\u0131: ${errorMsg}`,
           raw: responseJson || responseText
         });
       }
     } catch (err) {
       console.error("[KARGONOMI EXCEPTION]", err);
-      const fallbackTracking = "KRG" + Math.floor(1e8 + Math.random() * 9e8);
-      return res.json({
-        success: true,
-        simulated: true,
-        trackingNumber: fallbackTracking,
-        carrier: "MNG Kargo",
-        message: `Kargo kayd\u0131 olu\u015Fturuldu. Takip No: ${fallbackTracking}`
+      return res.status(500).json({
+        success: false,
+        message: `Kargonomi sunucu hatas\u0131: ${err.message || "Ba\u011Flant\u0131 kurulamad\u0131."}`
       });
     }
   });
@@ -1062,12 +1318,12 @@ async function startServer() {
       }
       const settings = readJsonFile(SETTINGS_FILE, null);
       const smtpConfig = settings?.smtpSettings;
-      const host = smtpConfig?.host || process.env.SMTP_HOST;
+      const host = smtpConfig?.host || process.env.SMTP_HOST || "mail.akuzstickers.com";
       const port = smtpConfig?.port ? parseInt(smtpConfig.port, 10) : process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
       const secure = smtpConfig?.secure !== void 0 ? Boolean(smtpConfig.secure) : port === 465;
-      const userSmtp = smtpConfig?.user || process.env.SMTP_USER;
-      const passSmtp = smtpConfig?.pass || process.env.SMTP_PASS;
-      const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || "AKUZ Stickers";
+      const userSmtp = smtpConfig?.user || process.env.SMTP_USER || "info@akuzstickers.com";
+      const passSmtp = smtpConfig?.pass || process.env.SMTP_PASS || "GvqrM6nWyfE9mMX";
+      const fromName = smtpConfig?.fromName || process.env.SMTP_FROM_NAME || "AKUZ STICKERS";
       const fromEmail = smtpConfig?.fromEmail || userSmtp || "info@akuzstickers.com";
       const logoCid = "cid:akuz-logo@akuzstickers.com";
       const recoveryHtml = `
@@ -1833,11 +2089,12 @@ async function startServer() {
   app.post("/api/products", (req, res) => {
     try {
       const { products } = req.body;
-      if (!Array.isArray(products)) {
-        return res.status(400).json({ success: false, error: "\xDCr\xFCn listesi dizi olmal\u0131d\u0131r." });
+      if (!Array.isArray(products) || products.length === 0) {
+        return res.status(400).json({ success: false, error: "\xDCr\xFCn listesi bo\u015F olamaz. Mevcut \xFCr\xFCnlerin kazara silinmesini \xF6nlemek i\xE7in i\u015Flem durduruldu." });
       }
       writeJsonFile(PRODUCTS_FILE, products);
       console.log(`[PRODUCTS SAVED TO HOST] Toplam ${products.length} \xFCr\xFCn g\xFCncellendi.`);
+      runDataSync();
       return res.json({ success: true, count: products.length });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
@@ -1854,6 +2111,7 @@ async function startServer() {
       products = products.filter((p) => p.id !== id && p.slug !== id);
       writeJsonFile(PRODUCTS_FILE, products);
       console.log(`[PRODUCT DELETED ON HOST] ID: ${id}. Kalan \xFCr\xFCn: ${products.length} (\xD6nceki: ${beforeCount})`);
+      runDataSync();
       return res.json({ success: true, count: products.length, deletedId: id });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
@@ -1878,7 +2136,31 @@ async function startServer() {
       }
       writeJsonFile(SETTINGS_FILE, settings);
       console.log(`[SETTINGS SAVED TO HOST] Site ayarlar\u0131 sunucuya kaydedildi.`);
+      runDataSync();
       return res.json({ success: true, message: "Ayarlar ba\u015Far\u0131yla host sunucusuna kaydedildi." });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  const COLORS_FILE = path.join(DATA_DIR, "global_colors.json");
+  app.get("/api/colors", (_req, res) => {
+    try {
+      const colors = readJsonFile(COLORS_FILE, []);
+      return res.json({ success: true, colors });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  app.post("/api/colors", (req, res) => {
+    try {
+      const { colors } = req.body;
+      if (!Array.isArray(colors)) {
+        return res.status(400).json({ success: false, error: "Renk listesi dizi olmal\u0131d\u0131r." });
+      }
+      writeJsonFile(COLORS_FILE, colors);
+      console.log(`[COLORS SAVED TO HOST] Renk paleti g\xFCncellendi (${colors.length} renk).`);
+      runDataSync();
+      return res.json({ success: true, count: colors.length });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
     }

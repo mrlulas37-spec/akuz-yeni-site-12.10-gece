@@ -16,6 +16,7 @@ import {
   Check,
   X,
   ExternalLink,
+  Save,
   ArrowLeft,
   ArrowRight,
   Search,
@@ -82,6 +83,7 @@ import {
   sendOrderDeliveredEmailDetailed,
 } from '../utils/emailService';
 import { createKargonomiShipment, testKargonomiConnection } from '../utils/kargonomiService';
+import { ThreeDDiscountCoin } from './ThreeDDiscountCoin';
 
 interface AdminPanelProps {
   products: Product[];
@@ -903,8 +905,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           await sendOrderPreparingEmail(emailPayload);
           showNotification(`Müşteriye "${targetOrder.customerEmail}" "Siparişiniz Hazırlanıyor" e-postası iletildi.`);
         } else if (newStatus === 'Kargoya Verildi') {
-          await sendOrderShippedEmail(emailPayload);
-          showNotification(`Müşteriye "${targetOrder.customerEmail}" "Siparişiniz Kargoya Verildi" e-postası iletildi.`);
+          if (targetOrder.trackingNumber && targetOrder.trackingNumber.trim()) {
+            await sendOrderShippedEmail(emailPayload);
+            showNotification(`Müşteriye "${targetOrder.customerEmail}" "Siparişiniz Kargoya Verildi" e-postası iletildi.`);
+          } else {
+            showNotification(`Sipariş durumu "Kargoya Verildi" olarak kaydedildi. Müşteriye takip kodlu bildirim göndermek için kargo takip numarasını girip "Kaydet & Müşteriye Bildir" butonuna basabilirsiniz.`);
+          }
         } else if (newStatus === 'Teslim Edildi') {
           await sendOrderDeliveredEmail(emailPayload);
           showNotification(`Müşteriye "${targetOrder.customerEmail}" "Siparişiniz Teslim Edildi" e-postası iletildi.`);
@@ -1402,6 +1408,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isTestingKargonomi, setIsTestingKargonomi] = useState(false);
   const [kargonomiTestResult, setKargonomiTestResult] = useState<{ success: boolean; msg: string } | null>(null);
   const [creatingShipmentOrderId, setCreatingShipmentOrderId] = useState<string | null>(null);
+  const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
+  const [sendingTrackingOrderId, setSendingTrackingOrderId] = useState<string | null>(null);
 
   // PayTR Sanal POS Ayarları
   const defaultPaytr: PaytrConfig = siteSettings.paytrSettings || {
@@ -1626,64 +1634,140 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleCreateShipmentForOrder = async (order: Order) => {
     setCreatingShipmentOrderId(order.id);
+
+    // Alıcı il ve ilçesini sipariş teslimat adresinden akıllıca ayrıştır
+    let recipientCity = 'Bursa';
+    let recipientDistrict = 'Nilüfer';
+    if (order.shippingAddress) {
+      const slashMatch = order.shippingAddress.match(/,\s*([^,\/]+)\s*\/\s*([^,\/]+)\s*$/);
+      if (slashMatch) {
+        recipientDistrict = slashMatch[1].trim();
+        recipientCity = slashMatch[2].trim();
+      } else {
+        const parts = order.shippingAddress.split(',').map((p) => p.trim());
+        const lastPart = parts[parts.length - 1] || '';
+        if (lastPart.includes('/')) {
+          const [d, c] = lastPart.split('/');
+          if (d.trim()) recipientDistrict = d.trim();
+          if (c.trim()) recipientCity = c.trim();
+        }
+      }
+    }
+
     const result = await createKargonomiShipment({
       orderId: order.id,
       recipientName: order.customerName || 'Müşteri',
-      recipientPhone: order.customerPhone || '05555555555',
+      recipientPhone: order.customerPhone || '05468758671',
       recipientAddress: order.shippingAddress || 'Adres belirtilmemiş',
-      recipientCity: 'Bursa',
-      recipientDistrict: 'Nilüfer',
-      itemsDescription: order.items.map((i) => `${i.quantity}x ${i.productName}`).join(', '),
+      recipientCity,
+      recipientDistrict,
+      itemsDescription:
+        order.items && order.items.length > 0
+          ? order.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ')
+          : 'AKUZ Sticker Paketi',
       carrier: kargonomiCarrier,
     });
     setCreatingShipmentOrderId(null);
 
-    if (result.success && result.trackingNumber) {
+    if (result.success) {
+      const returnedTracking = result.trackingNumber || '';
       const updatedOrders = orders.map((o) => {
         if (o.id === order.id) {
           return {
             ...o,
-            status: 'Kargoya Verildi' as const,
-            trackingNumber: result.trackingNumber,
-            carrierName: result.carrier || 'Kargonomi',
-            kargonomiShipmentId: result.shipmentId,
+            kargonomiShipmentId: result.shipmentId || o.kargonomiShipmentId,
+            carrierName: result.carrier || o.carrierName || 'Kargonomi / MNG Kargo',
+            ...(returnedTracking && !o.trackingNumber ? { trackingNumber: returnedTracking } : {}),
           };
         }
         return o;
       });
       onUpdateOrders(updatedOrders);
-      showNotification(`Kargonomi barkodu oluşturuldu! Takip No: ${result.trackingNumber}`);
 
-      // Merkezi Host sunucusuna kargo takip numarasını kaydet
+      // Takip inputunu otomatik doldur
+      if (returnedTracking) {
+        setTrackingInputs((prev) => ({ ...prev, [order.id]: returnedTracking }));
+      }
+
+      showNotification(
+        `Sipariş #${order.id} Kargonomi'ye başarıyla iletildi (Kargonomi Gönderi No: #${result.shipmentId || ''})! Alıcıya e-posta gönderilmedi. Kargo takip kodunu girip kaydettiğinizde müşteriye bildirim iletilecektir.`
+      );
+
+      // Merkezi Host sunucusuna kargo kaydını kaydet
       fetch(`/api/orders/${order.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: 'Kargoya Verildi',
-          trackingNumber: result.trackingNumber,
-          carrierName: result.carrier || 'Kargonomi',
           kargonomiShipmentId: result.shipmentId,
+          carrierName: result.carrier || order.carrierName || 'Kargonomi / MNG Kargo',
+          ...(returnedTracking && !order.trackingNumber ? { trackingNumber: returnedTracking } : {}),
         }),
       }).catch((e) => console.warn('[HOST ORDER UPDATE ERROR]', e));
+      // NOT: Müşteriye kesinlikle e-posta gönderilmez! Admin takip numarasını girip kaydettiğinde bildirim gidecektir.
+    } else {
+      showNotification(`Kargonomi'ye gönderilemedi: ${result.message}`);
+    }
+  };
 
-      // Müşteriye anında Kargoya Verildi e-postası yolla
-      if (order.customerEmail && order.customerEmail.includes('@')) {
-        sendOrderShippedEmail({
+  const handleSaveTrackingAndNotifyCustomer = async (order: Order, customTracking?: string) => {
+    const rawVal = customTracking !== undefined ? customTracking : (trackingInputs[order.id] ?? order.trackingNumber ?? '');
+    const cleanTracking = String(rawVal).trim();
+
+    if (!cleanTracking) {
+      showNotification('Lütfen geçerli bir kargo takip numarası girin.');
+      return;
+    }
+
+    setSendingTrackingOrderId(order.id);
+
+    const updatedOrders = orders.map((o) => {
+      if (o.id === order.id) {
+        return {
+          ...o,
+          status: 'Kargoya Verildi' as const,
+          trackingNumber: cleanTracking,
+          carrierName: o.carrierName || kargonomiCarrier || 'Kargonomi / MNG Kargo',
+        };
+      }
+      return o;
+    });
+    onUpdateOrders(updatedOrders);
+
+    // Merkezi sunucuya kaydet
+    await fetch(`/api/orders/${order.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'Kargoya Verildi',
+        trackingNumber: cleanTracking,
+        carrierName: order.carrierName || kargonomiCarrier || 'Kargonomi / MNG Kargo',
+      }),
+    }).catch((e) => console.warn('[HOST ORDER UPDATE ERROR]', e));
+
+    // Müşteriye takip kodlu kargo e-postası gönder
+    if (order.customerEmail && order.customerEmail.includes('@')) {
+      try {
+        await sendOrderShippedEmail({
           orderId: order.id,
           customerName: order.customerName || 'Değerli Müşterimiz',
           customerEmail: order.customerEmail,
           customerPhone: order.customerPhone,
           shippingAddress: order.shippingAddress,
-          trackingNumber: result.trackingNumber,
-          carrierName: result.carrier || 'Kargonomi',
+          trackingNumber: cleanTracking,
+          carrierName: order.carrierName || kargonomiCarrier || 'Kargonomi / MNG Kargo',
           items: order.items,
           totalPrice: order.total,
-        }).catch(console.error);
-        showNotification(`Müşteriye "${order.customerEmail}" kargo takip bildirim e-postası iletildi.`);
+        });
+        showNotification(`Takip kodu (${cleanTracking}) kaydedildi ve "${order.customerEmail}" adresine kargo bildirim e-postası başarıyla iletildi!`);
+      } catch (err: any) {
+        console.error('[TRACKING EMAIL ERROR]', err);
+        showNotification(`Takip kodu kaydedildi, ancak e-posta gönderilirken hata oluştu: ${err?.message || 'SMTP hatası'}`);
       }
     } else {
-      showNotification(`Kargo oluşturulamadı: ${result.message}`);
+      showNotification(`Takip kodu (${cleanTracking}) kaydedildi ve sipariş durumu "Kargoya Verildi" yapıldı.`);
     }
+
+    setSendingTrackingOrderId(null);
   };
 
   const filteredProducts = products.filter(
@@ -1724,7 +1808,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <span>{isMobileMenuOpen ? 'Menüyü Kapat' : 'Menü'}</span>
             </button>
 
+            {/* 1. Önizleme Değişikliklerini Kalıcı Kaydet & cPanel Paketle Butonu */}
             <button
+              type="button"
+              onClick={() => handleRebuildCpanel()}
+              disabled={rebuildingCpanel}
+              title="Önizlemedeki tüm düzenlemeleri kaynak kodlara kaydeder ve cPanel ZIP paketlerini en son haliyle günceller"
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-sm hover:shadow text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-60"
+            >
+              {rebuildingCpanel ? (
+                <>
+                  <RefreshCw size={13} className="animate-spin text-white" />
+                  <span className="hidden sm:inline">Paketleniyor...</span>
+                  <span className="sm:hidden">Kaydediliyor...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={13} className="text-emerald-100" />
+                  <span className="hidden md:inline">Önizlemeyi Kaydet & cPanel Paketle</span>
+                  <span className="md:hidden">cPanel'e Kaydet</span>
+                </>
+              )}
+            </button>
+
+            {/* 2. cPanel İndirme Sekmesine Git */}
+            <button
+              type="button"
               onClick={() => {
                 setActiveTab('cpanel-deploy');
                 setIsMobileMenuOpen(false);
@@ -1732,8 +1841,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
             >
               <Archive size={14} className="text-emerald-600" />
-              <span className="hidden sm:inline">Site Dosyalarını Güncelle & İndir</span>
-              <span className="sm:hidden">Dosyaları Güncelle</span>
+              <span className="hidden lg:inline">cPanel Paketleri (.ZIP)</span>
+              <span className="lg:hidden">cPanel İndir</span>
             </button>
 
             <button
@@ -2473,8 +2582,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
                           Yuvarlak İkon
                         </span>
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden shadow-sm ${cat.bgGradient || 'bg-slate-900 text-white'}`}>
-                          {cat.imageUrl ? (
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden shadow-sm ${
+                          cat.id === 'discount'
+                            ? 'bg-[radial-gradient(circle_at_center,_#2b0d14_0%,_#140508_55%,_#050204_100%)] text-white ring-2 ring-amber-500/70 border border-amber-500/30'
+                            : cat.bgGradient || 'bg-slate-900 text-white'
+                        }`}>
+                          {cat.id === 'discount' ? (
+                            <ThreeDDiscountCoin size={38} />
+                          ) : cat.imageUrl ? (
                             <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
                           ) : (
                             <span className="text-sm font-black uppercase text-white">{cat.titleLine1.charAt(0)}</span>
@@ -2683,22 +2798,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="divide-y divide-slate-100">
                   {orders.map((order) => (
                     <div key={order.id} className="p-4 sm:p-6 hover:bg-slate-50/70 transition-colors">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                      {/* 1. ÜST BAŞLIK SATIRI */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-slate-900 uppercase">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-black text-slate-900 uppercase">
                               #{order.id}
                             </span>
-                            <span className="text-[11px] text-slate-400">{order.date}</span>
+                            <span className="text-xs text-slate-400 font-medium">{order.date}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Ödeme: {order.paymentStatus || 'Ödendi'}
+                            </span>
                           </div>
-                          <p className="text-xs font-extrabold text-slate-700 mt-0.5">
-                            Toplam: <span className="text-emerald-700 font-black">{order.total} TL</span>
+                          <p className="text-xs font-bold text-slate-500 mt-1">
+                            Toplam Tutar: <span className="text-emerald-700 font-black text-sm">{order.total} TL</span>
                           </p>
                         </div>
 
-                        {/* Durum Seçici & Kargonomi Kargo Butonu */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="text-xs font-bold text-slate-500">Durum:</label>
+                        {/* Durum Seçici */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-bold text-slate-500">Sipariş Durumu:</label>
                           <select
                             value={order.status}
                             onChange={(e) =>
@@ -2716,31 +2835,118 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <option value="Kargoya Verildi">Kargoya Verildi</option>
                             <option value="Teslim Edildi">Teslim Edildi</option>
                           </select>
-
-                          {/* Kargonomi Kargo Oluşturma Butonu */}
-                          {order.trackingNumber ? (
-                            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-800 px-2.5 py-1 rounded-lg text-xs font-bold">
-                              <Truck size={14} className="text-blue-600" />
-                              <span>Takip: {order.trackingNumber}</span>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={creatingShipmentOrderId === order.id}
-                              onClick={() => handleCreateShipmentForOrder(order)}
-                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-black transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
-                            >
-                              <Truck size={14} />
-                              <span>
-                                {creatingShipmentOrderId === order.id ? 'Oluşturuluyor...' : 'Kargonomi Barkodu Al'}
-                              </span>
-                            </button>
-                          )}
                         </div>
                       </div>
 
-                      {/* Sipariş Edilen Ürünler */}
+                      {/* 2. MÜŞTERİ VE TESLİMAT BİLGİLERİ */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 my-3 p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-xs">
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-bold uppercase block">Alıcı Müşteri</span>
+                          <p className="font-extrabold text-slate-900 mt-0.5">{order.customerName || 'Müşteri İsmi Girilmedi'}</p>
+                          {order.customerPhone && (
+                            <p className="text-slate-600 font-medium mt-0.5 flex items-center gap-1">
+                              <Phone size={12} className="text-slate-400" />
+                              <span>{order.customerPhone}</span>
+                            </p>
+                          )}
+                          {order.customerEmail && (
+                            <p className="text-slate-600 font-medium mt-0.5 flex items-center gap-1 truncate" title={order.customerEmail}>
+                              <Mail size={12} className="text-slate-400" />
+                              <span>{order.customerEmail}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="sm:col-span-1 md:col-span-2">
+                          <span className="text-slate-400 text-[10px] font-bold uppercase block">Teslimat Adresi</span>
+                          <p className="font-medium text-slate-800 mt-0.5 leading-relaxed">
+                            {order.shippingAddress || 'Adres bilgisi bulunamadı.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 3. KARGONOMİ & KARGO TAKİP AKSİYON ALANI (Kullanıcı İsteği) */}
+                      <div className="my-3 p-3.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 rounded-xl border border-blue-200/80">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          {/* 1. Buton: Kargonomi'ye Siparişi Gönder (Alıcıya e-posta atmaz) */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                disabled={creatingShipmentOrderId === order.id}
+                                onClick={() => handleCreateShipmentForOrder(order)}
+                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs hover:shadow-sm active:scale-95"
+                              >
+                                <Truck size={15} />
+                                <span>
+                                  {creatingShipmentOrderId === order.id
+                                    ? "Kargonomi'ye Gönderiliyor..."
+                                    : order.kargonomiShipmentId
+                                    ? "Kargonomi'ye Siparişi Tekrar Gönder"
+                                    : "Kargonomi'ye Siparişi Gönder"}
+                                </span>
+                              </button>
+
+                              {order.kargonomiShipmentId && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/90 text-emerald-800 text-[11px] font-bold border border-emerald-300">
+                                  <CheckCircle size={13} className="text-emerald-600" />
+                                  <span>Kargonomi Kaydı Açık (#{order.kargonomiShipmentId})</span>
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 font-medium">
+                              Bu butona basıldığında sipariş Kargonomi'ye iletilir, <strong>alıcıya e-posta gitmez.</strong>
+                            </p>
+                          </div>
+
+                          {/* 2. Takip Numarası Girişi & Müşteriye Bildirim Gönderme */}
+                          <div className="w-full md:w-auto md:min-w-[320px] lg:min-w-[380px] space-y-1">
+                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">
+                              Kargo Takip Numarası
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Takip No (Örn: MNG12345678)"
+                                value={
+                                  trackingInputs[order.id] !== undefined
+                                    ? trackingInputs[order.id]
+                                    : (order.trackingNumber || '')
+                                }
+                                onChange={(e) =>
+                                  setTrackingInputs((prev) => ({ ...prev, [order.id]: e.target.value }))
+                                }
+                                className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                              <button
+                                type="button"
+                                disabled={sendingTrackingOrderId === order.id}
+                                onClick={() => handleSaveTrackingAndNotifyCustomer(order)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 shadow-xs"
+                                title="Takip numarasını kaydeder ve müşteriye takip linkli e-posta bildirimi iletir"
+                              >
+                                <Send size={13} />
+                                <span>
+                                  {sendingTrackingOrderId === order.id
+                                    ? 'Gönderiliyor...'
+                                    : order.trackingNumber
+                                    ? 'Güncelle & Bildir'
+                                    : 'Kaydet & Müşteriye Bildir'}
+                                </span>
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              Takip numarasını buraya girip kaydettiğinizde <strong>alıcıya takip kodlu e-posta iletilir.</strong>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. SİPARİŞ EDİLEN ÜRÜNLER */}
                       <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2">
+                        <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                          Siparişteki Ürünler ({order.items.reduce((s, i) => s + i.quantity, 0)} Adet)
+                        </span>
                         {order.items.map((item, idx) => (
                           <div key={idx} className="flex items-center justify-between text-xs">
                             <div className="flex items-center gap-2">
@@ -4514,12 +4720,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       cPanel'e Tek Tıkla Yükleme ve Yayınlama
                     </h3>
                     <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl leading-relaxed">
-                      AKUZ Stickers mağazanızın tüm kaynakları (derlenmiş Vite ön yüzü, Express sunucusu, sipariş/kullanıcı JSON veritabanı, ürün fotoğrafları ve Apache .htaccess kuralları) cPanel'e yüklenmeye hazır güncel ZIP paketleri olarak derlendi.
+                      Önizleme ekranında yaptığınız tüm ürün düzenlemeleri, yuvarlak kategori butonları, fotoğraflar, fiyatlar, PayTR ve mağaza ayarlarınız <strong>kalıcı olarak kaydedilir</strong>. cPanel'e atmadan önce <strong>"Şu Anki Kodlarla Güncelle & İndir"</strong> butonuna bastığınızda, önizlemedeki tüm değişiklikleriniz derlenip ZIP paketlerine işlenir.
                     </p>
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/30 border border-emerald-400/40 rounded-full text-xs font-bold text-emerald-100">
                         <CheckCircle size={13} className="text-emerald-300" />
-                        Dosyalar %100 Güncel
+                        Önizleme Verileri & Kodlar %100 Senkronize
                       </span>
                       <span className="text-xs text-emerald-200/80">
                         {cpanelStatus?.fullApp?.lastModified
