@@ -147,6 +147,8 @@ export interface CartItem {
 }
 
 export interface UserProfile {
+  id?: string;
+  user_id?: string;
   name: string;
   email: string;
   phone: string;
@@ -156,6 +158,10 @@ export interface UserProfile {
   cart?: CartItem[];
   favorites?: string[];
   recentlyViewed?: string[];
+  isGoogleUser?: boolean;
+  authProvider?: string;
+  provider?: string;
+  registeredVia?: string;
 }
 
 export interface Address {

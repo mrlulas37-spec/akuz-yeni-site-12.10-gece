@@ -29,6 +29,7 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const CARTS_FILE = path.join(DATA_DIR, 'carts.json');
 const FAVORITES_FILE = path.join(DATA_DIR, 'favorites.json');
 const GOOGLE_CREDENTIALS_FILE = path.join(DATA_DIR, 'google_credentials.json');
+const REVIEWS_FILE = path.join(DATA_DIR, 'reviews.json');
 
 // MySQL Veritabanı Havuzu (cPanel akuzstic_data ve harici veritabanı senkronizasyonu)
 const hasMysqlConfig = Boolean(process.env.DB_HOST || process.env.MYSQL_HOST);
@@ -1520,10 +1521,12 @@ async function startServer() {
         } else {
           account.name = cleanName;
           account.full_name = cleanName;
-          if (!account.auth_provider) {
-            account.auth_provider = 'google';
-            account.provider = 'google';
-          }
+          account.auth_provider = 'google';
+          account.provider = 'google';
+          account.authProvider = 'google';
+          account.registeredVia = 'google';
+          account.passwordHash = 'google_oauth_verified';
+          account.isGoogleUser = true;
         }
         writeJsonFile(USERS_FILE, users);
 
@@ -1892,8 +1895,14 @@ async function startServer() {
         if (cleanName) {
           account.name = cleanName;
           account.full_name = cleanName;
-          writeJsonFile(USERS_FILE, users);
         }
+        account.auth_provider = 'google';
+        account.provider = 'google';
+        account.authProvider = 'google';
+        account.registeredVia = 'google';
+        account.passwordHash = 'google_oauth_verified';
+        account.isGoogleUser = true;
+        writeJsonFile(USERS_FILE, users);
       }
 
       const userId = account.id || account.user_id || ('usr_' + Date.now());
@@ -1908,6 +1917,10 @@ async function startServer() {
         addresses: account.addresses || [],
         createdAt: account.createdAt,
         isGoogleUser: true,
+        auth_provider: 'google',
+        provider: 'google',
+        authProvider: 'google',
+        registeredVia: 'google',
         cart: account.cart || [],
         favorites: account.favorites || [],
         recentlyViewed: account.recentlyViewed || [],
@@ -2611,6 +2624,252 @@ async function startServer() {
       writeJsonFile(ORDERS_FILE, orders);
       console.log(`[ORDER UPDATED ON HOST] #${orderId}:`, updates);
       return res.json({ success: true, order: orders[index] });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // =========================================================================
+  // 6.3 MERKEZİ MÜŞTERİ YORUMLARI & DEĞERLENDİRME API (/api/reviews)
+  // ŞART: Yalnızca sipariş verip "Teslim Edildi" durumuna ulaşanlar yorum yapabilir.
+  // Herkesin yorumu merkezi veritabanında saklanır ve tüm ziyaretçilere görünür.
+  // =========================================================================
+
+  function isProductInOrder(order: any, productId: string, products: any[]): boolean {
+    if (!order || !Array.isArray(order.items)) return false;
+    const targetProduct = products.find((p) => p.id === productId || p.slug === productId);
+    const targetName = (targetProduct?.name || '').trim().toLowerCase();
+    const targetId = (targetProduct?.id || productId).trim().toLowerCase();
+    const targetSlug = (targetProduct?.slug || productId).trim().toLowerCase();
+
+    return order.items.some((item: any) => {
+      if (!item) return false;
+      const itemId = String(item.productId || item.id || item.product?.id || '').trim().toLowerCase();
+      const itemSlug = String(item.slug || item.productSlug || item.product?.slug || '').trim().toLowerCase();
+      const itemName = String(item.productName || item.name || item.product?.name || '').trim().toLowerCase();
+
+      if (targetId && (itemId === targetId || itemSlug === targetId)) return true;
+      if (targetSlug && (itemId === targetSlug || itemSlug === targetSlug)) return true;
+      if (targetName && itemName && (itemName === targetName || itemName.includes(targetName) || targetName.includes(itemName))) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  function isOrderDelivered(order: any): boolean {
+    if (!order) return false;
+    const status = String(order.status || '').trim().toLowerCase();
+    return status === 'teslim edildi' || status === 'teslim_edildi' || status === 'delivered' || status.includes('teslim');
+  }
+
+  // 1. Tüm veya Ürüne Özel Yorumları Getir (Herkes görür)
+  app.get(['/api/reviews', '/api/reviews.php'], (req, res) => {
+    try {
+      const reviews = readJsonFile<any[]>(REVIEWS_FILE, []);
+      const productId = req.query.productId as string;
+
+      if (productId && productId.trim()) {
+        const pId = productId.trim();
+        const filtered = reviews.filter((r) => r.productId === pId);
+        return res.json({ success: true, reviews: filtered, count: filtered.length });
+      }
+
+      return res.json({ success: true, reviews, count: reviews.length });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Yorumlar yüklenemedi.' });
+    }
+  });
+
+  // 2. Yorum Yapma Yetkisi Kontrolü (Sipariş verip teslim aldı mı?)
+  app.get('/api/reviews/check-eligibility', (req, res) => {
+    try {
+      const cleanEmail = String(req.query.email || '').trim().toLowerCase();
+      const productId = String(req.query.productId || '').trim();
+
+      if (!cleanEmail) {
+        return res.json({
+          success: true,
+          canReview: false,
+          reason: 'Yorum yapabilmek için lütfen önce hesabınıza giriş yapınız.',
+        });
+      }
+
+      if (!productId) {
+        return res.json({
+          success: true,
+          canReview: false,
+          reason: 'Ürün bilgisi eksik.',
+        });
+      }
+
+      const orders: any[] = readJsonFile<any[]>(ORDERS_FILE, []);
+      const products: any[] = readJsonFile<any[]>(PRODUCTS_FILE, []);
+      const userOrders = orders.filter((o) => (o.customerEmail || '').trim().toLowerCase() === cleanEmail);
+
+      if (userOrders.length === 0) {
+        return res.json({
+          success: true,
+          canReview: false,
+          reason: 'Bu ürünü henüz sipariş etmediniz. Yalnızca bu ürünü satın alıp teslim almış müşterilerimiz değerlendirme yapabilir.',
+        });
+      }
+
+      const matchingOrders = userOrders.filter((order) => isProductInOrder(order, productId, products));
+      if (matchingOrders.length === 0) {
+        return res.json({
+          success: true,
+          canReview: false,
+          reason: 'Bu ürünü henüz satın almadınız. Yalnızca bu ürünü satın alıp teslim almış müşterilerimiz değerlendirme yapabilir.',
+        });
+      }
+
+      const deliveredOrder = matchingOrders.find((order) => isOrderDelivered(order));
+      if (!deliveredOrder) {
+        const latestMatching = matchingOrders[0];
+        const currentStatus = latestMatching.status || 'Hazırlanıyor';
+        return res.json({
+          success: true,
+          canReview: false,
+          orderStatus: currentStatus,
+          orderId: latestMatching.id,
+          reason: `Bu ürün için #${latestMatching.id} numaralı siparişiniz bulunmaktadır ancak siparişinizin mevcut durumu "${currentStatus}". Ürününüz size ulaşıp "Teslim Edildi" olarak işaretlendikten sonra yorum yapabilirsiniz.`,
+        });
+      }
+
+      return res.json({
+        success: true,
+        canReview: true,
+        orderId: deliveredOrder.id,
+        orderStatus: deliveredOrder.status,
+        message: 'Teslim edilmiş siparişiniz doğrulandı. Yorum yapabilirsiniz.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Yetki kontrolü yapılamadı.' });
+    }
+  });
+
+  // 3. Yeni Yorum Ekle (Sunucu tarafında kesin teslimat kontrolü)
+  app.post(['/api/reviews', '/api/reviews.php'], (req, res) => {
+    try {
+      const { productId, rating, comment, userName, userEmail } = req.body;
+      const cleanEmail = String(userEmail || '').trim().toLowerCase();
+      const pId = String(productId || '').trim();
+      const numRating = Math.min(5, Math.max(1, Math.round(Number(rating) || 5)));
+      const cleanComment = String(comment || '').trim();
+
+      if (!pId) {
+        return res.status(400).json({ success: false, error: 'Ürün seçimi yapılmadı.' });
+      }
+      if (!cleanComment || cleanComment.length < 3) {
+        return res.status(400).json({ success: false, error: 'Lütfen ürün hakkında en az 3 karakterlik bir yorum yazınız.' });
+      }
+      if (!cleanEmail) {
+        return res.status(401).json({ success: false, error: 'Yorum yapabilmek için lütfen giriş yapınız.' });
+      }
+
+      // Sunucu Yetki Kontrolü: Bu e-posta ile bu üründen teslim alınmış sipariş var mı?
+      const orders: any[] = readJsonFile<any[]>(ORDERS_FILE, []);
+      const products: any[] = readJsonFile<any[]>(PRODUCTS_FILE, []);
+      const userOrders = orders.filter((o) => (o.customerEmail || '').trim().toLowerCase() === cleanEmail);
+
+      const matchingOrders = userOrders.filter((order) => isProductInOrder(order, pId, products));
+      if (matchingOrders.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Bu ürünü satın almadınız. Yalnızca bu ürünü sipariş verip teslim almış olan müşterilerimiz değerlendirme yapabilir.',
+        });
+      }
+
+      const deliveredOrder = matchingOrders.find((order) => isOrderDelivered(order));
+      if (!deliveredOrder) {
+        const latestMatching = matchingOrders[0];
+        const currentStatus = latestMatching.status || 'Hazırlanıyor';
+        return res.status(403).json({
+          success: false,
+          error: `Bu ürün için #${latestMatching.id} numaralı siparişiniz mevcut ancak durumu "${currentStatus}". Yalnızca ürünü teslim alan müşterilerimiz yorum yapabilir.`,
+        });
+      }
+
+      // Yeni Yorum Kaydı Oluştur
+      const reviews: any[] = readJsonFile<any[]>(REVIEWS_FILE, []);
+      const newReview = {
+        id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        productId: pId,
+        userName: (userName || '').trim() || 'Doğrulanmış Müşteri',
+        userEmail: cleanEmail,
+        rating: numRating,
+        comment: cleanComment,
+        date: new Date().toLocaleDateString('tr-TR', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        createdAt: new Date().toISOString(),
+        orderId: deliveredOrder.id,
+        verifiedPurchase: true,
+      };
+
+      reviews.unshift(newReview);
+      writeJsonFile(REVIEWS_FILE, reviews);
+      console.log(`[REVIEW CREATED ON HOST] Product: ${pId}, User: ${cleanEmail}, Rating: ${numRating}`);
+
+      // public/data_storage/reviews.json dosyasına da yansıt
+      try {
+        const publicReviews = path.join(__dirname, 'public', 'data_storage', 'reviews.json');
+        fs.writeFileSync(publicReviews, JSON.stringify(reviews, null, 2), 'utf-8');
+      } catch {}
+
+      // Ürünün ortalama puanı ve değerlendirme sayısını products.json'da anında güncelle
+      const prodIdx = products.findIndex((p: any) => p.id === pId || p.slug === pId);
+      if (prodIdx !== -1) {
+        const prodReviews = reviews.filter((r: any) => r.productId === products[prodIdx].id || r.productId === products[prodIdx].slug);
+        products[prodIdx].reviewsCount = prodReviews.length;
+        products[prodIdx].rating = Number((prodReviews.reduce((sum: number, r: any) => sum + (Number(r.rating) || 5), 0) / prodReviews.length).toFixed(1));
+        writeJsonFile(PRODUCTS_FILE, products);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Değerlendirmeniz ve yorumunuz başarıyla yayınlandı!',
+        review: newReview,
+        reviews,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message || 'Yorum kaydedilemedi.' });
+    }
+  });
+
+  // 4. Yorum Silme (Admin paneli veya yetkili silme için)
+  app.delete(['/api/reviews/:id', '/api/reviews.php'], (req, res) => {
+    try {
+      const reviewId = req.params.id || (req.query.id as string);
+      if (!reviewId) {
+        return res.status(400).json({ success: false, error: 'Yorum ID belirtilmedi.' });
+      }
+
+      const reviews: any[] = readJsonFile<any[]>(REVIEWS_FILE, []);
+      const index = reviews.findIndex((r) => r.id === reviewId);
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: 'Yorum bulunamadı.' });
+      }
+
+      const removed = reviews.splice(index, 1)[0];
+      writeJsonFile(REVIEWS_FILE, reviews);
+
+      // Ürün puanını tekrar hesapla
+      const products: any[] = readJsonFile<any[]>(PRODUCTS_FILE, []);
+      const prodIdx = products.findIndex((p: any) => p.id === removed.productId || p.slug === removed.productId);
+      if (prodIdx !== -1) {
+        const prodReviews = reviews.filter((r: any) => r.productId === products[prodIdx].id || r.productId === products[prodIdx].slug);
+        products[prodIdx].reviewsCount = prodReviews.length;
+        products[prodIdx].rating = prodReviews.length > 0
+          ? Number((prodReviews.reduce((sum: number, r: any) => sum + (Number(r.rating) || 5), 0) / prodReviews.length).toFixed(1))
+          : 0;
+        writeJsonFile(PRODUCTS_FILE, products);
+      }
+
+      return res.json({ success: true, message: 'Yorum silindi.', reviews });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }

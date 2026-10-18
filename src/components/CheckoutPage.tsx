@@ -462,6 +462,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     let emailToUse = email ? email.trim() : '';
     let addressToUse = `${neighborhood.trim() ? `${neighborhood.trim()} Mah., ` : ''}${fullAddress.trim()}, ${district.trim()}/${city.trim()}`;
     let itemsToUse = cartItems.map((item) => ({
+      productId: item.product?.id || '',
       productName: item.product.name,
       quantity: item.quantity,
       color: item.selectedColor,
@@ -485,6 +486,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           if (parsed.shippingAddress) addressToUse = parsed.shippingAddress;
           if (itemsToUse.length === 0 && Array.isArray(parsed.cartItems) && parsed.cartItems.length > 0) {
             itemsToUse = parsed.cartItems.map((it: any) => ({
+              productId: it.product?.id || it.productId || it.id || '',
               productName: it.product?.name || it.productName || 'AKUZ Sticker',
               quantity: it.quantity || 1,
               color: it.selectedColor || it.color || '',

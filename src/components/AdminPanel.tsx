@@ -3057,17 +3057,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {activeTab === 'users' && (() => {
             // Filtreleme ve Arama Hesaplamaları
             const cleanQuery = userSearchQuery.trim().toLowerCase();
-            
-            const googleUsersCount = users.filter((u) => {
-              const isGoogle = u.authProvider === 'google' || u.provider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
-              return isGoogle;
-            }).length;
 
+            const checkIsGoogleUser = (u: any): boolean => {
+              if (!u) return false;
+              if (u.isGoogleUser === true) return true;
+              if (
+                u.authProvider === 'google' ||
+                u.auth_provider === 'google' ||
+                u.provider === 'google' ||
+                u.registeredVia === 'google' ||
+                u.passwordHash === 'google_oauth_verified' ||
+                u.authMethod === 'google'
+              ) {
+                return true;
+              }
+              const email = (u.email || '').trim().toLowerCase();
+              if (!email) return false;
+
+              try {
+                const rawGoogle = localStorage.getItem('akuz_google_accounts_list');
+                if (rawGoogle) {
+                  const parsed = JSON.parse(rawGoogle);
+                  if (Array.isArray(parsed) && parsed.some((g: any) => g.email && g.email.toLowerCase() === email)) {
+                    return true;
+                  }
+                }
+                const lastGoogle = localStorage.getItem('akuz_last_google_account');
+                if (lastGoogle) {
+                  const parsed = JSON.parse(lastGoogle);
+                  if (parsed?.email && parsed.email.toLowerCase() === email) {
+                    return true;
+                  }
+                }
+              } catch {}
+              return false;
+            };
+            
+            const googleUsersCount = users.filter((u) => checkIsGoogleUser(u)).length;
             const normalUsersCount = users.length - googleUsersCount;
             const withCartCount = users.filter((u) => Array.isArray(u.cart) && u.cart.length > 0).length;
 
             const filteredUsers = users.filter((u) => {
-              const isGoogle = u.authProvider === 'google' || u.provider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
+              const isGoogle = checkIsGoogleUser(u);
               
               // Kategori filtresi
               if (userFilterType === 'google' && !isGoogle) return false;
@@ -3289,7 +3320,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {filteredUsers.map((u, i) => {
-                            const isGoogle = u.authProvider === 'google' || u.provider === 'google' || u.registeredVia === 'google' || u.passwordHash === 'google_oauth_verified';
+                            const isGoogle = checkIsGoogleUser(u);
                             const cartItemsCount = Array.isArray(u.cart) ? u.cart.length : 0;
                             const favsCount = Array.isArray(u.favorites) ? u.favorites.length : 0;
                             const addrCount = Array.isArray(u.addresses) ? u.addresses.length : 0;
@@ -3448,7 +3479,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 {selectedUserDetail.name || 'İsimsiz Kullanıcı'}
                               </h3>
                               {/* Kayıt Şekli Rozeti */}
-                              {selectedUserDetail.authProvider === 'google' || selectedUserDetail.provider === 'google' || selectedUserDetail.registeredVia === 'google' || selectedUserDetail.passwordHash === 'google_oauth_verified' ? (
+                              {checkIsGoogleUser(selectedUserDetail) ? (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-white text-slate-900 shadow-xs">
                                   <GoogleGIcon size={13} />
                                   <span>Google ile Kayıtlı</span>
@@ -3506,7 +3537,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
                               <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Kayıt Yöntemi (Hesap Türü)</span>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                {selectedUserDetail.authProvider === 'google' || selectedUserDetail.provider === 'google' || selectedUserDetail.registeredVia === 'google' || selectedUserDetail.passwordHash === 'google_oauth_verified' ? (
+                                {checkIsGoogleUser(selectedUserDetail) ? (
                                   <span className="font-extrabold text-slate-800 flex items-center gap-1">
                                     <GoogleGIcon size={14} />
                                     <span>Google Tek Tıkla Giriş / OAuth</span>

@@ -156,6 +156,9 @@ export default function App() {
     }
   });
 
+  // Admin paneline sadece /adminadmin yazılarak erişilebilir
+  const isAdmin = currentPath === '/adminadmin' || currentPath === '/adminadmin/';
+
   // Global Site Settings (Neden Akuz 4 kutu, Hakkımızda metni, İletişim, Kategori yuvarlakları)
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
     return getStoredSiteSettings();
@@ -282,6 +285,32 @@ export default function App() {
         }
       })
       .catch(() => {});
+
+    // 4. Merkezi Yorumları Çek (Tüm kullanıcılar ve arkadaşlar anında birbirinin yorumlarını görür)
+    const fetchReviews = async () => {
+      try {
+        const res = await fetch('/api/reviews');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.reviews)) {
+            setReviews(data.reviews);
+            safeLocalStorageSet('akuz_reviews', JSON.stringify(data.reviews));
+          }
+        }
+      } catch (err) {
+        console.warn('[REVIEWS] Merkezi yorumlar çekilemedi:', err);
+      }
+    };
+
+    fetchReviews();
+    const reviewInterval = setInterval(fetchReviews, 20000); // 20 saniyede bir yeni yorumları tazele
+    const onFocus = () => fetchReviews();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(reviewInterval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   // Favorites state (persisted in localStorage)
@@ -347,7 +376,7 @@ export default function App() {
   useEffect(() => {
     let isCancelled = false;
 
-    if (currentPath === '/adminadmin') {
+    if (isAdmin) {
       fetchCentralUsers('akuz_admin_2026').then((hostUsers) => {
         if (!isCancelled) {
           setRegisteredUsers(hostUsers || []);
@@ -501,7 +530,7 @@ export default function App() {
       setGlobalColors(getStoredGlobalColors());
 
       // 4. Oturuma göre siparişleri senkronize et
-      if (currentPath === '/admin') {
+      if (isAdmin) {
         const ordRes = await fetch('/api/orders', {
           headers: { 'x-admin-token': 'akuz_admin_2026' },
         }).catch(() => null);
@@ -735,25 +764,55 @@ export default function App() {
     }, 2000);
   };
 
-  const handleAddReview = (
+  const handleAddReview = async (
     productId: string,
     userName: string,
     rating: number,
     comment: string
-  ) => {
-    const newRev: Review = {
-      id: `rev-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      productId,
-      userName,
-      rating,
-      comment,
-      date: new Date().toLocaleDateString('tr-TR', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }),
-    };
-    setReviews((prev) => [newRev, ...prev]);
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          userName,
+          rating,
+          comment,
+          userEmail: currentUser?.email || '',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return {
+          success: false,
+          error: data?.error || 'Yorum kaydedilemedi. Yalnızca siparişi teslim edilen müşterilerimiz yorum yapabilir.',
+        };
+      }
+
+      if (Array.isArray(data.reviews)) {
+        setReviews(data.reviews);
+        safeLocalStorageSet('akuz_reviews', JSON.stringify(data.reviews));
+      } else if (data.review) {
+        setReviews((prev) => [data.review, ...prev]);
+      }
+
+      // Ürün vitrin kartlarının puan ve adetlerini de yenile
+      fetch('/api/products')
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && Array.isArray(d.products)) {
+            setProducts(d.products);
+            safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(d.products));
+          }
+        })
+        .catch(() => {});
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Sunucu bağlantı hatası.' };
+    }
   };
 
   // Synchronize dynamic products and settings to storage
@@ -814,6 +873,7 @@ export default function App() {
     const reservedPaths = [
       '/',
       '/admin',
+      '/adminadmin',
       '/katalog',
       '/favoriler',
       '/favorilerim',
@@ -1149,7 +1209,7 @@ export default function App() {
       />
 
       {/* 1. ÜST PANEL (HEADER - Admin panelindeyken mağaza üst çubuğu gizlenir) */}
-      {currentPath !== '/admin' && (
+      {!isAdmin && (
         <Navbar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -1196,7 +1256,7 @@ export default function App() {
       )}
 
       {/* 2. SAYFA İÇERİĞİ: ADMİN PANELİ / SEPET / ÖDEME / HESAP / KATALOG / DETAY vb. */}
-      {currentPath === '/admin' ? (
+      {isAdmin ? (
         <main className="flex-1">
           <AdminPanel
             products={products}
@@ -1484,7 +1544,7 @@ export default function App() {
       )}
 
       {/* 3. EN ALT KISIM (FOOTER - Admin panelindeyken gizlenir) */}
-      {currentPath !== '/admin' && (
+      {!isAdmin && (
         <div className="perf-section-lazy">
           <Footer
             onOpenLegal={(type) => setLegalDocType(type)}

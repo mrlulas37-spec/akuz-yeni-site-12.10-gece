@@ -3,6 +3,7 @@ import { sendWelcomeEmail } from './emailService';
 
 export interface RegisteredAccount {
   id?: string;
+  user_id?: string;
   name: string;
   email: string;
   full_name?: string;
@@ -14,6 +15,7 @@ export interface RegisteredAccount {
   authProvider?: 'google' | 'normal' | string;
   provider?: 'google' | 'normal' | string;
   registeredVia?: 'google' | 'normal' | string;
+  isGoogleUser?: boolean;
   addresses?: UserProfile['addresses'];
   cart?: any[];
   favorites?: string[];
@@ -826,12 +828,19 @@ export const loginWithGoogleAccount = async (
 
   if (idx === -1) {
     users.push({
+      id: profile.id || profile.user_id || ('usr_' + Date.now()),
+      user_id: profile.id || profile.user_id || ('usr_' + Date.now()),
       name: cleanName,
       full_name: cleanName,
       email: cleanEmail,
       phone: profile.phone || '',
       createdAt: new Date().toISOString(),
       addresses: profile.addresses || [],
+      authProvider: 'google',
+      provider: 'google',
+      registeredVia: 'google',
+      passwordHash: 'google_oauth_verified',
+      isGoogleUser: true,
     });
     saveRegisteredUsers(users);
 
@@ -842,8 +851,16 @@ export const loginWithGoogleAccount = async (
     users[idx].full_name = cleanName;
     users[idx].addresses = profile.addresses;
     users[idx].phone = profile.phone || users[idx].phone;
+    users[idx].authProvider = 'google';
+    users[idx].provider = 'google';
+    users[idx].registeredVia = 'google';
+    users[idx].passwordHash = 'google_oauth_verified';
+    users[idx].isGoogleUser = true;
     saveRegisteredUsers(users);
   }
+
+  // Google hesap listesine de ekle
+  saveGoogleAccountToList(cleanEmail, cleanName);
 
   // Son başarılı Google hesabını hızlı giriş için hatırla
   try {

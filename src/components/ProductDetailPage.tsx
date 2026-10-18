@@ -1031,6 +1031,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16">
         <ReviewsSection
           productId={product.id}
+          productName={product.name}
           reviews={productReviews}
           currentUser={currentUser}
           onOpenAuth={onOpenAuth}

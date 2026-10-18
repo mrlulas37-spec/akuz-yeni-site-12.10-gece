@@ -95,30 +95,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       await triggerGoogleAccountPicker(
         async (user) => {
           clearTimeout(safetyTimer);
-          // Google login başarılı: cPanel'deki google_auth.php adresine POST at ve user_id'yi kaydet
-          await saveGoogleUserToCpanel(user.name, user.email);
-
-          // İsim varsa doğrudan oturumu tamamla ve yönlendir
-          if (user.name && user.name.trim().length >= 2) {
-            const loginRes = await loginWithGoogleAccount(user.email, user.name);
-            triggerRegistrationWelcomeEmail(user.name, user.email);
-            setIsLoading(false);
-            setSuccessMessage(`Giriş başarılı! Hoş geldiniz, ${loginRes.user.name}`);
-            setTimeout(() => {
-              triggerSuccessfulLogin(loginRes.user);
-            }, 350);
-          } else {
-            // İsim eksikse kullanıcıdan ad-soyad iste
-            setGoogleAuthData({ email: user.email, name: user.name });
-            setGoogleFullName(user.name || '');
-            setStep('google_name_prompt');
-            setIsLoading(false);
-          }
+          triggerSuccessfulLogin(user);
         },
         (errorMsg) => {
           clearTimeout(safetyTimer);
           setIsLoading(false);
           setErrorMessage(errorMsg);
+        },
+        async ({ email: gEmail, name: gName }) => {
+          clearTimeout(safetyTimer);
+          setIsLoading(true);
+          try {
+            // Kullanıcı İsteği: Sitede kaydı yoksa otomatik kayıt olsun ama ismini sorsun; varsa doğrudan girsin
+            const emailCheck = await checkEmailExistsDetailed(gEmail);
+            if (emailCheck.exists) {
+              const loginRes = await loginWithGoogleAccount(gEmail, emailCheck.name || gName);
+              triggerRegistrationWelcomeEmail(loginRes.user.name, gEmail);
+              setIsLoading(false);
+              setSuccessMessage(`Giriş başarılı! Hoş geldiniz, ${loginRes.user.name}`);
+              setTimeout(() => {
+                triggerSuccessfulLogin(loginRes.user);
+              }, 350);
+            } else {
+              // Sitede kaydı yok -> İsim sorma ekranına yönlendir
+              setGoogleAuthData({ email: gEmail, name: gName });
+              setGoogleFullName(gName || '');
+              setStep('google_name_prompt');
+              setIsLoading(false);
+            }
+          } catch {
+            setGoogleAuthData({ email: gEmail, name: gName });
+            setGoogleFullName(gName || '');
+            setStep('google_name_prompt');
+            setIsLoading(false);
+          }
         }
       );
     } catch (err: any) {
