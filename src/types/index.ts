@@ -160,8 +160,10 @@ export interface UserProfile {
   recentlyViewed?: string[];
   isGoogleUser?: boolean;
   authProvider?: string;
+  auth_provider?: string;
   provider?: string;
   registeredVia?: string;
+  passwordHash?: string;
 }
 
 export interface Address {
@@ -190,7 +192,14 @@ export interface Order {
   kargonomiShipmentId?: string;
   paymentStatus?: string;
   paymentMethod?: string;
-  paidAt?: string;
+  fraudScore?: number;
+  fraudRiskLevel?: 'Düşük' | 'Orta' | 'Yüksek';
+  fraudRiskReasons?: string[];
+  securityAlert?: string;
+  isTestOrder?: boolean;
+  verifiedTotal?: number;
+  priceTampered?: boolean;
+  clientIp?: string;
   items: {
     productName: string;
     quantity: number;
@@ -201,3 +210,15 @@ export interface Order {
     customText?: string;
   }[];
 }
+
+export interface SecurityEvent {
+  id: string;
+  timestamp: string;
+  type: 'PRICE_TAMPERING_BLOCKED' | 'CARDING_ATTACK_PREVENTED' | 'RATE_LIMIT_EXCEEDED' | 'PATH_TRAVERSAL_BLOCKED' | 'SUSPICIOUS_PAYTR_CALLBACK' | 'XSS_ATTACK_NEUTRALIZED' | 'ORDER_FRAUD_DETECTED' | 'IP_BLOCKED';
+  ip: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  details: string;
+  orderId?: string;
+  userAgent?: string;
+}
+

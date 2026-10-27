@@ -1,0 +1,29 @@
+[
+  {
+    "name": "Mert Yılmaz",
+    "email": "mert@akuz.com",
+    "passwordHash": "guest_order_created",
+    "phone": "",
+    "createdAt": "2026-10-18T19:42:18.091Z",
+    "addresses": []
+  },
+  {
+    "id": "usr_1792354510932_749",
+    "user_id": "usr_1792354510932_749",
+    "name": "Google Test Kullanici",
+    "full_name": "Google Test Kullanici",
+    "email": "testgoogle@gmail.com",
+    "passwordHash": "google_oauth_verified",
+    "phone": "",
+    "createdAt": "2026-10-18T20:15:10.933Z",
+    "isGoogleUser": true,
+    "auth_provider": "google",
+    "provider": "google",
+    "authProvider": "google",
+    "registeredVia": "google",
+    "addresses": [],
+    "cart": [],
+    "favorites": [],
+    "recentlyViewed": []
+  }
+]

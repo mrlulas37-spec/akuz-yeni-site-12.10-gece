@@ -141,7 +141,7 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
 
   // Sağ veya sol ok tıklandığında yumuşak şekilde yana kaydırma
   const handleScroll = (direction: 'left' | 'right') => {
-    const shiftAmount = 230; // Yaklaşık bir ürün kartı genişliği
+    const shiftAmount = 245; // Yaklaşık bir ürün kartı genişliği
     pauseAutoScrollTemporarily(2500);
 
     if (direction === 'left') {
@@ -218,12 +218,9 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
         {/* Section Header: Yüksekliği daraltılmış, kompakt, tek satır ve net okunan başlık */}
         <div className="flex items-center justify-between gap-2 sm:gap-4 mb-1.5 sm:mb-2 pb-1 sm:pb-1.5 border-b border-slate-200/60">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black italic tracking-tight sm:tracking-wide text-slate-900 uppercase font-display whitespace-nowrap truncate shrink-0">
+            <h2 className="text-[15.5px] sm:text-[17.5px] md:text-[22px] lg:text-[26.5px] font-black italic tracking-tight sm:tracking-wide text-slate-900 uppercase font-display whitespace-nowrap truncate shrink-0">
               {title}
             </h2>
-            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ff6600]/10 text-[#ff6600]">
-              Akıcı Kayar Liste
-            </span>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -303,7 +300,7 @@ export const PopularProducts: React.FC<PopularProductsProps> = ({
                   reviews={reviews}
                   onToggleFavorite={onToggleFavorite}
                   onSelectProduct={onSelectProduct}
-                  className="w-[152px] sm:w-[172px] shrink-0"
+                  className="w-[166px] sm:w-[188px] md:w-[200px] shrink-0"
                 />
               ))}
             </div>

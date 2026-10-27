@@ -13,6 +13,7 @@ export interface RegisteredAccount {
   phone?: string;
   createdAt: string;
   authProvider?: 'google' | 'normal' | string;
+  auth_provider?: 'google' | 'normal' | string;
   provider?: 'google' | 'normal' | string;
   registeredVia?: 'google' | 'normal' | string;
   isGoogleUser?: boolean;
@@ -85,7 +86,39 @@ export const normalizeUserProfile = (raw: any): UserProfile => {
     ];
   }
 
+  // Google ile giriş/kayıt durumunu eksiksiz tespit et
+  let isGoogle = Boolean(
+    raw.isGoogleUser === true ||
+    raw.authProvider === 'google' ||
+    raw.auth_provider === 'google' ||
+    raw.provider === 'google' ||
+    raw.registeredVia === 'google' ||
+    raw.passwordHash === 'google_oauth_verified' ||
+    raw.authMethod === 'google'
+  );
+
+  if (!isGoogle && email && typeof window !== 'undefined') {
+    try {
+      const rawGoogle = localStorage.getItem('akuz_google_accounts_list');
+      if (rawGoogle) {
+        const parsed = JSON.parse(rawGoogle);
+        if (Array.isArray(parsed) && parsed.some((g: any) => g.email && g.email.toLowerCase() === email)) {
+          isGoogle = true;
+        }
+      }
+      const lastGoogle = localStorage.getItem('akuz_last_google_account');
+      if (lastGoogle) {
+        const parsed = JSON.parse(lastGoogle);
+        if (parsed?.email && parsed.email.toLowerCase() === email) {
+          isGoogle = true;
+        }
+      }
+    } catch {}
+  }
+
   return {
+    id: raw.id || raw.user_id,
+    user_id: raw.user_id || raw.id,
     name,
     email,
     phone,
@@ -95,6 +128,12 @@ export const normalizeUserProfile = (raw: any): UserProfile => {
     cart: raw.cart,
     favorites: raw.favorites,
     recentlyViewed: raw.recentlyViewed,
+    isGoogleUser: isGoogle,
+    authProvider: isGoogle ? 'google' : (raw.authProvider || 'normal'),
+    auth_provider: isGoogle ? 'google' : (raw.auth_provider || 'normal'),
+    provider: isGoogle ? 'google' : (raw.provider || 'normal'),
+    registeredVia: isGoogle ? 'google' : (raw.registeredVia || 'normal'),
+    passwordHash: raw.passwordHash || (isGoogle ? 'google_oauth_verified' : undefined),
   };
 };
 
@@ -321,18 +360,44 @@ export const checkEmailExistsDetailed = async (email: string): Promise<EmailChec
   // 2. Çevrimdışı / Yerel bellek yedeği
   const users = getRegisteredUsers();
   const found = users.find((u) => u.email.toLowerCase() === cleanEmail);
+  const storedGoogleList = getStoredGoogleAccountsList();
+  const isGoogleInList = storedGoogleList.some((g) => g.email.toLowerCase() === cleanEmail);
+  const lastGoogle = getLastGoogleAccount();
+  const isLastGoogle = lastGoogle?.email.toLowerCase() === cleanEmail;
+
   if (found) {
-    const isGoogle = found.passwordHash === 'google_oauth_verified';
+    const isGoogle = Boolean(
+      found.isGoogleUser === true ||
+      found.authProvider === 'google' ||
+      found.auth_provider === 'google' ||
+      found.provider === 'google' ||
+      found.registeredVia === 'google' ||
+      found.passwordHash === 'google_oauth_verified' ||
+      isGoogleInList ||
+      isLastGoogle
+    );
     return {
       exists: true,
       name: found.name,
       email: found.email,
       phone: found.phone,
       isGoogleUser: isGoogle,
-      hasPassword: !isGoogle && !!found.passwordHash,
+      hasPassword: !isGoogle && !!found.passwordHash && found.passwordHash !== 'google_oauth_verified' && found.passwordHash !== 'guest_order_created',
       authMethod: isGoogle ? 'google' : 'password',
     };
   }
+
+  if (isGoogleInList || isLastGoogle) {
+    return {
+      exists: true,
+      name: lastGoogle?.name || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      isGoogleUser: true,
+      hasPassword: false,
+      authMethod: 'google',
+    };
+  }
+
   return { exists: false };
 };
 
@@ -684,6 +749,9 @@ export const saveGoogleUserToCpanel = async (
     return { user_id: null };
   }
 
+  // Google hesabı olarak hemen yerel listeye ekle
+  saveGoogleAccountToList(cleanEmail, cleanName);
+
   try {
     const res = await fetch(API_GOOGLE_AUTH_URL, {
       method: 'POST',
@@ -692,6 +760,13 @@ export const saveGoogleUserToCpanel = async (
         name: cleanName,
         email: cleanEmail,
         full_name: cleanName,
+        fullname: cleanName,
+        isGoogleUser: true,
+        authProvider: 'google',
+        auth_provider: 'google',
+        provider: 'google',
+        registeredVia: 'google',
+        passwordHash: 'google_oauth_verified',
       }),
     });
 
@@ -723,31 +798,29 @@ export const loginWithGoogleAccount = async (
   const cleanEmail = googleEmail.trim().toLowerCase();
   const cleanName = googleName.trim() || cleanEmail.split('@')[0];
 
+  // Google hesabı olarak hemen kaydet
+  saveGoogleAccountToList(cleanEmail, cleanName);
+
   let profile: UserProfile;
 
   // 1. Google login başarılı olduğunda cPanel'deki google_auth.php adresine POST at ve user_id'yi localStorage'a kaydet
   const { user_id: receivedUserId, data } = await saveGoogleUserToCpanel(cleanName, cleanEmail);
 
-  // 2. Unified auth.php API'ye ve /api/auth/google rotasına bildirim gönder (Tüm ortamlarda tam güvence)
+  // 2. /api/auth/google rotasına bildirim gönder (Tüm ortamlarda tam güvence)
   try {
-    fetch(API_AUTH_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'google',
-        email: cleanEmail,
-        full_name: cleanName,
-        name: cleanName,
-      }),
-    }).catch(() => {});
-
-    fetch('/api/auth/google', {
+    await fetch('/api/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: cleanEmail,
         name: cleanName,
         fullname: cleanName,
+        isGoogleUser: true,
+        authProvider: 'google',
+        auth_provider: 'google',
+        provider: 'google',
+        registeredVia: 'google',
+        passwordHash: 'google_oauth_verified',
       }),
     }).catch(() => {});
   } catch {}
@@ -760,6 +833,12 @@ export const loginWithGoogleAccount = async (
         user_id: receivedUserId || data.user.user_id,
         name: cleanName || data.user.name,
         full_name: cleanName || data.user.full_name,
+        isGoogleUser: true,
+        authProvider: 'google',
+        auth_provider: 'google',
+        provider: 'google',
+        registeredVia: 'google',
+        passwordHash: 'google_oauth_verified',
       });
     } else {
       // Yerel fallback
@@ -767,11 +846,18 @@ export const loginWithGoogleAccount = async (
       const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
       if (existing) {
         profile = normalizeUserProfile({
+          ...existing,
           name: cleanName || existing.name,
           full_name: cleanName || existing.full_name,
           email: cleanEmail,
           phone: existing.phone || '',
           addresses: existing.addresses || [],
+          isGoogleUser: true,
+          authProvider: 'google',
+          auth_provider: 'google',
+          provider: 'google',
+          registeredVia: 'google',
+          passwordHash: 'google_oauth_verified',
         });
       } else {
         profile = normalizeUserProfile({
@@ -780,6 +866,12 @@ export const loginWithGoogleAccount = async (
           email: cleanEmail,
           phone: '',
           addresses: [],
+          isGoogleUser: true,
+          authProvider: 'google',
+          auth_provider: 'google',
+          provider: 'google',
+          registeredVia: 'google',
+          passwordHash: 'google_oauth_verified',
         });
       }
     }
@@ -789,11 +881,18 @@ export const loginWithGoogleAccount = async (
     const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);
     if (existing) {
       profile = normalizeUserProfile({
+        ...existing,
         name: cleanName || existing.name,
         full_name: cleanName || existing.full_name,
         email: cleanEmail,
         phone: existing.phone || '',
         addresses: existing.addresses || [],
+        isGoogleUser: true,
+        authProvider: 'google',
+        auth_provider: 'google',
+        provider: 'google',
+        registeredVia: 'google',
+        passwordHash: 'google_oauth_verified',
       });
     } else {
       profile = normalizeUserProfile({
@@ -802,6 +901,12 @@ export const loginWithGoogleAccount = async (
         email: cleanEmail,
         phone: '',
         addresses: [],
+        isGoogleUser: true,
+        authProvider: 'google',
+        auth_provider: 'google',
+        provider: 'google',
+        registeredVia: 'google',
+        passwordHash: 'google_oauth_verified',
       });
     }
   }
@@ -1090,6 +1195,11 @@ export const updateUserProfileData = (updated: UserProfile): void => {
       name: updated.name,
       phone: updated.phone,
       addresses: updated.addresses,
+      isGoogleUser: updated.isGoogleUser ?? users[index].isGoogleUser,
+      authProvider: updated.authProvider ?? users[index].authProvider,
+      provider: updated.provider ?? users[index].provider,
+      registeredVia: updated.registeredVia ?? users[index].registeredVia,
+      auth_provider: updated.auth_provider ?? users[index].auth_provider,
     };
     saveRegisteredUsers(users);
   }

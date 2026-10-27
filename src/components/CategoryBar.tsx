@@ -35,6 +35,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
   categoriesConfig,
 }) => {
   const [clickedId, setClickedId] = React.useState<string | null>(null);
+  const [failedImages, setFailedImages] = React.useState<Record<string, boolean>>({});
 
   const handleCategoryClick = (id: Product['category'] | 'all') => {
     setClickedId(id);
@@ -111,7 +112,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
     },
     {
       id: 'offroad',
-      titleLine1: 'Off-Road',
+      titleLine1: 'Karavan',
       titleLine2: 'Stickerları',
       bgGradient: 'bg-gradient-to-tr from-emerald-600 to-teal-700 text-white',
     },
@@ -125,9 +126,14 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
 
   // Kullanıcı İsteği: "tüm ürünler yazan yuvarlktaki yazı katalog ,altı da tüm ürünler olarak değişsin"
   const categories = React.useMemo(() => {
-    const list = (categoriesConfig && categoriesConfig.length >= 8 && categoriesConfig.some((c) => c.id === 'ayna'))
-      ? categoriesConfig
+    // Hem sunucudan gelen hem varsayılan listeyi birleştir (Kullanıcının yüklediği görseller asla kaybolmaz)
+    const list = Array.isArray(categoriesConfig) && categoriesConfig.length > 0
+      ? defaultCategories.map((def) => {
+          const matched = categoriesConfig.find((c) => c.id === def.id);
+          return matched ? { ...def, ...matched } : def;
+        })
       : defaultCategories;
+
     const preferredOrder = ['all', 'discount', 'ataturk', 'araba', 'motosiklet', 'custom', 'offroad', 'ayna'];
     const sorted = [...list].sort((a, b) => {
       const idxA = preferredOrder.indexOf(a.id);
@@ -155,9 +161,13 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
   const renderCategoryButton = (cat: CategoryCircleItem) => {
     const isSelected = selectedCategory === cat.id;
     const isClicked = clickedId === cat.id;
-    const customImg = cat.imageUrl;
+    // Öncelik: cat.imageUrl, yoksa cat.cardImageUrl (yüklenen her görsel görüntülenir)
+    const candidateImg = cat.imageUrl || cat.cardImageUrl;
+    const isBroken = failedImages[cat.id] === true;
+    const customImg = (!isBroken && candidateImg) ? candidateImg : null;
     const isAtaturk = cat.id === 'ataturk';
     const isDiscount = cat.id === 'discount';
+    const isAll = cat.id === 'all';
 
     return (
       <button
@@ -185,16 +195,20 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
               : 'group-hover:shadow-md group-hover:ring-2 group-hover:ring-[#ff6600]/60'
           }`}
         >
-          {isDiscount ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <ThreeDDiscountCoin size={54} />
-            </div>
-          ) : customImg ? (
+          {customImg ? (
             <img
               src={customImg}
               alt={cat.titleLine1}
+              onError={() => {
+                // Görsel dosyasında 404 olursa kırık kutu göstermek yerine zarif vektör ikona geç
+                setFailedImages((prev) => ({ ...prev, [cat.id]: true }));
+              }}
               className="w-full h-full object-cover rounded-full"
             />
+          ) : isDiscount ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <ThreeDDiscountCoin size={54} />
+            </div>
           ) : (
             defaultIcons[cat.id] || <Sparkles size={30} />
           )}
@@ -206,22 +220,18 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
             className={`text-[11.5px] sm:text-xs md:text-[13px] font-bold transition-colors truncate ${
               isClicked
                 ? 'text-[#ff6600] font-black'
+                : isAll
+                ? 'text-[#ff6600] font-extrabold'
                 : isSelected
                 ? 'text-[#ff6600] font-extrabold'
                 : isAtaturk
                 ? 'text-amber-500 font-extrabold'
-                : isDiscount
-                ? 'text-rose-600 font-extrabold'
                 : 'text-slate-800 group-hover:text-[#ff6600]'
             }`}
             title={cat.titleLine1}
           >
             {isAtaturk && !isClicked ? (
               <span className="animate-ataturk-gold-shimmer">
-                {cat.titleLine1}
-              </span>
-            ) : isDiscount && !isClicked && !isSelected ? (
-              <span className="text-rose-600 font-black">
                 {cat.titleLine1}
               </span>
             ) : (
@@ -233,22 +243,22 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
               className={`text-[10px] sm:text-[11px] md:text-xs font-medium transition-colors truncate ${
                 isClicked
                   ? 'text-[#ff6600] font-bold'
+                  : isAll
+                  ? 'text-slate-500 group-hover:text-[#ff6600]'
                   : isSelected
                   ? 'text-orange-600 font-semibold'
                   : isAtaturk
                   ? 'text-amber-700 font-bold'
-                : isDiscount
-                ? 'text-rose-600/90 font-bold'
-                : 'text-slate-500 group-hover:text-[#ff6600]'
-            }`}
-            title={cat.titleLine2}
-          >
-            {cat.titleLine2}
-          </p>
-        )}
-      </div>
-    </button>
-  );
+                  : 'text-slate-500 group-hover:text-[#ff6600]'
+              }`}
+              title={cat.titleLine2}
+            >
+              {cat.titleLine2}
+            </p>
+          )}
+        </div>
+      </button>
+    );
 };
 
   return (

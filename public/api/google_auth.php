@@ -55,6 +55,7 @@ if ($foundIndex !== -1) {
         $jsonUsers[$foundIndex]['name'] = $fullname;
     }
     $jsonUsers[$foundIndex]['full_name'] = $jsonUsers[$foundIndex]['name'];
+    $jsonUsers[$foundIndex]['isGoogleUser'] = true;
     $jsonUsers[$foundIndex]['auth_provider'] = 'google';
     $jsonUsers[$foundIndex]['provider'] = 'google';
     $jsonUsers[$foundIndex]['authProvider'] = 'google';
@@ -73,6 +74,7 @@ if ($foundIndex !== -1) {
         'phone' => '',
         'passwordHash' => 'google_oauth_verified',
         'createdAt' => date('c'),
+        'isGoogleUser' => true,
         'auth_provider' => 'google',
         'provider' => 'google',
         'authProvider' => 'google',

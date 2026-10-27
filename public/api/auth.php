@@ -58,10 +58,12 @@ if ($action === 'google') {
             $jsonUsers[$foundIndex]['name'] = $fullname;
             $jsonUsers[$foundIndex]['full_name'] = $fullname;
         }
+        $jsonUsers[$foundIndex]['isGoogleUser'] = true;
         $jsonUsers[$foundIndex]['auth_provider'] = 'google';
         $jsonUsers[$foundIndex]['provider'] = 'google';
         $jsonUsers[$foundIndex]['authProvider'] = 'google';
         $jsonUsers[$foundIndex]['registeredVia'] = 'google';
+        $jsonUsers[$foundIndex]['passwordHash'] = 'google_oauth_verified';
         $targetUser = $jsonUsers[$foundIndex];
     } else {
         $newUserId = 'usr_' . time() . '_' . mt_rand(100, 999);
@@ -74,6 +76,7 @@ if ($action === 'google') {
             'phone' => '',
             'passwordHash' => 'google_oauth_verified',
             'createdAt' => date('c'),
+            'isGoogleUser' => true,
             'auth_provider' => 'google',
             'provider' => 'google',
             'authProvider' => 'google',

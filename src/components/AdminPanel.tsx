@@ -57,6 +57,8 @@ import {
   Clock,
   Filter,
   CheckCircle2,
+  Activity,
+  Zap,
 } from 'lucide-react';
 import {
   Product,
@@ -76,6 +78,7 @@ import {
 } from '../utils/adminStore';
 import { processAndUploadProductImage } from '../utils/imageOptimizer';
 import { RegisteredAccount, purgeAllRegisteredUsers } from '../utils/auth';
+import { AdminPerformanceWidget } from './AdminPerformanceWidget';
 import {
   testSmtpConnection,
   sendWelcomeEmail,
@@ -132,6 +135,7 @@ type TabType =
   | 'categories'
   | 'colors-foils'
   | 'orders'
+  | 'security'
   | 'users'
   | 'why-akuz'
   | 'about'
@@ -139,7 +143,8 @@ type TabType =
   | 'paytr'
   | 'kargonomi'
   | 'email-smtp'
-  | 'cpanel-deploy';
+  | 'cpanel-deploy'
+  | 'performance';
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   products,
@@ -158,7 +163,120 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [isPurgingUsers, setIsPurgingUsers] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPerfWidgetOpen, setIsPerfWidgetOpen] = useState(false);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Güvenlik & Anti-Dolandırıcılık State'leri
+  const [securityStats, setSecurityStats] = useState<any>(null);
+  const [securityEvents, setSecurityEvents] = useState<any[]>([]);
+  const [isLoadingSecurity, setIsLoadingSecurity] = useState(false);
+  const [manualIpToBlock, setManualIpToBlock] = useState('');
+  const [isSimulatingAttack, setIsSimulatingAttack] = useState(false);
+  const [securityFilterSeverity, setSecurityFilterSeverity] = useState<'all' | 'critical' | 'high' | 'medium'>('all');
+
+  const fetchSecurityData = async (silent = false) => {
+    if (!silent) setIsLoadingSecurity(true);
+    try {
+      const [statsRes, eventsRes] = await Promise.all([
+        fetch('/api/admin/security/stats', { headers: { 'x-admin-token': 'akuz_admin_2026' } }),
+        fetch('/api/admin/security/events?limit=150', { headers: { 'x-admin-token': 'akuz_admin_2026' } }),
+      ]);
+      if (statsRes.ok) {
+        const sData = await statsRes.json();
+        if (sData.success) setSecurityStats(sData.stats);
+      }
+      if (eventsRes.ok) {
+        const eData = await eventsRes.json();
+        if (eData.success) setSecurityEvents(eData.events || []);
+      }
+    } catch (err) {
+      console.warn('[SECURITY FETCH ERROR]', err);
+    } finally {
+      setIsLoadingSecurity(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'security') {
+      fetchSecurityData();
+      const timer = setInterval(() => fetchSecurityData(true), 15000);
+      return () => clearInterval(timer);
+    }
+  }, [activeTab]);
+
+  const handleBlockManualIp = async () => {
+    if (!manualIpToBlock.trim()) return;
+    try {
+      const res = await fetch('/api/admin/security/block-ip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': 'akuz_admin_2026' },
+        body: JSON.stringify({ ip: manualIpToBlock.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setManualIpToBlock('');
+        showNotification(`${manualIpToBlock.trim()} adresi kara listeye alındı.`);
+        fetchSecurityData(true);
+      } else {
+        showNotification(data.error || 'IP engellenemedi.');
+      }
+    } catch {
+      showNotification('Bağlantı hatası.');
+    }
+  };
+
+  const handleUnblockManualIp = async (ip: string) => {
+    try {
+      const res = await fetch('/api/admin/security/unblock-ip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': 'akuz_admin_2026' },
+        body: JSON.stringify({ ip }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotification(`${ip} adresinin engeli kaldırıldı.`);
+        fetchSecurityData(true);
+      }
+    } catch {
+      showNotification('Bağlantı hatası.');
+    }
+  };
+
+  const handleClearSecurityLogs = async () => {
+    try {
+      const res = await fetch('/api/admin/security/clear-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': 'akuz_admin_2026' },
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotification('Güvenlik günlükleri sıfırlandı.');
+        fetchSecurityData(true);
+      }
+    } catch {
+      showNotification('Bağlantı hatası.');
+    }
+  };
+
+  const handleSimulateAttack = async (type: 'price_tampering' | 'carding' | 'traversal') => {
+    setIsSimulatingAttack(true);
+    try {
+      const res = await fetch('/api/admin/security/simulate-attack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': 'akuz_admin_2026' },
+        body: JSON.stringify({ type }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotification(data.message);
+        fetchSecurityData(true);
+      }
+    } catch {
+      showNotification('Simülasyon çalıştırılamadı.');
+    } finally {
+      setIsSimulatingAttack(false);
+    }
+  };
 
   // Kullanıcı Yönetimi State'leri
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -666,13 +784,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   ) => {
     const updated = safeCategories.map((cat) => {
       if (cat.id === id) {
-        const next = { ...cat, [field]: value };
-        if (field === 'imageUrl' && (!next.cardImageUrl || next.cardImageUrl === cat.imageUrl)) {
-          next.cardImageUrl = value;
-        } else if (field === 'cardImageUrl' && (!next.imageUrl || next.imageUrl === cat.cardImageUrl)) {
-          next.imageUrl = value;
-        }
-        return next;
+        return { ...cat, [field]: value };
       }
       return cat;
     });
@@ -695,10 +807,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const url = await processAndUploadProductImage(file);
       const updated = safeCategories.map((cat) => {
         if (cat.id === catId) {
-          return {
-            ...cat,
-            [field]: url,
-          };
+          const next = { ...cat, [field]: url };
+          // Sadece diğer alan tamamen boşsa kolaylık sağlamak için doldur, mevcut olanı ASLA ezme
+          if (field === 'cardImageUrl' && (!next.imageUrl || next.imageUrl.trim() === '')) {
+            next.imageUrl = url;
+          } else if (field === 'imageUrl' && (!next.cardImageUrl || next.cardImageUrl.trim() === '')) {
+            next.cardImageUrl = url;
+          }
+          return next;
         }
         return cat;
       });
@@ -1914,6 +2030,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               )}
             </button>
 
+            {/* Canlı Sistem & Performans Sağlığı Widget Butonu */}
+            <button
+              type="button"
+              onClick={() => setIsPerfWidgetOpen(!isPerfWidgetOpen)}
+              title="Canlı Sistem, API Gecikmesi ve Yüklenme Süreleri Monitörü"
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border active:scale-95 ${
+                isPerfWidgetOpen
+                  ? 'bg-slate-900 text-emerald-400 border-slate-900 shadow-sm'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+              }`}
+            >
+              <Activity size={13} className="text-emerald-500 animate-pulse" />
+              <span className="hidden sm:inline">Performans & Sağlık</span>
+              <span className="sm:hidden">Sağlık</span>
+            </button>
+
             {/* 2. cPanel İndirme Sekmesine Git */}
             <button
               type="button"
@@ -1968,6 +2100,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {activeTab === 'about' && 'Hakkımızda'}
               {activeTab === 'contact' && 'İletişim Bilgileri'}
               {activeTab === 'cpanel-deploy' && 'cPanel Dağıtım & İndir'}
+              {activeTab === 'performance' && 'Canlı Sistem & Performans Sağlığı'}
             </span>
           </div>
 
@@ -2068,6 +2201,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 activeTab === 'orders' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
               }`}>
                 {orders.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('security');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'security'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck size={16} className={activeTab === 'security' ? 'text-white' : 'text-emerald-600'} />
+                <span>Güvenlik & Kalkan</span>
+              </div>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                  activeTab === 'security' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}>
+                  Aktif
+                </span>
               </span>
             </button>
 
@@ -2199,7 +2357,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </button>
             </div>
 
-            <div className="pt-2 border-t border-slate-100">
+            <div className="pt-2 border-t border-slate-100 space-y-1.5">
+              {/* CANLI SİSTEM & PERFORMANS SAĞLIĞI SEKMESİ */}
+              <button
+                onClick={() => {
+                  setActiveTab('performance');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center justify-between transition-all cursor-pointer ${
+                  activeTab === 'performance'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Activity size={15} className={activeTab === 'performance' ? 'text-emerald-400 animate-pulse' : 'text-emerald-600'} />
+                  <span>Sistem & API Sağlığı</span>
+                </div>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  activeTab === 'performance' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-800'
+                }`}>
+                  Canlı
+                </span>
+              </button>
+
               <button
                 onClick={() => {
                   setActiveTab('cpanel-deploy');
@@ -2226,6 +2407,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* SAĞ PANEL (İÇERİK ALANI) */}
           <div className="lg:col-span-9 w-full">
+            {/* ÜSTTEN AÇILABİLİR CANLI PERFORMANS & SAĞLIK WIDGET'I (HER SEKMEYLE BİRLİKTE GÖRÜNTÜLENEBİLİR) */}
+            {isPerfWidgetOpen && activeTab !== 'performance' && (
+              <div className="mb-6 animate-in fade-in slide-in-from-top-4 duration-200">
+                <AdminPerformanceWidget onClose={() => setIsPerfWidgetOpen(false)} />
+              </div>
+            )}
+
+            {/* DEDICATED SİSTEM & PERFORMANS SAĞLIĞI SEKMESİ */}
+            {activeTab === 'performance' && (
+              <div className="space-y-6">
+                <AdminPerformanceWidget />
+              </div>
+            )}
+
             {/* ========================================================= */}
             {/* 1. ÜRÜN YÖNETİMİ & EKLEME */}
             {/* ========================================================= */}
@@ -2670,10 +2865,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             ? 'bg-[radial-gradient(circle_at_center,_#2b0d14_0%,_#140508_55%,_#050204_100%)] text-white ring-2 ring-amber-500/70 border border-amber-500/30'
                             : cat.bgGradient || 'bg-slate-900 text-white'
                         }`}>
-                          {cat.id === 'discount' ? (
+                          {cat.imageUrl || cat.cardImageUrl ? (
+                            <img
+                              src={cat.imageUrl || cat.cardImageUrl}
+                              alt={cat.titleLine1}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                              }}
+                              className="w-full h-full object-cover rounded-full"
+                            />
+                          ) : cat.id === 'discount' ? (
                             <ThreeDDiscountCoin size={38} />
-                          ) : cat.imageUrl ? (
-                            <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
                           ) : (
                             <span className="text-sm font-black uppercase text-white">{cat.titleLine1.charAt(0)}</span>
                           )}
@@ -2689,6 +2891,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <img
                             src={cat.cardImageUrl || cat.imageUrl || '/products/IMG_1141.jpeg'}
                             alt={cat.titleLine1}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = '/products/IMG_1141.jpeg';
+                            }}
                             className="w-full h-full object-cover"
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-1">
@@ -2892,10 +3097,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                               Ödeme: {order.paymentStatus || 'Ödendi'}
                             </span>
+
+                            {/* Güvenlik & Sahtekarlık (Fraud) Risk Rozeti */}
+                            {order.fraudRiskLevel === 'Yüksek' || (order.fraudScore !== undefined && order.fraudScore >= 60) ? (
+                              <span
+                                className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-300 flex items-center gap-1 shadow-2xs"
+                                title={order.fraudRiskReasons?.join(' • ') || 'Yüksek dolandırıcılık riski tespit edildi'}
+                              >
+                                <ShieldAlert size={12} className="text-rose-600" />
+                                <span>Yüksek Risk ({order.fraudScore ?? 85}/100)</span>
+                              </span>
+                            ) : order.fraudRiskLevel === 'Orta' || (order.fraudScore !== undefined && order.fraudScore >= 25) ? (
+                              <span
+                                className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-300 flex items-center gap-1 shadow-2xs"
+                                title={order.fraudRiskReasons?.join(' • ') || 'Orta seviye risk'}
+                              >
+                                <AlertTriangle size={12} className="text-amber-600" />
+                                <span>Orta Risk ({order.fraudScore}/100)</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 shadow-2xs"
+                                title="Katalog fiyatları ve e-posta/telefon kontrolleri onaylandı"
+                              >
+                                <ShieldCheck size={12} className="text-emerald-600" />
+                                <span>Güvenli ({order.fraudScore ?? 0}/100)</span>
+                              </span>
+                            )}
+
+                            {order.priceTampered && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1">
+                                <span>🛡️ Fiyat Kalkanı Devreye Girdi</span>
+                              </span>
+                            )}
                           </div>
-                          <p className="text-xs font-bold text-slate-500 mt-1">
-                            Toplam Tutar: <span className="text-emerald-700 font-black text-sm">{order.total} TL</span>
+                          <p className="text-xs font-bold text-slate-500 mt-1 flex items-center gap-2">
+                            <span>Toplam Tutar: <strong className="text-emerald-700 font-black text-sm">{order.total} TL</strong></span>
+                            {order.clientIp && (
+                              <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                IP: {order.clientIp}
+                              </span>
+                            )}
                           </p>
+                          {order.securityAlert && (
+                            <p className="text-[11px] font-bold text-purple-700 mt-1 bg-purple-50/80 p-1.5 rounded-lg border border-purple-200">
+                              ℹ️ {order.securityAlert}
+                            </p>
+                          )}
+                          {order.fraudRiskReasons && order.fraudRiskReasons.length > 0 && order.fraudRiskLevel !== 'Düşük' && (
+                            <div className="mt-1.5 text-[11px] text-rose-700 bg-rose-50/70 p-2 rounded-lg border border-rose-200 space-y-0.5">
+                              <span className="font-extrabold block">Risk Faktörleri:</span>
+                              {order.fraudRiskReasons.map((r, i) => (
+                                <div key={i} className="flex items-center gap-1.5 text-[10.5px]">
+                                  <span>•</span>
+                                  <span>{r}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* Durum Seçici */}
@@ -3073,6 +3332,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               }
               const email = (u.email || '').trim().toLowerCase();
               if (!email) return false;
+
+              // Şifresiz Gmail hesapları otomatik Google kabul edilir
+              if (
+                (email.endsWith('@gmail.com') || email.endsWith('@googlemail.com')) &&
+                (!u.plainPassword && (!u.passwordHash || u.passwordHash === 'google_oauth_verified' || u.passwordHash === 'guest_order_created'))
+              ) {
+                return true;
+              }
 
               try {
                 const rawGoogle = localStorage.getItem('akuz_google_accounts_list');
@@ -5625,6 +5892,435 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
           )}
+
+          {/* ========================================================= */}
+          {/* 13. E-TİCARET GÜVENLİK & ANTİ-DOLANDIRICILIK MERKEZİ */}
+          {/* ========================================================= */}
+          {activeTab === 'security' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* ÜST BİLGİ & DURUM BAŞLIĞI */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 sm:p-8 shadow-md border border-emerald-900/40 relative overflow-hidden">
+                <div className="absolute right-0 top-0 bottom-0 w-80 bg-radial from-emerald-500/10 to-transparent pointer-events-none" />
+                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400/30 text-xs font-black tracking-wide">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                        <span>6 Katmanlı Güvenlik Kalkanı Aktif</span>
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">256-Bit SSL · PayTR HMAC · Anti-Carding</span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+                      <ShieldCheck className="text-emerald-400 shrink-0" size={26} />
+                      <span>E-Ticaret Güvenlik & Anti-Dolandırıcılık Merkezi</span>
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+                      İnternet alışverişlerinde yaygın yapılan <strong>fiyat manipülasyonu</strong> (tarayıcıdan fiyat düşürme), <strong>çalıntı kart deneme botları (carding)</strong>, sahte PayTR webhook bildirimleri, zararlı XSS scriptleri ve sunucu sistem dosyalarına yönelik saldırılar anlık olarak taranır ve engellenir.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => fetchSecurityData()}
+                      disabled={isLoadingSecurity}
+                      className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-white/10 cursor-pointer disabled:opacity-50"
+                      title="Güvenlik verilerini yenile"
+                    >
+                      <RefreshCw size={14} className={isLoadingSecurity ? 'animate-spin' : ''} />
+                      <span>Yenile</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearSecurityLogs}
+                      className="px-3 py-2.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      title="Güvenlik günlüklerini temizle"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4 ÖZET İSTATİSTİK KARTI */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-6 mt-6 border-t border-slate-700/60">
+                  <div className="bg-slate-800/80 backdrop-blur-xs p-3.5 rounded-2xl border border-slate-700/80">
+                    <span className="text-[11px] font-bold text-slate-400 block uppercase">Aktif Kalkanlar</span>
+                    <span className="text-lg sm:text-xl font-black text-emerald-400 flex items-center gap-1.5 mt-0.5">
+                      <span>6 / 6</span>
+                      <span className="text-xs font-semibold text-emerald-400/80">(Devrede)</span>
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-800/80 backdrop-blur-xs p-3.5 rounded-2xl border border-slate-700/80">
+                    <span className="text-[11px] font-bold text-slate-400 block uppercase">Engellenen Tehditler</span>
+                    <span className="text-lg sm:text-xl font-black text-rose-400 mt-0.5 block">
+                      {securityStats?.blockedAttacksCount ?? 0} Adet
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-800/80 backdrop-blur-xs p-3.5 rounded-2xl border border-slate-700/80">
+                    <span className="text-[11px] font-bold text-slate-400 block uppercase">Fiyat Manipülasyon Engeli</span>
+                    <span className="text-lg sm:text-xl font-black text-amber-400 mt-0.5 block">
+                      {securityStats?.tamperedPriceAttemptsCount ?? 0} Girişim
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-800/80 backdrop-blur-xs p-3.5 rounded-2xl border border-slate-700/80">
+                    <span className="text-[11px] font-bold text-slate-400 block uppercase">Kara Listedeki IP'ler</span>
+                    <span className="text-lg sm:text-xl font-black text-purple-300 mt-0.5 block">
+                      {securityStats?.blockedIps?.length ?? 0} IP
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6 AKTİF KALKAN DETAYI */}
+              <div className="bg-white p-5 sm:p-7 rounded-3xl border border-slate-200/90 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-emerald-600" />
+                    <span>Aktif Güvenlik Kalkanları ve Savunma Katmanları</span>
+                  </h3>
+                  <span className="text-xs text-slate-400 font-semibold">Tüm istekler doğrulanıyor</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Kalkan 1 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                        <span>🏷️</span>
+                        <span>Fiyat Doğrulama</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      İstemci tarayıcıdan sepet tutarını düşürmeye çalışırsa sunucu ürünün orijinal katalog fiyatını (boyut ve harf ücreti dahil) hesaplar ve PayTR tahsilatına gerçek tutarı zorlar.
+                    </p>
+                  </div>
+
+                  {/* Kalkan 2 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                        <span>🔐</span>
+                        <span>PayTR 256-Bit HMAC</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      PayTR bildirimlerinde gelen SHA-256 HMAC hash imzası kontrol edilir. Sahte veya manipüle edilmiş callback istekleri kesinlikle siparişi onaylayamaz ve engellenir.
+                    </p>
+                  </div>
+
+                  {/* Kalkan 3 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                        <span>🤖</span>
+                        <span>Anti-Carding Bot Kalkanı</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Çalıntı kredi kartı listelerini sitede hızlıca deneyen botlara karşı IP başına dakikada maksimum 6 token isteği sınırı uygulanır. Aşıldığında IP geçici olarak engellenir.
+                    </p>
+                  </div>
+
+                  {/* Kalkan 4 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                        <span>📁</span>
+                        <span>Dizin Gezinme Koruması</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Saldırganların <code>/.env</code>, <code>/.git</code>, <code>server.ts</code> veya <code>..</code> (Directory Traversal) ile sunucu gizli verilerini taraması HTTP 403 Forbidden ile durdurulur.
+                    </p>
+                  </div>
+
+                  {/* Kalkan 5 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                        <span>🧠</span>
+                        <span>Fraud Risk Puanlaması</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Gelen her sipariş; tek kullanımlık/sahte e-posta, geçersiz telefon, anormal sipariş adeti ve adres kalitesine göre 0-100 arası otomatik risk puanı alır ve panelde işaretlenir.
+                    </p>
+                  </div>
+
+                  {/* Kalkan 6 */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-black text-slate-900 flex items-center gap-1.5">
+                        <span>🧹</span>
+                        <span>Anti-XSS & Giriş Temizliği</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Müşteri formlarından veya API parametrelerinden gelen zararlı <code>&lt;script&gt;</code>, iframe ve injection kodları derhal filtrelenir, veritabanına ve ekrana yansıması engellenir.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SALDIRI SİMÜLASYONU & MANUEL IP KARA LİSTESİ */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 1. Güvenlik Kalkanı Test Simülasyonu */}
+                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <h4 className="text-xs font-black uppercase text-slate-900 flex items-center gap-2">
+                      <Zap size={16} className="text-amber-500" />
+                      <span>Güvenlik Kalkanlarını Canlı Test Et (Simülasyon)</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-bold">Güvenli Deneme</span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Kalkanların nasıl çalıştığını ve anında loglara nasıl düştüğünü görmek için aşağıdaki simülasyonları başlatabilirsiniz:
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      disabled={isSimulatingAttack}
+                      onClick={() => handleSimulateAttack('price_tampering')}
+                      className="p-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-2xl text-left text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <span className="block text-amber-600 font-black text-sm mb-1">🏷️ Fiyat Hilesi</span>
+                      <span className="text-[11px] text-amber-800 font-normal">350 TL yerine 1 TL gönderme denemesi simüle edilir.</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSimulatingAttack}
+                      onClick={() => handleSimulateAttack('carding')}
+                      className="p-3 bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200 rounded-2xl text-left text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <span className="block text-rose-600 font-black text-sm mb-1">💳 Carding Botu</span>
+                      <span className="text-[11px] text-rose-800 font-normal">Hızlı kart flood saldırısı ve IP engeli simüle edilir.</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSimulatingAttack}
+                      onClick={() => handleSimulateAttack('traversal')}
+                      className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 rounded-2xl text-left text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <span className="block text-slate-700 font-black text-sm mb-1">📁 Dizin Tarama</span>
+                      <span className="text-[11px] text-slate-600 font-normal">/.env ve sunucu dosyalarına erişim denemesi simüle edilir.</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Manuel IP Kara Liste Yönetimi */}
+                <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <h4 className="text-xs font-black uppercase text-slate-900 flex items-center gap-2">
+                      <Lock size={16} className="text-rose-600" />
+                      <span>IP Kara Liste Yönetimi</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-bold">Manuel Blokaj</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Engellenecek IP (Örn: 185.220.101.5)"
+                      value={manualIpToBlock}
+                      onChange={(e) => setManualIpToBlock(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ff0055]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleBlockManualIp}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-colors cursor-pointer shrink-0"
+                    >
+                      IP'yi Engelle
+                    </button>
+                  </div>
+
+                  <div className="pt-2">
+                    <span className="text-[11px] font-bold text-slate-500 block mb-1.5">
+                      Engellenen IP Listesi ({securityStats?.blockedIps?.length ?? 0}):
+                    </span>
+                    {(!securityStats?.blockedIps || securityStats.blockedIps.length === 0) ? (
+                      <p className="text-xs text-slate-400 italic">Şu anda kara listede aktif bir IP bulunmuyor.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {securityStats.blockedIps.map((ip: string) => (
+                          <span
+                            key={ip}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs font-mono font-bold"
+                          >
+                            <span>{ip}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleUnblockManualIp(ip)}
+                              className="text-rose-500 hover:text-rose-800 cursor-pointer font-black"
+                              title="Engeli Kaldır"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* CANLI GÜVENLİK OLAY GÜNLÜĞÜ (SECURITY AUDIT LOG) */}
+              <div className="bg-white p-5 sm:p-7 rounded-3xl border border-slate-200/90 shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div>
+                    <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+                      <Activity size={18} className="text-emerald-600" />
+                      <span>Canlı Güvenlik & Saldırı Olay Günlüğü</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Sunucuya gelen tüm şüpheli istekler, engellenen saldırılar ve fiyat manipülasyon denemeleri burada kayıt altındadır.
+                    </p>
+                  </div>
+
+                  {/* Filtre */}
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setSecurityFilterSeverity('all')}
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        securityFilterSeverity === 'all' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-600'
+                      }`}
+                    >
+                      Tümü ({securityEvents.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSecurityFilterSeverity('critical')}
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        securityFilterSeverity === 'critical' ? 'bg-rose-600 text-white shadow-2xs font-black' : 'text-slate-600'
+                      }`}
+                    >
+                      Kritik Tehditler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSecurityFilterSeverity('high')}
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        securityFilterSeverity === 'high' ? 'bg-amber-600 text-white shadow-2xs font-black' : 'text-slate-600'
+                      }`}
+                    >
+                      Yüksek Risk
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tablo */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-slate-400 uppercase text-[10px] font-black tracking-wider">
+                        <th className="py-2.5 px-3">Zaman</th>
+                        <th className="py-2.5 px-3">Olay Tipi</th>
+                        <th className="py-2.5 px-3">Seviye</th>
+                        <th className="py-2.5 px-3">İstemci IP</th>
+                        <th className="py-2.5 px-3">Detay & Güvenlik Aksiyonu</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {securityEvents
+                        .filter((e) => {
+                          if (securityFilterSeverity === 'all') return true;
+                          return e.severity === securityFilterSeverity;
+                        })
+                        .map((evt) => {
+                          const dateStr = new Date(evt.timestamp).toLocaleString('tr-TR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          });
+
+                          const severityBadge =
+                            evt.severity === 'critical' ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-300">
+                                Kritik
+                              </span>
+                            ) : evt.severity === 'high' ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                Yüksek
+                              </span>
+                            ) : evt.severity === 'medium' ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-100 text-blue-800 border border-blue-200">
+                                Orta
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Bilgi
+                              </span>
+                            );
+
+                          return (
+                            <tr key={evt.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                                {dateStr}
+                              </td>
+                              <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
+                                <span className="font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded">
+                                  {evt.type}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 whitespace-nowrap">
+                                {severityBadge}
+                              </td>
+                              <td className="py-3 px-3 font-mono text-[11px] text-slate-700 whitespace-nowrap">
+                                {evt.ip}
+                              </td>
+                              <td className="py-3 px-3 text-slate-700 font-medium leading-relaxed">
+                                {evt.details}
+                                {evt.orderId && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-bold text-[10px]">
+                                    Sipariş: #{evt.orderId}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {securityEvents.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-slate-400 italic">
+                            Henüz kaydedilmiş bir güvenlik olayı bulunmamaktadır.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           </div>
         </div>
       </div>

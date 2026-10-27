@@ -1,0 +1,19 @@
+[
+  {
+    "id": "sec-1793087534227-w9lti",
+    "timestamp": "2026-10-27T07:52:14.227Z",
+    "type": "PATH_TRAVERSAL_BLOCKED",
+    "ip": "127.0.0.1",
+    "severity": "critical",
+    "details": "Hassas sistem dosyasına yetkisiz erişim denemesi engellendi: /.env",
+    "userAgent": "curl/7.88.1"
+  },
+  {
+    "id": "sec-init-1793087522023",
+    "timestamp": "2026-10-27T07:52:02.023Z",
+    "type": "SECURITY_SHIELD_ONLINE",
+    "ip": "127.0.0.1",
+    "severity": "low",
+    "details": "AKUZ E-Ticaret Güvenlik Sistemi ve Anti-Dolandırıcılık Kalkanı aktif edildi."
+  }
+]

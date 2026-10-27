@@ -1041,14 +1041,16 @@ if ($route === 'users') {
     }
 
     $sanitized = array_map(function($u) {
-        $isGoogle = ($u['auth_provider'] ?? '') === 'google' || ($u['provider'] ?? '') === 'google' || ($u['authProvider'] ?? '') === 'google' || ($u['passwordHash'] ?? '') === 'google_oauth_verified';
+        $isGoogle = ($u['isGoogleUser'] ?? false) === true || ($u['auth_provider'] ?? '') === 'google' || ($u['provider'] ?? '') === 'google' || ($u['authProvider'] ?? '') === 'google' || ($u['registeredVia'] ?? '') === 'google' || ($u['passwordHash'] ?? '') === 'google_oauth_verified';
         return [
             'id' => $u['id'] ?? ('usr_' . md5($u['email'] ?? '')),
             'name' => $u['name'] ?? $u['full_name'] ?? 'Kullanıcı',
             'email' => $u['email'] ?? '',
             'phone' => $u['phone'] ?? '',
             'createdAt' => $u['createdAt'] ?? date('c'),
+            'isGoogleUser' => $isGoogle,
             'authProvider' => $isGoogle ? 'google' : 'normal',
+            'auth_provider' => $isGoogle ? 'google' : 'normal',
             'provider' => $isGoogle ? 'google' : 'normal',
             'registeredVia' => $isGoogle ? 'google' : 'normal',
             'addresses' => $u['addresses'] ?? [],

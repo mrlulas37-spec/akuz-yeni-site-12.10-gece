@@ -231,7 +231,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <div>
           <h3
             onClick={handleProductSelect}
-            className={`font-black ${variant === 'popular' ? 'text-[11px] sm:text-xs min-h-[1.4rem] sm:min-h-[1.65rem]' : 'text-[11px] sm:text-xs md:text-sm min-h-[1.75rem] sm:min-h-[2.1rem]'} tracking-wide text-slate-900 uppercase cursor-pointer hover:text-[#ff6600] transition-colors line-clamp-2 leading-snug sm:leading-tight`}
+            className={`font-black ${variant === 'popular' ? 'text-[11.5px] sm:text-xs md:text-[13px] min-h-[1.5rem] sm:min-h-[1.8rem]' : 'text-[11px] sm:text-xs md:text-sm min-h-[1.75rem] sm:min-h-[2.1rem]'} tracking-wide text-slate-900 uppercase cursor-pointer hover:text-[#ff6600] transition-colors line-clamp-2 leading-snug sm:leading-tight`}
             title={product.name}
           >
             {product.name}

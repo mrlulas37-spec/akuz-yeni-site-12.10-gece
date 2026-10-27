@@ -1407,9 +1407,28 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 )}
               </div>
 
-              <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-                <ShieldCheck size={14} className="text-emerald-600" />
-                <span>Güvenli 256-Bit SSL şifrelemeli işlem · PayTR Güvencesi</span>
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="grid grid-cols-2 gap-2 text-[10.5px]">
+                  <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
+                    <ShieldCheck size={15} className="text-emerald-600 shrink-0" />
+                    <span className="font-bold">256-Bit SSL Şifreleme</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
+                    <Lock size={15} className="text-blue-600 shrink-0" />
+                    <span className="font-bold">PayTR 3D Secure</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
+                    <CheckCircle2 size={15} className="text-purple-600 shrink-0" />
+                    <span className="font-bold">BDDK Lisanslı Altyapı</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
+                    <Sparkles size={15} className="text-amber-600 shrink-0" />
+                    <span className="font-bold">Anti-Dolandırıcılık Kalkanı</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-center text-slate-400 font-medium leading-tight">
+                  🔒 Kart bilgileriniz sunucularımızda saklanmaz. Ödemeniz doğrudan bankanızın 3D Secure SMS şifresi ile şifreli olarak tamamlanır.
+                </p>
               </div>
             </div>
 

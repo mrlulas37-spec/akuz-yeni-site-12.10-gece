@@ -65,9 +65,13 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
   if (incomingCats.length > 0) {
     categories = incomingCats.map((inc) => {
       const base = INITIAL_CATEGORY_CIRCLES.find((b) => b.id === inc.id);
+      const curr = currentCats.find((c) => c.id === inc.id);
       return {
         ...(base || {}),
+        ...(curr || {}),
         ...inc,
+        imageUrl: inc.imageUrl !== undefined ? inc.imageUrl : (curr?.imageUrl || base?.imageUrl),
+        cardImageUrl: inc.cardImageUrl !== undefined ? inc.cardImageUrl : (curr?.cardImageUrl || base?.cardImageUrl),
       };
     });
   } else if (currentCats.length > 0) {

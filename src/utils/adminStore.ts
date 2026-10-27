@@ -6,9 +6,8 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     "titleLine1": "Katalog",
     "titleLine2": "Tüm Ürünler",
     "bgGradient": "bg-slate-900 text-white",
-    "cardImageUrl": "/uploads/prod_1792267770453_4d3aa7.jpg",
-    "subtitle": "Tüm Sticker Koleksiyonu",
-    "imageUrl": "/uploads/prod_1792267765590_506db4.jpg"
+    "cardImageUrl": "/products/IMG_1141.jpeg",
+    "subtitle": "Tüm Sticker Koleksiyonu"
   },
   {
     "id": "discount",
@@ -23,8 +22,8 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     "titleLine1": "Atatürk",
     "titleLine2": "Stickerları",
     "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-    "imageUrl": "/uploads/prod_1792267264910_d3639f.jpg",
-    "cardImageUrl": "/uploads/prod_1792267252889_745185.jpg",
+    "imageUrl": "/products/IMG_1278.jpeg",
+    "cardImageUrl": "/products/IMG_1278.jpeg",
     "subtitle": "İmza, Portre & Özel Tasarımlar"
   },
   {
@@ -53,19 +52,21 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
   },
   {
     "id": "offroad",
-    "titleLine1": "Off-Road",
+    "titleLine1": "Karavan",
     "titleLine2": "Stickerları",
     "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white",
-    "cardImageUrl": "/products/IMG_1140.jpeg",
-    "subtitle": "4x4 Arazi, Dağ & Macera Çıkartmaları"
+    "cardImageUrl": "/uploads/prod_1792935096272_1306d3.jpg",
+    "subtitle": "Arazi 4x4, Dağ & Macera Çıkartmaları",
+    "imageUrl": "/uploads/prod_1792935102665_9d0ecf.jpg"
   },
   {
     "id": "ayna",
     "titleLine1": "Ayna",
     "titleLine2": "Stickerları",
     "bgGradient": "bg-gradient-to-tr from-cyan-600 to-blue-600 text-white",
-    "cardImageUrl": "/products/IMG_1142.jpeg",
-    "subtitle": "Yan Ayna & Dikiz Çıkartmaları"
+    "cardImageUrl": "/uploads/prod_1792934842456_8301fd.jpg",
+    "subtitle": "Yan Ayna & Dikiz Çıkartmaları",
+    "imageUrl": "/uploads/prod_1792934851818_c70dae.jpg"
   }
 ];
 
@@ -125,9 +126,8 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "titleLine1": "Katalog",
       "titleLine2": "Tüm Ürünler",
       "bgGradient": "bg-slate-900 text-white",
-      "cardImageUrl": "/uploads/prod_1792267770453_4d3aa7.jpg",
-      "subtitle": "Tüm Sticker Koleksiyonu",
-      "imageUrl": "/uploads/prod_1792267765590_506db4.jpg"
+      "cardImageUrl": "/products/IMG_1141.jpeg",
+      "subtitle": "Tüm Sticker Koleksiyonu"
     },
     {
       "id": "discount",
@@ -142,8 +142,8 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-      "imageUrl": "/uploads/prod_1792267264910_d3639f.jpg",
-      "cardImageUrl": "/uploads/prod_1792267252889_745185.jpg",
+      "imageUrl": "/products/IMG_1278.jpeg",
+      "cardImageUrl": "/products/IMG_1278.jpeg",
       "subtitle": "İmza, Portre & Özel Tasarımlar"
     },
     {
@@ -172,19 +172,21 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
     },
     {
       "id": "offroad",
-      "titleLine1": "Off-Road",
+      "titleLine1": "Karavan",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-gradient-to-tr from-emerald-600 to-teal-700 text-white",
-      "cardImageUrl": "/products/IMG_1140.jpeg",
-      "subtitle": "4x4 Arazi, Dağ & Macera Çıkartmaları"
+      "cardImageUrl": "/uploads/prod_1792935096272_1306d3.jpg",
+      "subtitle": "Arazi 4x4, Dağ & Macera Çıkartmaları",
+      "imageUrl": "/uploads/prod_1792935102665_9d0ecf.jpg"
     },
     {
       "id": "ayna",
       "titleLine1": "Ayna",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-gradient-to-tr from-cyan-600 to-blue-600 text-white",
-      "cardImageUrl": "/products/IMG_1142.jpeg",
-      "subtitle": "Yan Ayna & Dikiz Çıkartmaları"
+      "cardImageUrl": "/uploads/prod_1792934842456_8301fd.jpg",
+      "subtitle": "Yan Ayna & Dikiz Çıkartmaları",
+      "imageUrl": "/uploads/prod_1792934851818_c70dae.jpg"
     }
   ],
   "availableFoilTypes": [
@@ -197,7 +199,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
     "secure": true,
     "user": "info@akuzstickers.com",
     "pass": "GvqrM6nWyfE9mMX",
-    "fromName": "AKUZ STİCKERS",
+    "fromName": "AKUZ STICKERS",
     "fromEmail": "info@akuzstickers.com",
     "enabled": true
   },
@@ -221,7 +223,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
     "testMode": true
   },
   "shippingFee": 39.9,
-  "freeShippingThreshold": 2,
+  "freeShippingThreshold": 150,
   "googleClientId": "947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com"
 };
 
