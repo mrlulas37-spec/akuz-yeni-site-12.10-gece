@@ -178,6 +178,32 @@ export const Navbar: React.FC<NavbarProps> = ({
     { text: shippingTickerText, badge: '🚚 ÜCRETSİZ KARGO' },
   ];
 
+  // Kullanıcı İsteği: Favorilere veya Hesabıma girildiğinde orda olduğunun belli olması için girdiği yer yansın
+  // Favoriler kendi renginde (Rose/Kırmızı parlak neon), Hesap kendi renginde (Safir Mavi parlak neon)
+  const isFavoritesActive = Boolean(
+    currentPath && (
+      currentPath === '/favoriler' ||
+      currentPath === '/favorilerim' ||
+      currentPath.startsWith('/favoriler')
+    )
+  );
+
+  const isAccountActive = Boolean(
+    currentPath && (
+      currentPath === '/hesap' ||
+      currentPath === '/hesabim' ||
+      currentPath === '/siparislerim' ||
+      currentPath === '/adreslerim' ||
+      currentPath === '/sifre-degistir' ||
+      currentPath === '/giris' ||
+      currentPath === '/login' ||
+      currentPath === '/kayit' ||
+      currentPath === '/sifre-yenile' ||
+      currentPath === '/sifremi-unuttum' ||
+      currentPath.startsWith('/hesap')
+    )
+  );
+
   return (
     <header className="sticky top-0 z-40 bg-[#f8f6f0] border-b border-[#e5e2d8] shadow-xs">
       {/* 0. SAYFANIN EN ÜSTÜNDEKİ TURUNCU ŞERİT (Sağdan Sola Doğru Orta Yavaşlıkta %20 Daha Yavaş Akan Döngü) */}
@@ -215,7 +241,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* 2. Sağ: Giriş Yap / Hesabım, Favoriler, Sepet (Rahat ve Ferah) */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3.5 shrink-0">
-            {/* Giriş Yap / Hesabım Butonu */}
+            {/* Giriş Yap / Hesabım Butonu - Aktifken Safir Mavi Kendi Renginde Yanar */}
             {currentUser ? (
               <div
                 className="relative"
@@ -233,25 +259,39 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }
                     });
                   }}
-                  className={`flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 transition-all group cursor-pointer text-xs sm:text-sm font-semibold ${
-                    activeOrangeIcon === 'account'
+                  className={`flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl transition-all group cursor-pointer text-xs sm:text-sm font-semibold ${
+                    isAccountActive
+                      ? 'border-2 border-blue-500 bg-blue-50/95 text-blue-700 animate-glow-account shadow-lg'
+                      : activeOrangeIcon === 'account'
                       ? 'ring-2 ring-[#ff6600] bg-orange-50/80 shadow-md scale-105 text-[#ff6600]'
-                      : ''
+                      : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60'
                   }`}
                   title="Hesap Paneli & Menüsü"
                 >
                   <div className={`w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs shadow-sm transition-all ${
-                    activeOrangeIcon === 'account'
+                    isAccountActive
+                      ? 'bg-blue-600 shadow-[0_0_14px_rgba(37,99,235,0.95)] ring-2 ring-blue-300 scale-105'
+                      : activeOrangeIcon === 'account'
                       ? 'bg-[#ff6600] shadow-[0_0_12px_rgba(255,102,0,0.8)] scale-110'
                       : 'bg-gradient-to-tr from-[#ff6600] to-orange-500'
                   }`}>
                     {currentUser.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="hidden lg:flex flex-col text-left leading-tight">
-                    <span className="text-[10px] text-slate-400 font-medium">Hesabım</span>
+                    <span className={`text-[10px] font-medium transition-colors ${
+                      isAccountActive ? 'text-blue-600 font-bold' : 'text-slate-400'
+                    }`}>
+                      Hesabım
+                    </span>
                     <span className={`text-xs font-bold truncate max-w-[90px] transition-colors ${
-                      activeOrangeIcon === 'account' ? 'text-[#ff6600]' : 'text-slate-800 group-hover:text-[#ff6600]'
-                    }`}>{currentUser.name.split(' ')[0]}</span>
+                      isAccountActive
+                        ? 'text-blue-800 font-extrabold'
+                        : activeOrangeIcon === 'account'
+                        ? 'text-[#ff6600]'
+                        : 'text-slate-800 group-hover:text-[#ff6600]'
+                    }`}>
+                      {currentUser.name.split(' ')[0]}
+                    </span>
                   </div>
                 </button>
 
@@ -284,9 +324,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                                 onOpenAccount();
                               }
                             }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold rounded-xl transition-colors cursor-pointer group ${
+                              currentPath === '/siparislerim'
+                                ? 'bg-blue-50 text-blue-700 font-extrabold'
+                                : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60'
+                            }`}
                           >
-                            <Package size={17} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <Package size={17} className={currentPath === '/siparislerim' ? 'text-blue-600' : 'text-slate-500 group-hover:text-[#ff6600] transition-colors'} />
                             <span>Siparişlerim</span>
                           </button>
 
@@ -297,9 +341,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                               setIsAccountMenuOpen(false);
                               onOpenFavorites();
                             }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold rounded-xl transition-colors cursor-pointer group ${
+                              isFavoritesActive
+                                ? 'bg-rose-50 text-rose-700 font-extrabold'
+                                : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60'
+                            }`}
                           >
-                            <Heart size={17} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <Heart size={17} className={isFavoritesActive ? 'text-rose-500 fill-rose-500' : 'text-slate-500 group-hover:text-[#ff6600] transition-colors'} />
                             <span>Favorilerim ({favoritesCount})</span>
                           </button>
 
@@ -310,9 +358,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                               setIsAccountMenuOpen(false);
                               onOpenAccount('profile');
                             }}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                            className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer group ${
+                              currentPath === '/hesap' || currentPath === '/hesabim'
+                                ? 'bg-blue-50 text-blue-700 font-extrabold'
+                                : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60'
+                            }`}
                           >
-                            <UserIcon size={16} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <UserIcon size={16} className={currentPath === '/hesap' || currentPath === '/hesabim' ? 'text-blue-600' : 'text-slate-500 group-hover:text-[#ff6600] transition-colors'} />
                             <span>Hesap Bilgilerim</span>
                           </button>
 
@@ -323,9 +375,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                               setIsAccountMenuOpen(false);
                               onOpenAccount('addresses');
                             }}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                            className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer group ${
+                              currentPath === '/adreslerim'
+                                ? 'bg-blue-50 text-blue-700 font-extrabold'
+                                : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60'
+                            }`}
                           >
-                            <MapPin size={16} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <MapPin size={16} className={currentPath === '/adreslerim' ? 'text-blue-600' : 'text-slate-500 group-hover:text-[#ff6600] transition-colors'} />
                             <span>Adreslerim</span>
                           </button>
 
@@ -336,9 +392,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                               setIsAccountMenuOpen(false);
                               onOpenAccount('password');
                             }}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60 rounded-xl transition-colors cursor-pointer group"
+                            className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer group ${
+                              currentPath === '/sifre-degistir'
+                                ? 'bg-blue-50 text-blue-700 font-extrabold'
+                                : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/60'
+                            }`}
                           >
-                            <Lock size={16} className="text-slate-500 group-hover:text-[#ff6600] transition-colors" />
+                            <Lock size={16} className={currentPath === '/sifre-degistir' ? 'text-blue-600' : 'text-slate-500 group-hover:text-[#ff6600] transition-colors'} />
                             <span>Şifre Değiştir</span>
                           </button>
 
@@ -363,36 +423,46 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <button
                 onClick={() => triggerOrangeAction('auth', onOpenAuth)}
-                className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70 transition-all group cursor-pointer ${
-                  activeOrangeIcon === 'auth'
+                className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all group cursor-pointer ${
+                  isAccountActive
+                    ? 'border-2 border-blue-500 bg-blue-50/95 text-blue-700 animate-glow-account shadow-lg scale-105'
+                    : activeOrangeIcon === 'auth'
                     ? 'ring-2 ring-[#ff6600] bg-orange-50/90 shadow-[0_0_15px_rgba(255,102,0,0.6)] scale-105 text-[#ff6600]'
-                    : ''
+                    : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70'
                 }`}
                 title="Giriş Yap / Üye Ol"
               >
                 <UserIcon
                   size={21}
                   className={`transition-all ${
-                    activeOrangeIcon === 'auth'
+                    isAccountActive
+                      ? 'text-blue-600 drop-shadow-[0_0_12px_rgba(37,99,235,0.95)] scale-110'
+                      : activeOrangeIcon === 'auth'
                       ? 'text-[#ff6600] drop-shadow-[0_0_10px_rgba(255,102,0,0.8)] scale-110'
                       : 'text-slate-600 group-hover:text-[#ff6600]'
                   }`}
                 />
                 <span className={`hidden md:inline-block text-xs sm:text-sm font-semibold transition-colors ${
-                  activeOrangeIcon === 'auth' ? 'text-[#ff6600]' : 'group-hover:text-[#ff6600]'
+                  isAccountActive
+                    ? 'text-blue-700 font-extrabold'
+                    : activeOrangeIcon === 'auth'
+                    ? 'text-[#ff6600]'
+                    : 'group-hover:text-[#ff6600]'
                 }`}>
                   Giriş Yap
                 </span>
               </button>
             )}
 
-            {/* Favoriler (Kalp) İkonu ve Yazısı - Turuncu Tıklama Etkileşimi */}
+            {/* Favoriler (Kalp) İkonu ve Yazısı - Aktifken Gül/Kırmızı Renginde Yanar */}
             <button
               onClick={() => triggerOrangeAction('favorites', onOpenFavorites)}
-              className={`relative flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70 transition-all group cursor-pointer ${
-                activeOrangeIcon === 'favorites'
+              className={`relative flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all group cursor-pointer ${
+                isFavoritesActive
+                  ? 'border-2 border-rose-500 bg-rose-50/95 text-rose-700 animate-glow-favorites shadow-lg scale-105'
+                  : activeOrangeIcon === 'favorites'
                   ? 'ring-2 ring-[#ff6600] bg-orange-50/90 shadow-[0_0_15px_rgba(255,102,0,0.6)] scale-105 text-[#ff6600]'
-                  : ''
+                  : 'text-slate-700 hover:text-[#ff6600] hover:bg-orange-50/70'
               }`}
               title="Favorilerim"
             >
@@ -400,7 +470,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <Heart
                   size={21}
                   className={`transition-all ${
-                    activeOrangeIcon === 'favorites'
+                    isFavoritesActive
+                      ? 'text-rose-500 fill-rose-500 drop-shadow-[0_0_14px_rgba(244,63,94,0.95)] scale-115'
+                      : activeOrangeIcon === 'favorites'
                       ? 'text-[#ff6600] fill-[#ff6600] drop-shadow-[0_0_12px_rgba(255,102,0,0.9)] scale-120'
                       : favoritesCount > 0
                       ? 'text-rose-500 fill-rose-500'
@@ -409,14 +481,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                 />
                 {favoritesCount > 0 && (
                   <span className={`absolute -top-1.5 -right-2 w-4 h-4 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm animate-scale transition-colors ${
-                    activeOrangeIcon === 'favorites' ? 'bg-[#ff6600]' : 'bg-rose-500'
+                    isFavoritesActive
+                      ? 'bg-rose-600 shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                      : activeOrangeIcon === 'favorites'
+                      ? 'bg-[#ff6600]'
+                      : 'bg-rose-500'
                   }`}>
                     {favoritesCount}
                   </span>
                 )}
               </div>
               <span className={`hidden md:inline-block text-xs sm:text-sm font-semibold transition-colors ${
-                activeOrangeIcon === 'favorites' ? 'text-[#ff6600]' : 'group-hover:text-[#ff6600]'
+                isFavoritesActive
+                  ? 'text-rose-600 font-extrabold'
+                  : activeOrangeIcon === 'favorites'
+                  ? 'text-[#ff6600]'
+                  : 'group-hover:text-[#ff6600]'
               }`}>
                 Favoriler
               </span>
@@ -581,6 +661,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         onSelectCategory={onSelectCategory}
         onNavigateToCatalog={onNavigateToCatalog}
         onLogout={onLogout}
+        currentPath={currentPath}
       />
     </header>
   );

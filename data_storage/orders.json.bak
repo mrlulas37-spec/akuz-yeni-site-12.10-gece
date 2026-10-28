@@ -1,19 +1,31 @@
 [
   {
-    "id": "AKUZ-TEST-DELIVERED",
-    "date": "18 Ekim 2026",
-    "status": "Teslim Edildi",
-    "total": 120,
-    "customerName": "Mert Yılmaz",
-    "customerEmail": "mert@akuz.com",
+    "id": "AKUZ-TEST-998877",
+    "date": "28 Ekim 2026",
+    "status": "Hazırlanıyor",
+    "paymentStatus": "Ödendi (PayTR Test Modu)",
+    "paymentMethod": "PayTR Kredi / Banka Kartı (Test Modu)",
+    "total": 189.8,
+    "customerName": "Kemal Test",
+    "customerPhone": "+90 546 875 8671",
+    "customerEmail": "testuser@akuzstickers.com",
+    "shippingAddress": "Nilüfer/Bursa",
     "items": [
       {
-        "productId": "la-familia-arka-cam",
-        "productName": "La Familia Arka Cam Sticker",
+        "productName": "Kemal Atatürk İmzası",
         "quantity": 1,
-        "price": 120
+        "price": 149.9
       }
-    ]
+    ],
+    "verifiedTotal": 189.8,
+    "priceTampered": true,
+    "securityAlert": "Fiyat Manipülasyonu Engellendi (149.9 TL yerine katalog tutarı 189.8 TL uygulandı)",
+    "fraudScore": 65,
+    "fraudRiskLevel": "Yüksek",
+    "fraudRiskReasons": [
+      "Fiyat manipülasyonu tespit edildi (İstemci: 149.9 TL, Gerçek Katalog: 189.8 TL)"
+    ],
+    "clientIp": "127.0.0.1"
   },
   {
     "id": "AKUZ-TEST1791731588507",

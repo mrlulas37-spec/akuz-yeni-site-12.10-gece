@@ -124,15 +124,32 @@ export interface SiteSettings {
   // Müşterinin Ödeyeceği Kargo Ücreti ve Ücretsiz Kargo Sepet Tutarı Barajı
   shippingFee?: number;
   freeShippingThreshold?: number;
+  // Müşteri Yorum Sistemi Ayarları
+  reviewSettings?: ReviewSettings;
+}
+
+export interface ReviewSettings {
+  enabled: boolean; // Yorum yapma sistemi açık mı (Varsayılan: true)
+  autoApprove: boolean; // Yorumlar otomatik mi yayınlansın, yoksa admin onayı mı gereksin (Varsayılan: false)
+  onlyPurchased: boolean; // Yalnızca ürünü teslim alanlar mı yorum yapabilir (Varsayılan: false)
+  maskNames: boolean; // Kullanıcı adları gizlensin mi (Ah*** Yı***) (Varsayılan: true)
 }
 
 export interface Review {
   id: string;
   productId: string;
+  productName?: string;
   userName: string;
+  userEmail?: string;
   rating: number; // 1 - 5
   comment: string;
   date: string;
+  createdAt?: string;
+  status?: 'approved' | 'pending' | 'rejected';
+  orderId?: string;
+  verifiedPurchase?: boolean;
+  adminReply?: string;
+  adminReplyDate?: string;
 }
 
 export interface CartItem {
@@ -186,6 +203,7 @@ export interface Order {
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  userId?: string;
   shippingAddress?: string;
   trackingNumber?: string;
   carrierName?: string;
@@ -201,6 +219,7 @@ export interface Order {
   priceTampered?: boolean;
   clientIp?: string;
   items: {
+    productId?: string;
     productName: string;
     quantity: number;
     color: string;

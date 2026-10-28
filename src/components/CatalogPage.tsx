@@ -72,6 +72,38 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
     return () => window.removeEventListener('click', handleOutside);
   }, []);
 
+  // Kullanıcı İsteği: Yuvarlaklara tıklandığında sol üstte kategorinin adı ('ATATÜRK STİCKERLARI', 'ARABA' vb.)
+  // tam gözükecek kadar aşağı kaydır (çok aşağıya kayıp başlığı gizlemesin)
+  const scrollToCatalogHeader = React.useCallback((behavior: ScrollBehavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const el = document.getElementById('katalog-baslik');
+        if (el) {
+          const navEl = document.querySelector('header') || document.querySelector('nav');
+          const navHeight = navEl ? navEl.getBoundingClientRect().height : (window.innerWidth < 768 ? 64 : 80);
+          const rect = el.getBoundingClientRect();
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          // Kategori başlık yazısının üst menünün hemen altında ferahça ve tam görünmesi için:
+          const targetY = rect.top + scrollTop - navHeight - 12;
+
+          window.scrollTo({
+            top: Math.max(0, Math.round(targetY)),
+            behavior,
+          });
+        }
+      }, 75);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    scrollToCatalogHeader('smooth');
+  }, [selectedCategory, scrollToCatalogHeader]);
+
+  const handleCategorySelect = (cat: Product['category'] | 'all') => {
+    onSelectCategory(cat);
+    scrollToCatalogHeader('smooth');
+  };
+
   // Filter & Sort
   const displayedProducts = useMemo(() => {
     let result = products.filter((p) => {
@@ -114,7 +146,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
     return result;
   }, [products, selectedCategory, searchQuery, currentSort]);
 
-  // Trendyol Tarzı Kategori Vitrini (Katalog tıklandığında gösterilecek ürün boyutunda dikdörtgen kategori bölmeleri)
+  // Kategori Vitrini (Katalog tıklandığında gösterilecek ürün boyutunda dikdörtgen kategori bölmeleri)
   const showcaseCategories = useMemo(() => {
     const defaultList: CategoryCircleItem[] = [
       {
@@ -122,8 +154,8 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         titleLine1: 'Atatürk',
         titleLine2: 'Stickerları',
         bgGradient: 'bg-slate-900',
-        imageUrl: '/products/IMG_1278.jpeg',
-        cardImageUrl: '/products/IMG_1278.jpeg',
+        imageUrl: '/uploads/prod_1792267264910_d3639f.jpg',
+        cardImageUrl: '/uploads/prod_1792267252889_745185.jpg',
         subtitle: 'İmza, Portre & Özel Tasarımlar',
       },
       {
@@ -139,7 +171,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
         titleLine1: 'Motosiklet',
         titleLine2: 'Stickerları',
         bgGradient: 'bg-slate-800',
-        cardImageUrl: '/products/IMG_1143.webp',
+        cardImageUrl: '/products/IMG_1141.jpeg',
         subtitle: 'Kask, Depo, Maşa & Jant Çıkartmaları',
       },
       {
@@ -184,6 +216,12 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
     return source.map((c) => {
       const def = defaultList.find((d) => d.id === c.id);
       let img = c.cardImageUrl || c.imageUrl || def?.cardImageUrl;
+      if (c.id === 'motosiklet' && (!img || img.includes('IMG_1143'))) {
+        img = '/products/IMG_1141.jpeg';
+      }
+      if (c.id === 'ataturk' && (!img || img.includes('IMG_1278'))) {
+        img = '/uploads/prod_1792267252889_745185.jpg';
+      }
       if (!img) {
         const prod = products.find((p) => (c.id === 'discount' ? p.isDiscounted : p.category === c.id));
         if (prod?.imageUrl) img = prod.imageUrl;
@@ -205,7 +243,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
   return (
     <div className="min-h-screen bg-[#faf9f6] text-slate-900 pb-12 sm:pb-16">
       {/* Breadcrumb & Navigation Bar */}
-      <div className="bg-white border-b border-slate-200/80 sticky top-16 md:top-20 z-30 shadow-xs">
+      <div className="bg-white border-b border-slate-200/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center text-xs text-slate-500">
             <div className="flex items-center gap-2">
@@ -217,7 +255,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
               </button>
               <span>/</span>
               <button
-                onClick={() => onSelectCategory('all')}
+                onClick={() => handleCategorySelect('all')}
                 className={`transition-colors cursor-pointer ${
                   selectedCategory === 'all' ? 'text-slate-900 font-bold' : 'hover:text-[#ff6600] font-semibold'
                 }`}
@@ -240,11 +278,12 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
       {/* 8 Dairesel Kategori Çubuğu (Katalog Sayfasında da Tıklanınca Sadece O Kategori Filtrelenir) */}
       <CategoryBar
         selectedCategory={selectedCategory}
-        onSelectCategory={onSelectCategory}
+        onSelectCategory={handleCategorySelect}
         categoriesConfig={categoriesConfig}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 sm:pt-3">
+      {/* Kategori Başlığı & Filtreler (Tıklanınca Tam Bu Başlık Yazısı Sol Üste Hizalanır) */}
+      <div id="katalog-baslik" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2.5 sm:pt-3.5">
         {/* Title & Filter Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 pb-2.5 sm:pb-3 border-b border-slate-200">
           <div>
@@ -331,7 +370,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({
           </div>
         </div>
 
-        {/* KULLANICI İSTEĞİ: KATALOG BUTONUNA TIKLANDIĞINDA KATEGORİ SEÇME ALANI (TRENDYOL VİTRİNİ) */}
+        {/* KULLANICI İSTEĞİ: KATALOG BUTONUNA TIKLANDIĞINDA KATEGORİ SEÇME ALANI (KATALOG VİTRİNİ) */}
         {selectedCategory === 'all' && (
           <div className="mt-6 mb-12">
             <div className="mb-4 px-1">

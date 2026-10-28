@@ -88,22 +88,40 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     return availableColors.find((c: ProductColorOption) => c.name === selectedColor) || availableColors[0] || product.colors[0];
   }, [availableColors, selectedColor, product.colors]);
 
-  // Seçilen rengin desteklediği folyo tipleri
+  // Seçilen rengin hologram olup olmadığı kontrolü
+  const isHologramSelected = useMemo(() => {
+    return (selectedColor || '').toLowerCase().includes('hologram');
+  }, [selectedColor]);
+
+  // Seçilen rengin desteklediği folyo tipleri (Hologram seçildiğinde Mat seçeneği tamamen silinir)
   const allowedFinishesForColor: ('Mat' | 'Parlak')[] = useMemo(() => {
+    if (isHologramSelected) {
+      return ['Parlak'];
+    }
     if (selectedColorObj?.supportedFinishes && selectedColorObj.supportedFinishes.length > 0) {
-      return selectedColorObj.supportedFinishes;
+      return selectedColorObj.supportedFinishes.filter((f) => f !== 'Mat' || !isHologramSelected);
     }
     return ['Mat', 'Parlak'];
-  }, [selectedColorObj]);
+  }, [selectedColorObj, isHologramSelected]);
+
+  // Hologram rengi seçildiğinde seçili materyali anında Parlak'a çevir
+  useEffect(() => {
+    if (isHologramSelected && selectedFinish !== 'Parlak') {
+      setSelectedFinish('Parlak');
+    }
+  }, [isHologramSelected, selectedFinish]);
 
   // Bir rengin mevcut seçili folyo tipini (Mat/Parlak) destekleyip desteklemediğini kontrol eder
   const isColorCompatibleWithFinish = (color: ProductColorOption, finish: 'Mat' | 'Parlak'): boolean => {
+    // Hologram renkleri her zaman seçilebilir olmalı, tıklandığında otomatik Parlak folyo atanır
+    if (color.name.toLowerCase().includes('hologram')) return true;
     if (!color.supportedFinishes || color.supportedFinishes.length === 0) return true;
     return color.supportedFinishes.includes(finish);
   };
 
   // Bir folyo tipinin (Mat/Parlak) mevcut seçili rengi destekleyip desteklemediğini kontrol eder
   const isFinishCompatibleWithColor = (finish: 'Mat' | 'Parlak'): boolean => {
+    if (isHologramSelected) return finish === 'Parlak';
     return allowedFinishesForColor.includes(finish);
   };
 
@@ -134,7 +152,11 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       }
     }
 
-    if (color.supportedFinishes && color.supportedFinishes.length > 0 && !color.supportedFinishes.includes(selectedFinish)) {
+    // Hologram seçilirse mat seçeneği olmaz, anında parlak atanır
+    const isHolo = color.name.toLowerCase().includes('hologram');
+    if (isHolo) {
+      setSelectedFinish('Parlak');
+    } else if (color.supportedFinishes && color.supportedFinishes.length > 0 && !color.supportedFinishes.includes(selectedFinish)) {
       setSelectedFinish(color.supportedFinishes[0]);
     }
     setTimeout(() => setClickedColor(null), 350);
@@ -848,71 +870,96 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   </span>
                   <span className="text-[#ff0055] font-bold">{selectedFinish} Yüzey</span>
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(['Parlak', 'Mat'] as const).map((finish) => {
-                    const isSel = selectedFinish === finish;
-                    const isCompatible = isFinishCompatibleWithColor(finish);
 
-                    return (
-                      <button
-                        key={finish}
-                        type="button"
-                        disabled={!isCompatible}
-                        onClick={() => handleSelectFinish(finish)}
-                        title={
-                          !isCompatible
-                            ? `${selectedColor} renginde ${finish} folyo seçeneği mevcut değildir.`
-                            : `${finish} Yüzey`
-                        }
-                        className={`relative flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
-                          isSel
-                            ? 'border-[#ff0055] bg-pink-50/50 shadow-xs ring-2 ring-[#ff0055]/30 cursor-pointer'
-                            : !isCompatible
-                            ? 'border-slate-200/60 bg-slate-100/70 text-slate-400 opacity-50 cursor-not-allowed select-none'
-                            : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          {finish === 'Parlak' ? (
-                            <Sparkles
-                              size={15}
-                              className={isSel ? 'text-[#ff0055]' : !isCompatible ? 'text-slate-400' : 'text-amber-500'}
-                            />
-                          ) : (
-                            <Moon
-                              size={15}
-                              className={isSel ? 'text-[#ff0055]' : !isCompatible ? 'text-slate-400' : 'text-slate-600'}
-                            />
-                          )}
-                          <span
-                            className={`text-xs font-black uppercase ${
-                              isSel
-                                ? 'text-[#ff0055]'
-                                : !isCompatible
-                                ? 'line-through text-slate-400'
-                                : 'text-slate-800'
-                            }`}
-                          >
-                            {finish}
-                          </span>
+                {/* Kullanıcı Talebi: Herhangi bir üründe hologram rengi seçilirse Mat seçme seçeneği olmasın, silinsin */}
+                {isHologramSelected ? (
+                  <div className="w-full">
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-purple-300 bg-gradient-to-r from-purple-50/80 via-pink-50/60 to-amber-50/50 shadow-xs ring-2 ring-purple-400/30">
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles size={20} className="text-purple-600 animate-pulse shrink-0" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black uppercase text-purple-900 tracking-wide">
+                              Parlak Hologramik Yüzey
+                            </span>
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-purple-600 text-white tracking-wider">
+                              Yalnızca Parlak
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-purple-800/80 mt-0.5 font-medium">
+                            Hologram folyolar doğası gereği yalnızca prizmatik süper parlak yüzey olarak üretilir; mat seçeneği bulunmaz.
+                          </p>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {allowedFinishesForColor.map((finish) => {
+                      const isSel = selectedFinish === finish;
+                      const isCompatible = isFinishCompatibleWithColor(finish);
 
-                        {/* Bu folyo seçili renkte yoksa uyarı rozeti */}
-                        {!isCompatible ? (
-                          <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md mt-1 border border-amber-200">
-                            {selectedColor} için mevcut değil
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 mt-1">
-                            {finish === 'Mat'
-                              ? 'Pürüzsüz & Yansımasız Asil Duruş'
-                              : 'Canlı & Işıltılı Süper Parlak Yüzey'}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                      return (
+                        <button
+                          key={finish}
+                          type="button"
+                          disabled={!isCompatible}
+                          onClick={() => handleSelectFinish(finish)}
+                          title={
+                            !isCompatible
+                              ? `${selectedColor} renginde ${finish} folyo seçeneği mevcut değildir.`
+                              : `${finish} Yüzey`
+                          }
+                          className={`relative flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all ${
+                            isSel
+                              ? 'border-[#ff0055] bg-pink-50/50 shadow-xs ring-2 ring-[#ff0055]/30 cursor-pointer'
+                              : !isCompatible
+                              ? 'border-slate-200/60 bg-slate-100/70 text-slate-400 opacity-50 cursor-not-allowed select-none'
+                              : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 cursor-pointer'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {finish === 'Parlak' ? (
+                              <Sparkles
+                                size={15}
+                                className={isSel ? 'text-[#ff0055]' : !isCompatible ? 'text-slate-400' : 'text-amber-500'}
+                              />
+                            ) : (
+                              <Moon
+                                size={15}
+                                className={isSel ? 'text-[#ff0055]' : !isCompatible ? 'text-slate-400' : 'text-slate-600'}
+                              />
+                            )}
+                            <span
+                              className={`text-xs font-black uppercase ${
+                                isSel
+                                  ? 'text-[#ff0055]'
+                                  : !isCompatible
+                                  ? 'line-through text-slate-400'
+                                  : 'text-slate-800'
+                              }`}
+                            >
+                              {finish}
+                            </span>
+                          </div>
+
+                          {/* Bu folyo seçili renkte yoksa uyarı rozeti */}
+                          {!isCompatible ? (
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md mt-1 border border-amber-200">
+                              {selectedColor} için mevcut değil
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 mt-1">
+                              {finish === 'Mat'
+                                ? 'Pürüzsüz & Yansımasız Asil Duruş'
+                                : 'Canlı & Işıltılı Süper Parlak Yüzey'}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* 3. BOYUT SEÇENEKLERİ */}

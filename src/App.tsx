@@ -119,6 +119,14 @@ function mergeSiteSettings(incoming: any, current: SiteSettings): SiteSettings {
       ...(current.smtpSettings || {}),
       ...(incoming.smtpSettings || {}),
     },
+    reviewSettings: {
+      enabled: true,
+      autoApprove: false,
+      onlyPurchased: false,
+      maskNames: true,
+      ...(current.reviewSettings || {}),
+      ...(incoming.reviewSettings || {}),
+    },
     contactEmail: 'akuzstickers@gmail.com',
   };
 }
@@ -203,11 +211,15 @@ export default function App() {
     return [];
   });
 
-  // Reviews state (persisted in localStorage, initially empty so all products start at 0)
+  // Reviews state (persisted in localStorage, strictly approved reviews only)
   const [reviews, setReviews] = useState<Review[]>(() => {
     try {
       const saved = localStorage.getItem('akuz_reviews');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed: Review[] = JSON.parse(saved);
+      return Array.isArray(parsed)
+        ? parsed.filter((r) => r.status === 'approved' || (!r.status && r.status !== 'pending' && r.status !== 'rejected'))
+        : [];
     } catch {
       return [];
     }
@@ -234,35 +246,13 @@ export default function App() {
 
   // Host Merkezi Veritabanı ile senkronizasyon (Ürünler ve Ayarlar)
   useEffect(() => {
-    // 1. Host DB'deki ürünleri çek
+    // 1. Host DB'deki ürünleri çek (Sunucu TEK ve KESİN otoritedir; silinen ürünler asla geri dirilmez)
     fetch('/api/products')
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.products) && data.products.length > 0) {
-          const serverProducts: Product[] = data.products;
-          const localSaved = localStorage.getItem('akuz_dynamic_products');
-          let mergedProducts = serverProducts;
-          if (localSaved) {
-            try {
-              const localList: Product[] = JSON.parse(localSaved);
-              if (Array.isArray(localList)) {
-                const missingLocals = localList.filter(
-                  (lp) => !serverProducts.some((sp) => sp.id === lp.id || sp.slug === lp.slug)
-                );
-                if (missingLocals.length > 0) {
-                  mergedProducts = [...missingLocals, ...serverProducts];
-                  // Eksik yerel ürünleri sunucuya da göndererek kalıcı hale getir
-                  fetch('/api/products', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ products: mergedProducts }),
-                  }).catch(() => {});
-                }
-              }
-            } catch {}
-          }
-          setProducts(mergedProducts);
-          safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(mergedProducts));
+          setProducts(data.products);
+          safeLocalStorageSet('akuz_dynamic_products', JSON.stringify(data.products));
         }
       })
       .catch((e) => console.warn('[HOST DB] Ürünler çekilemedi, varsayılanlar kullanılıyor:', e));
@@ -773,7 +763,7 @@ export default function App() {
     userName: string,
     rating: number,
     comment: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; message?: string; error?: string; status?: string }> => {
     try {
       const res = await fetch('/api/reviews', {
         method: 'POST',
@@ -791,15 +781,17 @@ export default function App() {
       if (!res.ok || !data.success) {
         return {
           success: false,
-          error: data?.error || 'Yorum kaydedilemedi. Yalnızca siparişi teslim edilen müşterilerimiz yorum yapabilir.',
+          error: data?.error || 'Yorum kaydedilemedi.',
         };
       }
 
+      // SADECE ve SADECE onaylanmış yorumlar listesini state'e aktar!
+      // Eğer yorum onay bekliyorsa ('pending'), ne yazan kişinin ekranında ne de sitede görünür
       if (Array.isArray(data.reviews)) {
         setReviews(data.reviews);
         safeLocalStorageSet('akuz_reviews', JSON.stringify(data.reviews));
-      } else if (data.review) {
-        setReviews((prev) => [data.review, ...prev]);
+      } else if (data.review && data.review.status === 'approved') {
+        setReviews((prev) => [data.review, ...prev.filter((r) => r.id !== data.review.id)]);
       }
 
       // Ürün vitrin kartlarının puan ve adetlerini de yenile
@@ -813,7 +805,11 @@ export default function App() {
         })
         .catch(() => {});
 
-      return { success: true };
+      return {
+        success: true,
+        message: data.message || (data.status === 'pending' ? 'Yorumunuz alındı! Yönetici onayından sonra yayınlanacaktır.' : 'Değerlendirmeniz yayınlandı!'),
+        status: data.status,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Sunucu bağlantı hatası.' };
     }
@@ -1303,11 +1299,42 @@ export default function App() {
             siteSettings={siteSettings}
             onGoBackToCart={() => navigateTo('/sepet')}
             onGoHome={() => navigateTo('/')}
-            onViewOrders={() => navigateTo(currentUser ? '/hesap' : '/giris')}
+            onViewOrders={() => navigateTo(currentUser ? '/siparislerim' : '/siparis-sorgula')}
+            onNavigateToTracking={(orderId) => {
+              navigateTo(`/siparis-sorgula?siparis=${encodeURIComponent(orderId)}`);
+            }}
             onOpenAuth={() => navigateTo('/giris')}
             onPlaceOrder={(newOrder) => {
-              setOrders((prev) => [newOrder, ...prev]);
-              setCartItems([]);
+              // 1. Yeni siparişi yerel sipariş state'ine ve localStorage'a ekle
+              setOrders((prev) => [newOrder, ...prev.filter((o) => o.id !== newOrder.id)]);
+              safeLocalStorageSet('akuz_orders', JSON.stringify([newOrder, ...orders.filter((o) => o.id !== newOrder.id)]));
+
+              // 2. Sepeti tamamen sıfırla (React state, localStorage, sessionStorage ve sunucu sepeti)
+              handleClearCart();
+              safeLocalStorageSet('akuz_cart', '[]');
+              try {
+                sessionStorage.removeItem('akuz_pending_checkout');
+                localStorage.removeItem('akuz_pending_checkout');
+              } catch {}
+
+              // 3. Oturum açmış kullanıcının sepet durumunu da anında boşalt
+              if (currentUser) {
+                setCurrentUser((prev) => (prev ? { ...prev, cart: [] } : null));
+              }
+
+              // 4. Sunucudan kullanıcının güncel siparişlerini yeniden çek
+              const emailToQuery = newOrder.customerEmail || currentUser?.email;
+              if (emailToQuery) {
+                fetch('/api/orders?email=' + encodeURIComponent(emailToQuery.trim().toLowerCase()))
+                  .then((res) => res.json())
+                  .then((data) => {
+                    if (data.success && Array.isArray(data.orders)) {
+                      setOrders(data.orders);
+                      safeLocalStorageSet('akuz_orders', JSON.stringify(data.orders));
+                    }
+                  })
+                  .catch(() => {});
+              }
             }}
           />
         </main>

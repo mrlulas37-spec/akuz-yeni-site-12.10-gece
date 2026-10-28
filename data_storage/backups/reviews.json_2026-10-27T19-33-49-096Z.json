@@ -1,0 +1,15 @@
+[
+  {
+    "id": "rev_1793129611010_1gmdk",
+    "productId": "ataturk-imza",
+    "productName": "KEMAL ATATÜRK İMZA",
+    "userName": "Kemal Yılmaz",
+    "userEmail": "kemal@example.com",
+    "rating": 5,
+    "comment": "Harika bir ürün, kalitesi beklediğimden çok daha iyi!",
+    "date": "27 Ekim 2026",
+    "createdAt": "2026-10-27T19:33:31.017Z",
+    "verifiedPurchase": false,
+    "status": "pending"
+  }
+]

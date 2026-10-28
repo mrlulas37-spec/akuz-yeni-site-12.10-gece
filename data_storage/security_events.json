@@ -1,5 +1,15 @@
 [
   {
+    "id": "sec-1793207167945-g7j53",
+    "timestamp": "2026-10-28T17:06:07.945Z",
+    "type": "PRICE_TAMPERING_BLOCKED",
+    "ip": "127.0.0.1",
+    "severity": "high",
+    "details": "Sipariş #AKUZ-TEST-998877 için fiyat manipülasyonu engellendi! Müşteri 149.9 TL iletmeye çalıştı, sunucu gerçek katalog değeri 189.8 TL olarak sabitledi.",
+    "orderId": "AKUZ-TEST-998877",
+    "userAgent": "curl/7.88.1"
+  },
+  {
     "id": "sec-1793087560577-d498a",
     "timestamp": "2026-10-27T07:52:40.577Z",
     "type": "IP_UNBLOCKED",

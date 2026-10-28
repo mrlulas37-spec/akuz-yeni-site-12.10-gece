@@ -120,7 +120,10 @@ export const WhyAkuzSection: React.FC<WhyAkuzSectionProps> = ({
       name: 'Atatürk',
       icon: (
         <img
-          src="/products/IMG_1278.jpeg"
+          src="/uploads/prod_1792267264910_d3639f.jpg"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = '/products/IMG_1140.jpeg';
+          }}
           alt="Atatürk"
           className="w-full h-full object-cover rounded-full"
         />
@@ -138,7 +141,7 @@ export const WhyAkuzSection: React.FC<WhyAkuzSectionProps> = ({
     return defaultMiniCategories.map((item) => {
       const liveCat = categoriesConfig?.find((c) => c.id === item.id);
       const customImg =
-        liveCat?.imageUrl || (item.id === 'ataturk' && !liveCat?.imageUrl ? '/products/IMG_1278.jpeg' : undefined);
+        liveCat?.imageUrl || (item.id === 'ataturk' && !liveCat?.imageUrl ? '/uploads/prod_1792267264910_d3639f.jpg' : undefined);
 
       let icon = item.icon;
       if (item.id === 'discount') {

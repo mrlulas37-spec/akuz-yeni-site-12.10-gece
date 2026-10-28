@@ -72,29 +72,24 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({
           (o.trackingNumber && o.trackingNumber.toUpperCase().includes(cleanQuery))
       );
 
-      // 2. Bulunamazsa sunucu API'sinden e-posta ile sorgula
+      // 2. Sunucu Takip API'sinden sipariş numarası veya takip koduyla anında sorgula
+      if (!match) {
+        const trackRes = await fetch(`/api/orders/track?query=${encodeURIComponent(searchTarget.trim())}`).catch(() => null);
+        if (trackRes && trackRes.ok) {
+          const trackData = await trackRes.json().catch(() => null);
+          if (trackData && trackData.success && trackData.order) {
+            match = trackData.order;
+          }
+        }
+      }
+
+      // 3. Bulunamazsa sunucu API'sinden e-posta ile sorgula
       if (!match) {
         const res = await fetch(`/api/orders?email=${encodeURIComponent(searchTarget.trim().toLowerCase())}`).catch(() => null);
         if (res && res.ok) {
           const data = await res.json().catch(() => null);
           if (data && data.success && Array.isArray(data.orders) && data.orders.length > 0) {
             match = data.orders[0];
-          }
-        }
-      }
-
-      // 3. Genel sipariş listesinde ID veya Takip No sorgula
-      if (!match) {
-        const allRes = await fetch('/api/orders').catch(() => null);
-        if (allRes && allRes.ok) {
-          const allData = await allRes.json().catch(() => null);
-          if (allData && allData.success && Array.isArray(allData.orders)) {
-            match = allData.orders.find(
-              (o: any) =>
-                (o.id && o.id.toUpperCase().includes(cleanQuery)) ||
-                (o.trackingNumber && o.trackingNumber.toUpperCase().includes(cleanQuery)) ||
-                (o.customerPhone && o.customerPhone.replace(/\D/g, '').includes(cleanQuery.replace(/\D/g, '')))
-            );
           }
         }
       }

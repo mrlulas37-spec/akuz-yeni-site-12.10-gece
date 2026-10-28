@@ -17,7 +17,7 @@ export const ImageIndicatorPill: React.FC<ImageIndicatorPillProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#4a4a4a]/90 backdrop-blur-xs shadow-md transition-all ${className}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[#3a3a3a]/80 backdrop-blur-xs shadow-xs transition-all pointer-events-auto ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
       {Array.from({ length: total }).map((_, idx) => {
@@ -32,8 +32,8 @@ export const ImageIndicatorPill: React.FC<ImageIndicatorPillProps> = ({
             }}
             className={`transition-all duration-200 cursor-pointer focus:outline-none ${
               isActive
-                ? 'w-5 h-2 bg-white rounded-full'
-                : 'w-2 h-2 bg-[#9e9e9e] hover:bg-slate-200 rounded-full'
+                ? 'w-2.5 h-1 bg-white rounded-full shadow-xs'
+                : 'w-1 h-1 bg-white/50 hover:bg-white/80 rounded-full'
             }`}
             aria-label={`Görsel ${idx + 1}`}
           />
@@ -42,3 +42,4 @@ export const ImageIndicatorPill: React.FC<ImageIndicatorPillProps> = ({
     </div>
   );
 };
+

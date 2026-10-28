@@ -17,6 +17,11 @@ import {
   Plus,
   Sparkles,
   UserCheck,
+  Copy,
+  Check,
+  Package,
+  ArrowRight,
+  ExternalLink,
 } from 'lucide-react';
 import { CartItem, UserProfile, Order, SiteSettings, Address } from '../types';
 import { StickerGraphic } from './StickerGraphic';
@@ -93,6 +98,7 @@ interface CheckoutPageProps {
   onPlaceOrder?: (newOrder: Order) => void;
   onOpenAuth?: () => void;
   siteSettings?: SiteSettings;
+  onNavigateToTracking?: (orderId: string) => void;
 }
 
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({
@@ -104,9 +110,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   onPlaceOrder,
   onOpenAuth,
   siteSettings: propSiteSettings,
+  onNavigateToTracking,
 }) => {
   // Sipariş başarıyla verildi durumu
   const [orderPlaced, setOrderPlaced] = useState<Order | null>(null);
+  const [copiedOrderId, setCopiedOrderId] = useState(false);
 
   // Ödeme yöntemi: PayTR Kredi / Banka Kartı (WhatsApp ve Havale kaldırıldı)
   const [paymentMethod] = useState<'card'>('card');
@@ -457,9 +465,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     customOrderId?: string,
     skipValidation: boolean = false
   ) => {
-    let nameToUse = fullName.trim();
+    let nameToUse = fullName.trim() || currentUser?.name || '';
     let phoneToUse = `${selectedCountryCode} ${phone.trim()}`;
-    let emailToUse = email ? email.trim() : '';
+    let emailToUse = (currentUser?.email || email || '').trim().toLowerCase();
     let addressToUse = `${neighborhood.trim() ? `${neighborhood.trim()} Mah., ` : ''}${fullAddress.trim()}, ${district.trim()}/${city.trim()}`;
     let itemsToUse = cartItems.map((item) => ({
       productId: item.product?.id || '',
@@ -509,21 +517,28 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     }
     setFormError('');
 
-    const newOrderId = customOrderId || ('AKUZ-' + Math.floor(1000 + Math.random() * 9000));
-    const isPaytrTest = siteSettings?.paytrSettings?.testMode || methodLabel.includes('Test');
+    const isPaytrTest = Boolean(siteSettings?.paytrSettings?.testMode || methodLabel.includes('Test'));
+    const defaultPrefix = isPaytrTest ? 'AKUZ-TEST-' : 'AKUZ-';
+    const cleanCustomId = customOrderId ? (customOrderId.startsWith('AKUZ') ? customOrderId : `AKUZ-${customOrderId}`) : '';
+    const newOrderId = cleanCustomId || (defaultPrefix + Math.floor(100000 + Math.random() * 900000));
+
+    const finalCustomerEmail = (emailToUse || currentUser?.email || 'musteri@akuzstickers.com').trim().toLowerCase();
+    const finalCustomerName = nameToUse || currentUser?.name || 'Değerli Müşterimiz';
 
     const newOrder: Order = {
       id: newOrderId,
       date: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
       status: 'Hazırlanıyor',
-      paymentStatus: isPaytrTest ? 'Ödendi (PayTR Test)' : 'Ödendi',
+      paymentStatus: isPaytrTest ? 'Ödendi (PayTR Test Modu)' : 'Ödendi (PayTR 3D Secure)',
       paymentMethod: methodLabel,
       total: grandTotalToUse,
-      customerName: nameToUse || 'Değerli Müşterimiz',
+      customerName: finalCustomerName,
       customerPhone: phoneToUse,
-      customerEmail: emailToUse,
+      customerEmail: finalCustomerEmail,
+      userId: currentUser?.id || (currentUser as any)?.user_id,
       shippingAddress: addressToUse,
       items: itemsToUse,
+      isTestOrder: isPaytrTest,
     };
 
     // 1. Merkezi Host Sunucusuna Kaydet
@@ -533,17 +548,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       body: JSON.stringify(newOrder),
     }).catch((err) => console.warn('[HOST ORDER SAVE ERROR]', err));
 
-    // 2. React state ve yerel belleğe işle
+    // 2. React state ve yerel belleğe işle & sepeti sıfırla
     if (onPlaceOrder) {
       onPlaceOrder(newOrder);
     }
 
     // 3. Otomatik "Siparişiniz Hazırlanıyor" E-postası gönder
-    if (emailToUse && emailToUse.includes('@')) {
+    if (finalCustomerEmail && finalCustomerEmail.includes('@')) {
       sendOrderPreparingEmail({
         orderId: newOrderId,
-        customerName: nameToUse || 'Değerli Müşterimiz',
-        customerEmail: emailToUse,
+        customerName: finalCustomerName,
+        customerEmail: finalCustomerEmail,
         customerPhone: phoneToUse,
         shippingAddress: addressToUse,
         items: itemsToUse,
@@ -558,7 +573,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     if (kargonomi?.enabled && kargonomi.autoCreateOnOrder !== false) {
       createKargonomiShipment({
         orderId: newOrderId,
-        recipientName: nameToUse || 'Müşteri',
+        recipientName: finalCustomerName,
         recipientPhone: phoneToUse,
         recipientAddress: addressToUse,
         recipientCity: city || 'Bursa',
@@ -575,9 +590,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       }).catch(console.error);
     }
 
+    // 5. Sepet ve taslak verilerini tamamen temizle
+    try {
+      sessionStorage.removeItem('akuz_pending_checkout');
+      localStorage.removeItem('akuz_pending_checkout');
+      localStorage.setItem('akuz_cart', '[]');
+    } catch {}
+
     // Modal varsa kapat ve onay ekranını aç
     setIsPaytrModalOpen(false);
     setOrderPlaced(newOrder);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const generateWhatsAppMessage = () => {
@@ -601,61 +624,139 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     return msg;
   };
 
-  // EĞER SİPARİŞ BAŞARIYLA TAMAMLANDIYSA: ONY EKRANI
+  // EĞER SİPARİŞ BAŞARIYLA TAMAMLANDIYSA: KAPSAMLI ONAY VE TAKİP EKRANI
   if (orderPlaced) {
+    const isTestMode = Boolean(orderPlaced.isTestOrder || orderPlaced.paymentMethod?.includes('Test') || orderPlaced.paymentStatus?.includes('Test'));
+
+    const handleCopyOrderId = () => {
+      if (orderPlaced?.id) {
+        navigator.clipboard.writeText(orderPlaced.id);
+        setCopiedOrderId(true);
+        setTimeout(() => setCopiedOrderId(false), 2500);
+      }
+    };
+
+    const handleTrackOrderClick = () => {
+      if (onNavigateToTracking) {
+        onNavigateToTracking(orderPlaced.id);
+      } else {
+        window.location.href = `/siparis-sorgula?siparis=${encodeURIComponent(orderPlaced.id)}`;
+      }
+    };
+
     return (
-      <div className="min-h-[80vh] bg-[#faf9f6] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
-        <div className="max-w-xl w-full bg-white rounded-3xl p-6 sm:p-9 border border-slate-200/90 shadow-xl text-center space-y-6">
-          <div className="w-18 h-18 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-xs border border-emerald-100">
-            <CheckCircle2 size={40} />
+      <div className="min-h-[85vh] bg-[#faf9f6] py-10 sm:py-16 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="max-w-2xl w-full bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-2xl text-center space-y-6 animate-fadeIn">
+          
+          {/* Kutlama / Başarılı Simgesi */}
+          <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-3xl bg-emerald-500/20 animate-ping opacity-75"></div>
+            <div className="w-20 h-20 bg-gradient-to-tr from-emerald-600 to-teal-500 text-white rounded-3xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
+              <CheckCircle2 size={44} strokeWidth={2.5} />
+            </div>
           </div>
 
-          <div>
-            <span className="inline-block px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 text-xs font-black rounded-full mb-3">
-              ⏳ Siparişiniz Hazırlanıyor
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          {/* Rozet ve Ana Başlık */}
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black rounded-full uppercase tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Sipariş Alındı • Hazırlanıyor</span>
+              {isTestMode && (
+                <span className="px-2 py-0.5 bg-amber-500 text-white text-[10px] rounded-full font-bold ml-1">
+                  Test Modu
+                </span>
+              )}
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
               Siparişiniz Başarıyla Alındı!
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-2">
-              Sipariş Numaranız: <strong className="text-slate-900 font-extrabold font-mono">#{orderPlaced.id}</strong>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              Ödemeniz güvenle teyit edildi. Stickerlarınız AKUZ atölyemizde özenle üretilmeye ve paketlenmeye başlandı.
             </p>
           </div>
 
+          {/* ÖNE ÇIKAN SİPARİŞ VE TAKİP NUMARASI KARTI */}
+          <div className="p-5 sm:p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl border border-slate-700/80 shadow-md text-left space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Sipariş & Canlı Takip Numaranız
+                </span>
+                <span className="text-2xl sm:text-3xl font-black font-mono tracking-wider text-emerald-400 select-all">
+                  #{orderPlaced.id}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyOrderId}
+                  className="px-3.5 py-2 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-white/15"
+                  title="Sipariş Numamasını Kopyala"
+                >
+                  {copiedOrderId ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+                  <span>{copiedOrderId ? 'Kopyalandı! ✓' : 'Kopyala'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTrackOrderClick}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20"
+                >
+                  <Package size={15} />
+                  <span>Siparişi Takip Et</span>
+                </button>
+              </div>
+            </div>
+
+            <p className="text-[11.5px] text-slate-300 border-t border-slate-700/60 pt-2.5 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>Bu numara ile siparişinizi dilediğiniz zaman canlı takip edebilir, kargo aşamalarını izleyebilirsiniz.</span>
+            </p>
+          </div>
+
+          {/* HESABA ATAMA BİLGİLENDİRMESİ */}
           {orderPlaced.customerEmail && (
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 text-left text-xs text-slate-600 space-y-1">
-              <p className="font-bold text-slate-900 flex items-center gap-1.5">
-                <Mail size={14} className="text-[#ff0055]" />
-                <span>Onay E-Postası Gönderildi</span>
-              </p>
-              <p className="text-[11px] text-slate-500">
-                Sipariş hazırlık detayları <strong>{orderPlaced.customerEmail}</strong> adresinize başarıyla iletilmiştir.
-              </p>
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl text-left flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                <UserCheck size={18} />
+              </div>
+              <div className="text-xs space-y-0.5">
+                <h4 className="font-extrabold text-emerald-950">
+                  {currentUser ? 'Hesabınıza Başarıyla Tanımlandı' : 'Sipariş Kaydınız Oluşturuldu'}
+                </h4>
+                <p className="text-emerald-800 leading-relaxed">
+                  Siparişiniz <strong className="font-bold underline">{orderPlaced.customerEmail}</strong> hesabına atanmıştır. 
+                  Üst menüdeki <strong>"Siparişlerim"</strong> bölümünden siparişinizin tüm aşamalarını görebilirsiniz.
+                </p>
+              </div>
             </div>
           )}
 
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 text-left text-xs space-y-2">
-            <div className="flex justify-between text-slate-500">
+          {/* SİPARİŞ DETAYLARI TABLOSU */}
+          <div className="p-4 sm:p-5 bg-slate-50 rounded-2xl border border-slate-200/80 text-left text-xs space-y-2.5">
+            <div className="flex justify-between items-center text-slate-500">
               <span>Teslim Edilecek Kişi:</span>
-              <strong className="text-slate-800">{orderPlaced.customerName}</strong>
+              <strong className="text-slate-800 font-bold">{orderPlaced.customerName}</strong>
             </div>
-            <div className="flex justify-between text-slate-500">
-              <span>Telefon:</span>
-              <strong className="text-slate-800">{orderPlaced.customerPhone}</strong>
+            <div className="flex justify-between items-center text-slate-500">
+              <span>İletişim Telefonu:</span>
+              <strong className="text-slate-800 font-bold">{orderPlaced.customerPhone}</strong>
             </div>
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between items-start text-slate-500">
               <span>Teslimat Adresi:</span>
-              <strong className="text-slate-800 text-right max-w-xs">{orderPlaced.shippingAddress}</strong>
+              <strong className="text-slate-800 text-right max-w-xs font-semibold">{orderPlaced.shippingAddress}</strong>
             </div>
-            <div className="flex justify-between text-slate-500">
-              <span>Ödeme Şekli:</span>
-              <span className="font-semibold text-slate-800">
-                💳 Kredi / Banka Kartı (PayTR 3D Secure Onaylandı)
+            <div className="flex justify-between items-center text-slate-500">
+              <span>Ödeme Şekli & Durumu:</span>
+              <span className="font-bold text-slate-900 bg-emerald-100/70 text-emerald-900 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                {orderPlaced.paymentStatus || 'Ödendi'}
               </span>
             </div>
 
             {orderPlaced.trackingNumber && (
-              <div className="flex justify-between text-slate-500 pt-1 border-t border-slate-200/60">
+              <div className="flex justify-between items-center text-slate-500 pt-1.5 border-t border-slate-200/60">
                 <span>Kargo Takip No:</span>
                 <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
                   {orderPlaced.trackingNumber} ({orderPlaced.carrierName || 'Kargonomi'})
@@ -663,34 +764,74 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between text-slate-900 pt-2 border-t border-slate-200 font-bold text-sm">
-              <span>Toplam Tutar:</span>
-              <span className="text-[#ff0055] font-black text-base">₺{orderPlaced.total.toFixed(2).replace('.', ',')}</span>
+            {/* Ürün Listesi */}
+            {Array.isArray(orderPlaced.items) && orderPlaced.items.length > 0 && (
+              <div className="pt-2 border-t border-slate-200/70 space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Siparişteki Ürünler ({orderPlaced.items.length} Kalem):
+                </span>
+                <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                  {orderPlaced.items.map((it, idx) => (
+                    <div key={idx} className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200/60 text-[11px]">
+                      <div className="truncate mr-2">
+                        <span className="font-bold text-slate-900">{it.quantity}x {it.productName}</span>
+                        {(it.color || it.dimension || it.customText) && (
+                          <span className="text-slate-500 block text-[10px]">
+                            {it.color && `${it.color}`} {it.dimension && `• ${it.dimension}`} {it.customText && `• "${it.customText}"`}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-bold font-mono text-slate-800 shrink-0">
+                        ₺{((it.price || 0) * (it.quantity || 1)).toFixed(2).replace('.', ',')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center text-slate-900 pt-3 border-t border-slate-200 font-bold text-sm">
+              <span>Toplam Tahsil Edilen Tutar:</span>
+              <span className="text-[#ff0055] font-black text-xl font-price">
+                ₺{orderPlaced.total.toFixed(2).replace('.', ',')}
+              </span>
             </div>
           </div>
 
-          <div className="space-y-3 pt-2">
+          {/* AKSİYON BUTONLARI */}
+          <div className="space-y-2.5 pt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {onViewOrders && (
                 <button
                   type="button"
                   onClick={onViewOrders}
-                  className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-extrabold transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Siparişlerimi Görüntüle
+                  <Package size={16} />
+                  <span>Siparişlerimi Görüntüle</span>
                 </button>
               )}
+
               <button
                 type="button"
-                onClick={onGoHome}
-                className={`w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                  !onViewOrders ? 'sm:col-span-2' : ''
-                }`}
+                onClick={handleTrackOrderClick}
+                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-extrabold transition-all shadow-md shadow-emerald-600/20 cursor-pointer flex items-center justify-center gap-2"
               >
-                Alışverişe Devam Et
+                <Package size={16} />
+                <span>Canlı Sipariş Takibi</span>
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={onGoHome}
+              className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <ArrowLeft size={15} />
+              <span>Mağazaya Dön ve Alışverişe Devam Et</span>
+            </button>
           </div>
+
         </div>
       </div>
     );
@@ -1351,16 +1492,29 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                     <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Troy</span>
                     <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Visa</span>
                     <span className="px-2 py-0.5 bg-white rounded border border-slate-200">MasterCard</span>
-                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">World</span>
-                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Bonus</span>
-                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Maximum</span>
-                    <span className="px-2 py-0.5 bg-white rounded border border-slate-200">Axess</span>
                   </div>
 
                   {paytrError && (
-                    <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
-                      <AlertTriangle size={15} className="shrink-0 text-red-600" />
-                      <span>{paytrError}</span>
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold space-y-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={15} className="shrink-0 text-red-600" />
+                        <span>{paytrError}</span>
+                      </div>
+                      {siteSettings?.paytrSettings?.testMode && (
+                        <div className="pt-2 border-t border-red-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                          <span className="text-[11px] text-red-700">Test modunda doğrudan siparişi oluşturabilirsiniz:</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const customOid = 'AKUZ-TEST-' + Math.floor(100000 + Math.random() * 900000);
+                              handleExecuteOrder('PayTR Kredi / Banka Kartı (Test Modu)', customOid, true);
+                            }}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-xs"
+                          >
+                            🧪 Test Olarak Hemen Tamamla
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1396,10 +1550,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       type="button"
                       onClick={() => {
                         if (!validateOrderForm()) return;
-                        const customOid = 'AKUZ-TEST-' + Math.floor(1000 + Math.random() * 9000);
+                        const customOid = 'AKUZ-TEST-' + Math.floor(100000 + Math.random() * 900000);
                         handleExecuteOrder('PayTR Kredi / Banka Kartı (Test Modu)', customOid, true);
                       }}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-xs"
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-xs"
                     >
                       🧪 Test Siparişini Hemen Onayla
                     </button>
@@ -1416,14 +1570,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
                     <Lock size={15} className="text-blue-600 shrink-0" />
                     <span className="font-bold">PayTR 3D Secure</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
-                    <CheckCircle2 size={15} className="text-purple-600 shrink-0" />
-                    <span className="font-bold">BDDK Lisanslı Altyapı</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
-                    <Sparkles size={15} className="text-amber-600 shrink-0" />
-                    <span className="font-bold">Anti-Dolandırıcılık Kalkanı</span>
                   </div>
                 </div>
                 <p className="text-[10px] text-center text-slate-400 font-medium leading-tight">

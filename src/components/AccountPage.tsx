@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Package, User, LogOut, MapPin, Plus, Trash2, Check, ArrowLeft, Truck, ExternalLink, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Package, User, LogOut, MapPin, Plus, Trash2, Check, ArrowLeft, Truck, ExternalLink, Lock, Eye, EyeOff, AlertCircle, Star, X, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import { UserProfile, Address, Order } from '../types';
 import { changeUserPassword } from '../utils/auth';
 import { TURKEY_PROVINCES, PROVINCE_NAMES } from '../data/turkeyLocations';
@@ -56,6 +56,109 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
+  // Yorum Yapma (Sadece Teslim Edilen Siparişler İçin)
+  const [reviewModalItem, setReviewModalItem] = useState<{
+    orderId: string;
+    productName: string;
+    productId: string;
+    color?: string;
+    dimension?: string;
+  } | null>(null);
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewHoverRating, setReviewHoverRating] = useState<number>(0);
+  const [reviewComment, setReviewComment] = useState<string>('');
+  const [reviewSubmitting, setReviewSubmitting] = useState<boolean>(false);
+  const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
+  const [reviewErrorMessage, setReviewErrorMessage] = useState<string | null>(null);
+  const [productsList, setProductsList] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/products')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.products)) {
+          setProductsList(data.products);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleOpenReviewModal = (ord: Order, item: any) => {
+    const matched = productsList.find((p) =>
+      (item.productId && p.id === item.productId) ||
+      (p.name && item.productName && p.name.trim().toLowerCase() === item.productName.trim().toLowerCase())
+    );
+    const resolvedProductId = item.productId || matched?.id || matched?.slug || item.productName;
+
+    setReviewModalItem({
+      orderId: ord.id,
+      productName: item.productName,
+      productId: resolvedProductId,
+      color: item.color,
+      dimension: item.dimension,
+    });
+    setReviewRating(5);
+    setReviewHoverRating(0);
+    setReviewComment('');
+    setReviewErrorMessage(null);
+    setReviewSuccessMessage(null);
+  };
+
+  const handleCloseReviewModal = () => {
+    if (reviewSubmitting) return;
+    setReviewModalItem(null);
+    setReviewErrorMessage(null);
+    setReviewSuccessMessage(null);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewModalItem) return;
+
+    if (!reviewComment.trim() || reviewComment.trim().length < 3) {
+      setReviewErrorMessage('Lütfen ürün hakkında en az 3 karakterlik bir yorum yazınız.');
+      return;
+    }
+
+    setReviewSubmitting(true);
+    setReviewErrorMessage(null);
+    setReviewSuccessMessage(null);
+
+    try {
+      const res = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: reviewModalItem.productId,
+          productName: reviewModalItem.productName,
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+          userName: user?.name || name || 'Müşteri',
+          userEmail: user?.email || email,
+          orderId: reviewModalItem.orderId,
+        }),
+      });
+
+      const data = await res.json();
+      setReviewSubmitting(false);
+
+      if (data.success) {
+        setReviewSuccessMessage(
+          data.message || 'Değerlendirmeniz ve yorumunuz başarıyla alındı!'
+        );
+        setTimeout(() => {
+          setReviewModalItem(null);
+          setReviewSuccessMessage(null);
+        }, 2200);
+      } else {
+        setReviewErrorMessage(data.error || 'Yorum kaydedilirken bir hata oluştu.');
+      }
+    } catch (err: any) {
+      setReviewSubmitting(false);
+      setReviewErrorMessage(err.message || 'Sunucuya bağlanırken bir sorun oluştu.');
+    }
+  };
+
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
@@ -101,8 +204,11 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const userOrders = React.useMemo(() => {
     if (!user || !user.email) return [];
     const cleanUserEmail = user.email.toLowerCase().trim();
+    const currentUserId = user.id || (user as any).user_id;
     return orders.filter(
-      (o) => o.customerEmail && o.customerEmail.toLowerCase().trim() === cleanUserEmail
+      (o) =>
+        (o.customerEmail && o.customerEmail.toLowerCase().trim() === cleanUserEmail) ||
+        (Boolean(o.userId) && Boolean(currentUserId) && o.userId === currentUserId)
     );
   }, [orders, user]);
 
@@ -401,18 +507,45 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                           </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           {ord.items.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-slate-100">
-                              <span className="font-semibold text-slate-800">
-                                {item.quantity}x {item.productName}{' '}
-                                <span className="text-slate-400 font-normal">
-                                  ({item.color}, {item.dimension})
+                            <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-700 bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+                              <div className="flex-1 min-w-0">
+                                <span className="font-bold text-slate-900 text-xs sm:text-sm block truncate">
+                                  {item.quantity}x {item.productName}
                                 </span>
-                              </span>
-                              <span className="font-mono font-bold text-slate-900">
-                                ₺{item.price.toFixed(2).replace('.', ',')}
-                              </span>
+                                <span className="text-slate-400 font-normal text-[11px] block mt-0.5">
+                                  Renk: <span className="text-slate-600 font-medium">{item.color}</span> • Boyut: <span className="text-slate-600 font-medium">{item.dimension}</span>
+                                  {item.finish ? ` • ${item.finish}` : ''}
+                                </span>
+                                {item.customText && (
+                                  <span className="inline-block text-[11px] font-semibold text-pink-600 bg-pink-50 px-2 py-0.5 rounded-md mt-1 border border-pink-100">
+                                    Özel Yazı: &quot;{item.customText}&quot;
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                                <span className="font-mono font-bold text-slate-900 text-xs sm:text-sm">
+                                  ₺{item.price.toFixed(2).replace('.', ',')}
+                                </span>
+
+                                {ord.status === 'Teslim Edildi' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenReviewModal(ord, item)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all cursor-pointer active:scale-95 shrink-0"
+                                    title="Bu ürünü değerlendir ve yorum yap"
+                                  >
+                                    <Star size={13} className="fill-white" />
+                                    <span>Ürünü Değerlendir</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 font-medium italic bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100" title="Siparişiniz teslim edildikten sonra değerlendirebilirsiniz">
+                                    Teslimat sonrası yorumlanabilir
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -879,6 +1012,170 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         </div>
 
       </div>
+
+      {/* ÜRÜN DEĞERLENDİRME & YORUM YAPMA MODALI (Sadece Teslim Edilen Siparişler) */}
+      {reviewModalItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div
+            className="relative w-full max-w-lg bg-white rounded-3xl border border-slate-200/90 shadow-2xl p-6 sm:p-7 overflow-hidden my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-500 border border-amber-100 flex items-center justify-center shrink-0">
+                  <Star size={20} className="fill-amber-500" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                    Ürünü Değerlendir
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Sipariş #{reviewModalItem.orderId}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseReviewModal}
+                disabled={reviewSubmitting}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors"
+                title="Kapat"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Ürün Bilgi Kartı */}
+            <div className="mt-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/70">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Değerlendirilen Ürün
+              </span>
+              <h4 className="text-sm font-extrabold text-slate-900 mt-0.5">
+                {reviewModalItem.productName}
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {reviewModalItem.color && `Renk: ${reviewModalItem.color}`}
+                {reviewModalItem.dimension && ` • Boyut: ${reviewModalItem.dimension}`}
+              </p>
+            </div>
+
+            {/* Başarı Mesajı */}
+            {reviewSuccessMessage ? (
+              <div className="mt-6 p-6 text-center bg-emerald-50 rounded-2xl border border-emerald-200 animate-fadeIn">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 size={28} />
+                </div>
+                <h4 className="text-sm font-black text-emerald-950 mb-1">
+                  Teşekkür Ederiz!
+                </h4>
+                <p className="text-xs text-emerald-700 leading-relaxed">
+                  {reviewSuccessMessage}
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitReview} className="mt-5 space-y-4">
+                {/* Hata Mesajı */}
+                {reviewErrorMessage && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-700">
+                    <AlertCircle size={16} className="text-rose-500 shrink-0 mt-0.5" />
+                    <span>{reviewErrorMessage}</span>
+                  </div>
+                )}
+
+                {/* Yıldız Puanı */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    Genel Puanınız:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const activeStar = reviewHoverRating || reviewRating;
+                        const isFilled = star <= activeStar;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setReviewRating(star)}
+                            onMouseEnter={() => setReviewHoverRating(star)}
+                            onMouseLeave={() => setReviewHoverRating(0)}
+                            className="p-1 hover:scale-115 transition-transform cursor-pointer focus:outline-none"
+                            title={`${star} Yıldız`}
+                          >
+                            <Star
+                              size={28}
+                              className={`transition-colors ${
+                                isFilled
+                                  ? 'text-amber-400 fill-amber-400'
+                                  : 'text-slate-300'
+                              }`}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span className="text-xs font-extrabold text-slate-700 ml-2">
+                      {reviewRating === 5 && '⭐⭐⭐⭐⭐ Harika!'}
+                      {reviewRating === 4 && '⭐⭐⭐⭐ Çok İyi'}
+                      {reviewRating === 3 && '⭐⭐⭐ Orta'}
+                      {reviewRating === 2 && '⭐⭐ Beklentimi Karşılamadı'}
+                      {reviewRating === 1 && '⭐ Memnun Kalmadım'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Yorum Metni */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Deneyim ve Yorumunuz:
+                  </label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Ürünün yapışkan kalitesi, folyosu, paketleme ve kargo hızı hakkındaki deneyimlerinizi paylaşın..."
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 font-medium text-slate-800 transition-colors leading-relaxed resize-none"
+                  />
+                  <div className="flex justify-between items-center text-[11px] text-slate-400 mt-1">
+                    <span>En az 3 karakter giriniz.</span>
+                    <span>{reviewComment.length} karakter</span>
+                  </div>
+                </div>
+
+                {/* Bilgilendirme Notu */}
+                <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-900 leading-relaxed flex items-center gap-2">
+                  <Check size={14} className="text-amber-600 shrink-0" />
+                  <span>
+                    Bu değerlendirme <strong>&quot;Doğrulanmış Satın Alma&quot;</strong> rozeti ile ürün sayfasında görünecektir.
+                  </span>
+                </div>
+
+                {/* Butonlar */}
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCloseReviewModal}
+                    disabled={reviewSubmitting}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={reviewSubmitting || !reviewComment.trim()}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md shadow-amber-500/20 flex items-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <Send size={14} />
+                    <span>{reviewSubmitting ? 'Gönderiliyor...' : 'Değerlendirmeyi Yayınla'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

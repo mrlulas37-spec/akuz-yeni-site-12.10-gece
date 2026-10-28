@@ -59,6 +59,10 @@ import {
   CheckCircle2,
   Activity,
   Zap,
+  Car,
+  Bike,
+  Compass,
+  MessageSquare,
 } from 'lucide-react';
 import {
   Product,
@@ -79,6 +83,7 @@ import {
 import { processAndUploadProductImage } from '../utils/imageOptimizer';
 import { RegisteredAccount, purgeAllRegisteredUsers } from '../utils/auth';
 import { AdminPerformanceWidget } from './AdminPerformanceWidget';
+import { AdminReviewManagement } from './AdminReviewManagement';
 import {
   testSmtpConnection,
   sendWelcomeEmail,
@@ -92,6 +97,7 @@ import {
 } from '../utils/emailService';
 import { createKargonomiShipment, testKargonomiConnection } from '../utils/kargonomiService';
 import { ThreeDDiscountCoin } from './ThreeDDiscountCoin';
+import { CatalogIcon, DiscountIcon, CustomPersonalizedIcon, MirrorIcon } from './CategoryBar';
 
 // Resmi 4 Renkli Google 'G' İkonu
 const GoogleGIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -135,6 +141,7 @@ type TabType =
   | 'categories'
   | 'colors-foils'
   | 'orders'
+  | 'reviews'
   | 'security'
   | 'users'
   | 'why-akuz'
@@ -2089,6 +2096,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <span className="text-xs font-bold text-slate-500">Aktif Sekme:</span>
             <span className="text-xs font-black text-slate-900">
               {activeTab === 'products' && 'Ürünler'}
+              {activeTab === 'reviews' && 'Yorum Yönetimi'}
               {activeTab === 'colors-foils' && 'Renk & Folyo Stokları'}
               {activeTab === 'categories' && 'Kategori Yuvarlakları'}
               {activeTab === 'orders' && 'Siparişler'}
@@ -2201,6 +2209,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 activeTab === 'orders' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
               }`}>
                 {orders.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('reviews');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-[#ff0055] text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <MessageSquare size={16} />
+                <span>Yorum Yönetimi</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                activeTab === 'reviews' ? 'bg-white/20 text-white' : 'bg-pink-50 text-[#ff0055] border border-pink-200'
+              }`}>
+                Yorumlar
               </span>
             </button>
 
@@ -2855,27 +2885,70 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     {/* Üst Önizleme: Hem Yuvarlak İkon Hem Dikdörtgen Katalog Kartı */}
                     <div className="grid grid-cols-2 gap-3 p-2.5 bg-white rounded-xl border border-slate-200/80">
-                      {/* 1. Yuvarlak Önizleme */}
+                      {/* 1. Yuvarlak Önizleme - Ana Sayfadaki Yuvarlak ile Birebir Aynı Canlı Görsel */}
                       <div className="flex flex-col items-center text-center">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
                           Yuvarlak İkon
                         </span>
                         <div className={`w-14 h-14 rounded-full flex items-center justify-center overflow-hidden shadow-sm ${
-                          cat.id === 'discount'
-                            ? 'bg-[radial-gradient(circle_at_center,_#2b0d14_0%,_#140508_55%,_#050204_100%)] text-white ring-2 ring-amber-500/70 border border-amber-500/30'
+                          cat.id === 'all'
+                            ? 'bg-gradient-to-tr from-slate-950 via-slate-900 to-zinc-800 text-white border border-slate-700/50'
+                            : cat.id === 'discount'
+                            ? 'bg-gradient-to-tr from-rose-600 via-red-500 to-orange-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.35)]'
+                            : cat.id === 'custom'
+                            ? 'bg-gradient-to-tr from-purple-700 via-indigo-600 to-violet-600 text-white shadow-[0_0_10px_rgba(147,51,234,0.35)]'
+                            : cat.id === 'ataturk'
+                            ? 'bg-slate-950 ring-2 ring-amber-400/80 shadow-[0_0_8px_rgba(250,204,21,0.5)]'
                             : cat.bgGradient || 'bg-slate-900 text-white'
                         }`}>
-                          {cat.imageUrl || cat.cardImageUrl ? (
+                          {cat.imageUrl && !cat.imageUrl.startsWith('/products/') ? (
                             <img
-                              src={cat.imageUrl || cat.cardImageUrl}
+                              src={cat.imageUrl}
                               alt={cat.titleLine1}
                               onError={(e) => {
                                 (e.currentTarget as HTMLElement).style.display = 'none';
                               }}
                               className="w-full h-full object-cover rounded-full"
                             />
+                          ) : cat.id === 'all' ? (
+                            <CatalogIcon size={26} />
                           ) : cat.id === 'discount' ? (
-                            <ThreeDDiscountCoin size={38} />
+                            <DiscountIcon size={34} />
+                          ) : cat.id === 'custom' ? (
+                            <CustomPersonalizedIcon size={22} />
+                          ) : cat.id === 'ataturk' ? (
+                            <img
+                              src={cat.imageUrl || '/uploads/prod_1792267264910_d3639f.jpg'}
+                              alt="Atatürk Stickerları"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = '/products/IMG_1140.jpeg';
+                              }}
+                              className="w-full h-full object-cover rounded-full"
+                            />
+                          ) : cat.id === 'araba' ? (
+                            cat.imageUrl ? (
+                              <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
+                            ) : (
+                              <Car size={26} strokeWidth={2.2} className="text-white" />
+                            )
+                          ) : cat.id === 'motosiklet' ? (
+                            cat.imageUrl && !cat.imageUrl.includes('IMG_1143') ? (
+                              <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
+                            ) : (
+                              <Bike size={26} strokeWidth={2.2} className="text-orange-400" />
+                            )
+                          ) : cat.id === 'offroad' ? (
+                            cat.imageUrl ? (
+                              <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
+                            ) : (
+                              <Compass size={24} strokeWidth={2.2} className="text-white" />
+                            )
+                          ) : cat.id === 'ayna' ? (
+                            cat.imageUrl ? (
+                              <img src={cat.imageUrl} alt={cat.titleLine1} className="w-full h-full object-cover rounded-full" />
+                            ) : (
+                              <MirrorIcon size={24} />
+                            )
                           ) : (
                             <span className="text-sm font-black uppercase text-white">{cat.titleLine1.charAt(0)}</span>
                           )}
@@ -2885,14 +2958,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {/* 2. Dikdörtgen Katalog Kartı Önizleme */}
                       <div className="flex flex-col items-center text-center">
                         <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6600] mb-1">
-                          Katalog Kartı (Trendyol)
+                          Katalog Kartı Görseli
                         </span>
                         <div className="w-20 aspect-[3/4] rounded-xl overflow-hidden bg-slate-900 shadow-sm relative border border-slate-200">
                           <img
-                            src={cat.cardImageUrl || cat.imageUrl || '/products/IMG_1141.jpeg'}
+                            src={
+                              cat.id === 'ataturk'
+                                ? (cat.cardImageUrl || cat.imageUrl || '/uploads/prod_1792267252889_745185.jpg')
+                                : cat.id === 'motosiklet'
+                                ? ((!cat.cardImageUrl || cat.cardImageUrl.includes('IMG_1143')) ? '/products/IMG_1141.jpeg' : cat.cardImageUrl)
+                                : (cat.cardImageUrl || cat.imageUrl || '/products/IMG_1141.jpeg')
+                            }
                             alt={cat.titleLine1}
                             onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src = '/products/IMG_1141.jpeg';
+                              (e.currentTarget as HTMLImageElement).src =
+                                cat.id === 'ataturk' ? '/products/IMG_1140.jpeg' : '/products/IMG_1141.jpeg';
                             }}
                             className="w-full h-full object-cover"
                           />
@@ -2947,11 +3027,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     </div>
 
-                    {/* KATALOG DİKDÖRTGEN KART GÖRSELİ (Kullanıcı İsteği) */}
+                    {/* KATALOG DİKDÖRTGEN KART GÖRSELİ */}
                     <div className="pt-2 border-t border-slate-200/80">
                       <label className="text-[11px] font-black text-slate-900 block mb-1.5 flex items-center justify-between">
                         <span>🖼️ Katalog Dikdörtgen Kart Görseli</span>
-                        <span className="text-[10px] text-[#ff6600] font-bold">Trendyol Vitrini</span>
+                        <span className="text-[10px] text-[#ff6600] font-bold">Katalog Vitrini</span>
                       </label>
                       <div className="flex items-center gap-2 mb-2">
                         <label className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs active:scale-[0.98]">
@@ -3308,6 +3388,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* 4.5. MÜŞTERİ YORUMLARI & DEĞERLENDİRME YÖNETİMİ */}
+          {/* ========================================================= */}
+          {activeTab === 'reviews' && (
+            <AdminReviewManagement
+              products={products}
+              onRefreshProducts={() => {
+                fetch('/api/products')
+                  .then((r) => r.json())
+                  .then((d) => {
+                    if (d.success && Array.isArray(d.products)) {
+                      onUpdateProducts(d.products);
+                    }
+                  })
+                  .catch(() => {});
+              }}
+            />
           )}
 
           {/* ========================================================= */}
@@ -5220,8 +5319,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         min="0"
                         value={shippingFee}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          handleUpdateShippingFeeAndThreshold(val, freeShippingThreshold, false);
+                          const val = parseFloat(e.target.value);
+                          setShippingFee(isNaN(val) ? 0 : val);
+                        }}
+                        onBlur={() => {
+                          handleUpdateShippingFeeAndThreshold(shippingFee, freeShippingThreshold, true);
                         }}
                         placeholder="39.90"
                         className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
@@ -5278,8 +5380,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         min="0"
                         value={freeShippingThreshold}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          handleUpdateShippingFeeAndThreshold(shippingFee, val, false);
+                          const val = parseFloat(e.target.value);
+                          setFreeShippingThreshold(isNaN(val) ? 0 : val);
+                        }}
+                        onBlur={() => {
+                          handleUpdateShippingFeeAndThreshold(shippingFee, freeShippingThreshold, true);
                         }}
                         placeholder="150"
                         className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"

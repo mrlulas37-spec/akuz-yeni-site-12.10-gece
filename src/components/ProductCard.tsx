@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Heart, Star } from 'lucide-react';
+import { Heart, Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Product, Review } from '../types';
 import { StickerGraphic } from './StickerGraphic';
 import { ImageIndicatorPill } from './ImageIndicatorPill';
@@ -33,9 +33,71 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const [activeImgIndex, setActiveImgIndex] = useState(0);
   const [isHeartBursting, setIsHeartBursting] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
+  const colorCount = product.colors && product.colors.length > 0 ? product.colors.length : 12;
+
+  // Dokunmatik & Fare ile fotoğrafları kaydırma (Ürüne girmeden diğer fotoğrafları görme)
+  const startXRef = useRef<number | null>(null);
+  const startYRef = useRef<number | null>(null);
+  const isDraggingRef = useRef(false);
+  const hasSwipedRef = useRef(false);
+
+  const handleDragStart = (clientX: number, clientY: number) => {
+    // Popüler ürünler yatay kayar vitrininde parmakla kaydırma vitrine ait olmalıdır
+    if (images.length <= 1 || variant === 'popular') return;
+    startXRef.current = clientX;
+    startYRef.current = clientY;
+    isDraggingRef.current = true;
+    hasSwipedRef.current = false;
+  };
+
+  const handleDragMove = (clientX: number, clientY: number) => {
+    if (!isDraggingRef.current || startXRef.current === null || startYRef.current === null) return;
+    const diffX = clientX - startXRef.current;
+    const diffY = clientY - startYRef.current;
+
+    // Yatay hareket dikey hareketten belirginse swipe niyetidir
+    if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+      hasSwipedRef.current = true;
+    }
+  };
+
+  const handleDragEnd = (clientX: number, clientY: number, e?: React.SyntheticEvent) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+
+    if (startXRef.current !== null && startYRef.current !== null && images.length > 1) {
+      const distanceX = startXRef.current - clientX;
+      const distanceY = startYRef.current - clientY;
+      const minSwipeDistance = 25; // 25px: Kullanıcı hafifçe kaydırdığında anında tepki verir
+
+      if (Math.abs(distanceX) > minSwipeDistance && Math.abs(distanceX) > Math.abs(distanceY) * 0.8) {
+        hasSwipedRef.current = true;
+        if (distanceX > 0) {
+          // Sol kaydırma -> Sonraki görsel
+          setActiveImgIndex((prev) => (prev + 1) % images.length);
+        } else {
+          // Sağ kaydırma -> Önceki görsel
+          setActiveImgIndex((prev) => (prev - 1 + images.length) % images.length);
+        }
+        if (e) {
+          e.stopPropagation();
+        }
+      }
+    }
+
+    startXRef.current = null;
+    startYRef.current = null;
+
+    // Eğer kaydırma yapıldıysa tıklama olayını kısa süre engelleyerek ürün detayının açılmasını önle
+    if (hasSwipedRef.current) {
+      setTimeout(() => {
+        hasSwipedRef.current = false;
+      }, 250);
+    }
+  };
 
   const handleProductSelect = () => {
-    if (isSwipingRef.current || isSelecting) return;
+    if (hasSwipedRef.current || isSelecting) return;
     setIsSelecting(true);
     try {
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -63,67 +125,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     setTimeout(() => setIsHeartBursting(false), 500);
   };
 
-  // Touch swipe support - SADECE 'catalog' varyantında aktif.
-  // Popüler ürünlerde ve yatay kaydırılan carousel alanlarında fotoğrafın kayması engellenir, ürünler arasında rahatça kaydırılır.
-  const touchStartXRef = useRef<number | null>(null);
-  const touchEndXRef = useRef<number | null>(null);
-  const touchStartYRef = useRef<number | null>(null);
-  const touchEndYRef = useRef<number | null>(null);
-  const isSwipingRef = useRef(false);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (variant !== 'catalog') return;
-    touchStartXRef.current = e.targetTouches[0].clientX;
-    touchEndXRef.current = e.targetTouches[0].clientX;
-    touchStartYRef.current = e.targetTouches[0].clientY;
-    touchEndYRef.current = e.targetTouches[0].clientY;
-    isSwipingRef.current = false;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (variant !== 'catalog') return;
-    touchEndXRef.current = e.targetTouches[0].clientX;
-    touchEndYRef.current = e.targetTouches[0].clientY;
-    if (touchStartXRef.current !== null && touchStartYRef.current !== null) {
-      const diffX = Math.abs(touchEndXRef.current - touchStartXRef.current);
-      const diffY = Math.abs(touchEndYRef.current - touchStartYRef.current);
-      if (diffX > 10 && diffX > diffY) {
-        isSwipingRef.current = true;
-      }
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (variant !== 'catalog') return;
-    if (touchStartXRef.current === null || touchEndXRef.current === null) return;
-    const distanceX = touchStartXRef.current - touchEndXRef.current;
-    const distanceY = (touchStartYRef.current || 0) - (touchEndYRef.current || 0);
-    const minSwipeDistance = 35;
-
-    // Yalnızca net yatay swipe olduğunda görsel değiştir, dikey sayfa kaydırmasını asla engelleme
-    if (images.length > 1 && Math.abs(distanceX) > Math.abs(distanceY) * 1.5) {
-      if (distanceX > minSwipeDistance) {
-        // Swipe Left -> Next Image
-        e.stopPropagation();
-        setActiveImgIndex((prev) => (prev + 1) % images.length);
-      } else if (distanceX < -minSwipeDistance) {
-        // Swipe Right -> Prev Image
-        e.stopPropagation();
-        setActiveImgIndex((prev) => (prev - 1 + images.length) % images.length);
-      }
-    }
-
-    touchStartXRef.current = null;
-    touchEndXRef.current = null;
-    touchStartYRef.current = null;
-    touchEndYRef.current = null;
-  };
-
   const pRevs = reviews.filter((r) => r.productId === product.id);
   const count = pRevs.length;
   const avg = count > 0 ? pRevs.reduce((a, b) => a + b.rating, 0) / count : 0;
-
-  const currentDisplayImage = images[activeImgIndex] || images[0];
 
   return (
     <div
@@ -133,15 +137,26 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           : 'border-slate-200/90 shadow-xs hover:border-[#ff6600]/70 hover:shadow-lg hover:shadow-orange-500/10 active:scale-[0.985] active:border-[#ff6600]'
       } ${className}`}
     >
-      {/* Top Sticker Canvas / Photo Area */}
+      {/* Top Sticker Canvas / Photo Area - Yatay kaydırılabilir görsel alanı */}
       <div
         onClick={handleProductSelect}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className={`relative w-full aspect-square bg-[#fbfbfb] flex flex-col items-center justify-between cursor-pointer overflow-hidden border-b border-slate-100 ${
-          variant === 'catalog' ? 'touch-pan-y' : ''
-        }`}
+        onTouchStart={(e) => handleDragStart(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchMove={(e) => handleDragMove(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchEnd={(e) => {
+          const touch = e.changedTouches[0];
+          handleDragEnd(touch.clientX, touch.clientY, e);
+        }}
+        onMouseDown={(e) => {
+          if (e.button === 0) handleDragStart(e.clientX, e.clientY);
+        }}
+        onMouseMove={(e) => handleDragMove(e.clientX, e.clientY)}
+        onMouseUp={(e) => {
+          if (e.button === 0) handleDragEnd(e.clientX, e.clientY, e);
+        }}
+        onMouseLeave={(e) => {
+          if (isDraggingRef.current) handleDragEnd(e.clientX, e.clientY, e);
+        }}
+        className="relative w-full aspect-square bg-[#fbfbfb] flex flex-col items-center justify-between cursor-pointer overflow-hidden border-b border-slate-100 touch-pan-y"
       >
         {/* Top Sticker Canvas / Photo Area */}
         {product.isCustomText && (
@@ -194,7 +209,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           )}
         </button>
 
-        {/* Center: Sticker Photo / Artwork or Custom Text Preview */}
+        {/* Center: Sticker Photo / Artwork or Custom Text Carousel */}
         <div className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden">
           {product.isCustomText ? (
             <div className="w-full h-full bg-white flex flex-col items-center justify-center p-3 text-center select-none relative group-hover:scale-102 transition-transform duration-300">
@@ -203,20 +218,62 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               </span>
             </div>
           ) : (
-            <StickerGraphic
-              type={product.svgType}
-              imageUrl={currentDisplayImage}
-              fit="cover"
-              className={`w-full h-full object-cover transition-transform duration-300 ${
-                isSelecting ? 'scale-108 brightness-105' : 'group-hover:scale-105'
-              }`}
-            />
+            <div
+              className="flex w-full h-full transition-transform duration-300 ease-out will-change-transform select-none"
+              style={{ transform: `translateX(-${activeImgIndex * 100}%)` }}
+            >
+              {images.map((img, idx) => (
+                <div
+                  key={idx}
+                  className="min-w-full w-full h-full flex-shrink-0 flex items-center justify-center overflow-hidden select-none"
+                >
+                  <StickerGraphic
+                    type={product.svgType}
+                    imageUrl={img}
+                    fit="cover"
+                    className={`w-full h-full object-cover pointer-events-none transition-transform duration-300 ${
+                      isSelecting ? 'scale-108 brightness-105' : 'group-hover:scale-105'
+                    }`}
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
+        {/* Masaüstünde Fotoğraf Değiştirme Ok Butonları (Fare ile gezinen kullanıcılar için anında önceki/sonraki) */}
+        {images.length > 1 && !product.isCustomText && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveImgIndex((prev) => (prev - 1 + images.length) % images.length);
+              }}
+              className="hidden md:group-hover:flex absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/60 hover:bg-black/85 text-white items-center justify-center z-20 shadow-sm transition-all active:scale-90 cursor-pointer"
+              title="Önceki Fotoğraf"
+              aria-label="Önceki Fotoğraf"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveImgIndex((prev) => (prev + 1) % images.length);
+              }}
+              className="hidden md:group-hover:flex absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/60 hover:bg-black/85 text-white items-center justify-center z-20 shadow-sm transition-all active:scale-90 cursor-pointer"
+              title="Sonraki Fotoğraf"
+              aria-label="Sonraki Fotoğraf"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </>
+        )}
+
         {/* Bottom Pill Indicator (Sadece birden fazla fotoğraf olunca) */}
         {images.length > 1 && (
-          <div className="absolute bottom-2 left-0 right-0 flex justify-center z-10">
+          <div className="absolute bottom-2 left-0 right-0 flex justify-center z-10 pointer-events-auto">
             <ImageIndicatorPill
               total={images.length}
               activeIndex={activeImgIndex}
@@ -257,7 +314,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         </div>
 
-        {/* Price & Action */}
+        {/* Price & Renk Sayısı - Resmin altındaki bölmenin sağ altında sade ve net */}
         <div className={`${variant === 'popular' ? 'mt-1 pt-1.5' : 'mt-2 pt-2'} border-t border-slate-100 flex items-center justify-between`}>
           <div className="flex flex-col">
             {product.oldPrice > product.currentPrice && (
@@ -270,16 +327,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectProduct(product);
-            }}
-            className="text-[10px] font-black uppercase text-slate-700 hover:text-white bg-slate-100 hover:bg-[#ff0055] px-2 py-0.5 sm:py-1 rounded-sm transition-colors cursor-pointer"
-          >
-            İNCELE
-          </button>
+          {/* Resmin altındaki bölmenin sağ altında net ve sade renk ibaresi */}
+          {colorCount > 1 && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-md bg-slate-100/90 text-slate-700 group-hover:text-[#ff6600] group-hover:bg-orange-50 group-hover:border-orange-200 text-[10px] sm:text-[11px] font-extrabold border border-slate-200 transition-colors shrink-0 select-none"
+              title={`${colorCount} farklı renk seçeneği`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-tr from-rose-500 via-amber-400 to-sky-400 inline-block shrink-0" />
+              <span>+{colorCount} Renk</span>
+            </span>
+          )}
         </div>
       </div>
     </div>

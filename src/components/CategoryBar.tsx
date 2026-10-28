@@ -1,7 +1,6 @@
 import React from 'react';
-import { LayoutGrid, Percent, Car, Bike, Sparkles, Compass } from 'lucide-react';
+import { BookOpen, BadgePercent, PenTool, Car, Bike, Sparkles, Compass } from 'lucide-react';
 import { Product, CategoryCircleItem } from '../types';
-import { ThreeDDiscountCoin } from './ThreeDDiscountCoin';
 
 interface CategoryBarProps {
   selectedCategory: Product['category'] | 'all';
@@ -9,8 +8,51 @@ interface CategoryBarProps {
   categoriesConfig?: CategoryCircleItem[];
 }
 
+// 1. Katalog / Tüm Ürünler için Özel Katalog Simgesi (Sade ve Temiz Açık Kitapçık)
+export const CatalogIcon = ({ size = 32 }: { size?: number }) => (
+  <div className="flex items-center justify-center text-white">
+    <BookOpen size={size} strokeWidth={2.3} className="drop-shadow-md text-white" />
+  </div>
+);
+
+// 2. İndirimli Fırsatlar için Özel İndirim Simgesi (Belirgin ve Büyütülmüş % Rozeti)
+export const DiscountIcon = ({ size = 42 }: { size?: number }) => (
+  <div className="relative flex items-center justify-center text-white">
+    <BadgePercent size={size} strokeWidth={2.3} className="drop-shadow-md text-white" />
+  </div>
+);
+
+// 3. Kişiye Özel Stickerlar için Özel Kişiselleştirme & Yavaş Kaligrafik El Yazısı Animasyonu (Kişiye / Özel)
+export const CustomPersonalizedIcon = ({ size = 24 }: { size?: number }) => (
+  <div className="relative flex flex-col items-center justify-center text-white w-full h-full select-none pt-0.5 px-0.5">
+    {/* Kalem Simgesi: Kullanıcı İsteği: Hiç kıpırdamaz, titreşmez, hafif aşağıda konumlu, lüks altın rengi */}
+    <div className="translate-y-0.5 pointer-events-none flex items-center justify-center">
+      <PenTool size={size} strokeWidth={2.4} className="text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]" />
+    </div>
+    {/* Altında el ile yazılır gibi yavaşça sırayla yazılan 2 satırlı el yazısı: 1. Satır: Kişiye, 2. Satır: Özel */}
+    <div className="flex flex-col items-center justify-center leading-tight mt-0.5 pointer-events-none w-full">
+      <div className="relative overflow-visible animate-write-line-1 flex justify-center w-full">
+        <span
+          style={{ fontFamily: "'Dancing Script', 'Caveat', 'Great Vibes', cursive" }}
+          className="text-[12.5px] sm:text-[14px] font-extrabold text-white tracking-wide drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)] whitespace-nowrap block"
+        >
+          Kişiye
+        </span>
+      </div>
+      <div className="relative overflow-visible animate-write-line-2 -mt-1 flex justify-center w-full">
+        <span
+          style={{ fontFamily: "'Dancing Script', 'Caveat', 'Great Vibes', cursive" }}
+          className="text-[12.5px] sm:text-[14px] font-extrabold text-amber-200 tracking-wide drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)] whitespace-nowrap block"
+        >
+          Özel
+        </span>
+      </div>
+    </div>
+  </div>
+);
+
 // Ayna Stickerları için özel Yan Ayna Simgesi
-const MirrorIcon = ({ size = 30 }: { size?: number }) => (
+export const MirrorIcon = ({ size = 30 }: { size?: number }) => (
   <svg
     width={size}
     height={size}
@@ -52,20 +94,21 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
   };
 
   const defaultIcons: Record<string, React.ReactNode> = {
-    all: <LayoutGrid size={30} strokeWidth={2.2} />,
-    discount: (
-      <ThreeDDiscountCoin size={48} />
-    ),
+    all: <CatalogIcon size={32} />,
+    discount: <DiscountIcon size={42} />,
     ataturk: (
       <img
-        src="/products/IMG_1278.jpeg"
+        src="/uploads/prod_1792267264910_d3639f.jpg"
         alt="Atatürk Stickerları"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = '/products/IMG_1140.jpeg';
+        }}
         className="w-full h-full object-cover rounded-full"
       />
     ),
     araba: <Car size={32} strokeWidth={2.2} />,
     motosiklet: <Bike size={32} strokeWidth={2.2} />,
-    custom: <Sparkles size={30} strokeWidth={2.2} />,
+    custom: <CustomPersonalizedIcon size={24} />,
     offroad: <Compass size={30} strokeWidth={2.2} />,
     ayna: <MirrorIcon size={30} />,
   };
@@ -76,20 +119,20 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
       id: 'all',
       titleLine1: 'Katalog',
       titleLine2: 'Tüm Ürünler',
-      bgGradient: 'bg-slate-900 text-white',
+      bgGradient: 'bg-gradient-to-tr from-slate-950 via-slate-900 to-zinc-800 text-white border border-slate-700/50',
     },
     {
       id: 'discount',
       titleLine1: 'İndirimli',
       titleLine2: 'Fırsatlar',
-      bgGradient: 'bg-gradient-to-tr from-rose-500 to-red-500 text-white',
+      bgGradient: 'bg-gradient-to-tr from-rose-600 via-red-500 to-orange-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.4)]',
     },
     {
       id: 'ataturk',
       titleLine1: 'Atatürk',
       titleLine2: 'Stickerları',
       bgGradient: 'bg-slate-950 overflow-hidden ring-2 ring-amber-400/80 shadow-[0_0_12px_rgba(250,204,21,0.5)]',
-      imageUrl: '/products/IMG_1278.jpeg',
+      imageUrl: '/uploads/prod_1792267264910_d3639f.jpg',
     },
     {
       id: 'araba',
@@ -108,7 +151,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
       id: 'custom',
       titleLine1: 'Kişiye Özel',
       titleLine2: 'Stickerlar',
-      bgGradient: 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white',
+      bgGradient: 'bg-gradient-to-tr from-purple-700 via-indigo-600 to-violet-600 text-white shadow-[0_0_14px_rgba(147,51,234,0.4)]',
     },
     {
       id: 'offroad',
@@ -161,8 +204,27 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
   const renderCategoryButton = (cat: CategoryCircleItem) => {
     const isSelected = selectedCategory === cat.id;
     const isClicked = clickedId === cat.id;
-    // Öncelik: cat.imageUrl, yoksa cat.cardImageUrl (yüklenen her görsel görüntülenir)
-    const candidateImg = cat.imageUrl || cat.cardImageUrl;
+    // all, discount ve custom kategorileri için kullanıcının istediği özel simgeler önceliklidir
+    // cardImageUrl (katalog sayfasındaki büyük banner) bu yuvarlak simgelerin üstüne binemez
+    const isDedicatedIcon = cat.id === 'all' || cat.id === 'discount' || cat.id === 'custom';
+    let candidateImg: string | null = null;
+    if (isDedicatedIcon) {
+      candidateImg = cat.imageUrl && !cat.imageUrl.startsWith('/products/') ? cat.imageUrl : null;
+    } else if (cat.id === 'motosiklet') {
+      // Motosiklet yuvarlağında yanlışlıkla işeyen çocuk görseli (IMG_1143) çıkmasını engelle
+      if (cat.imageUrl && !cat.imageUrl.includes('IMG_1143')) {
+        candidateImg = cat.imageUrl;
+      } else if (cat.cardImageUrl && !cat.cardImageUrl.includes('IMG_1143')) {
+        candidateImg = cat.cardImageUrl;
+      } else {
+        candidateImg = null;
+      }
+    } else if (cat.id === 'ataturk') {
+      // Atatürk kategorisi için kullanıcının orijinal araba camı Atatürk imza stickerı görseli
+      candidateImg = cat.imageUrl || cat.cardImageUrl || '/uploads/prod_1792267264910_d3639f.jpg';
+    } else {
+      candidateImg = cat.imageUrl || cat.cardImageUrl || null;
+    }
     const isBroken = failedImages[cat.id] === true;
     const customImg = (!isBroken && candidateImg) ? candidateImg : null;
     const isAtaturk = cat.id === 'ataturk';
@@ -181,7 +243,9 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
         <div
           className={`w-[66px] h-[66px] sm:w-[76px] sm:h-[76px] md:w-[84px] md:h-[84px] rounded-full flex items-center justify-center transition-all duration-150 shadow-sm overflow-hidden ${
             isDiscount
-              ? 'bg-[radial-gradient(circle_at_center,_#2b0d14_0%,_#140508_55%,_#050204_100%)] text-white border border-amber-500/30'
+              ? 'bg-gradient-to-tr from-rose-600 via-red-500 to-orange-500 text-white'
+              : isAll
+              ? 'bg-gradient-to-tr from-slate-950 via-slate-900 to-zinc-800 text-white border border-slate-700/50'
               : cat.bgGradient
           } ${
             isClicked
@@ -191,7 +255,7 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
               : isAtaturk
               ? 'ring-2 ring-amber-400/90 shadow-[0_0_12px_rgba(250,204,21,0.55)] group-hover:ring-amber-300'
               : isDiscount
-              ? 'ring-2 ring-amber-500/70 shadow-[0_0_14px_rgba(245,158,11,0.35)] group-hover:ring-amber-400 group-hover:shadow-[0_0_18px_rgba(245,158,11,0.6)]'
+              ? 'ring-2 ring-rose-400/80 shadow-[0_0_14px_rgba(244,63,94,0.45)] group-hover:ring-rose-300 group-hover:shadow-[0_0_18px_rgba(244,63,94,0.7)]'
               : 'group-hover:shadow-md group-hover:ring-2 group-hover:ring-[#ff6600]/60'
           }`}
         >
@@ -199,16 +263,15 @@ export const CategoryBar: React.FC<CategoryBarProps> = ({
             <img
               src={customImg}
               alt={cat.titleLine1}
-              onError={() => {
-                // Görsel dosyasında 404 olursa kırık kutu göstermek yerine zarif vektör ikona geç
-                setFailedImages((prev) => ({ ...prev, [cat.id]: true }));
+              onError={(e) => {
+                if (cat.id === 'ataturk') {
+                  (e.currentTarget as HTMLImageElement).src = '/products/IMG_1140.jpeg';
+                } else {
+                  setFailedImages((prev) => ({ ...prev, [cat.id]: true }));
+                }
               }}
               className="w-full h-full object-cover rounded-full"
             />
-          ) : isDiscount ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <ThreeDDiscountCoin size={54} />
-            </div>
           ) : (
             defaultIcons[cat.id] || <Sparkles size={30} />
           )}

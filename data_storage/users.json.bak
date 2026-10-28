@@ -6,5 +6,24 @@
     "phone": "",
     "createdAt": "2026-10-18T19:42:18.091Z",
     "addresses": []
+  },
+  {
+    "name": "Kemal Test",
+    "email": "testuser@akuzstickers.com",
+    "passwordHash": "guest_order_created",
+    "phone": "+90 546 875 8671",
+    "createdAt": "2026-10-28T17:06:07.947Z",
+    "addresses": [
+      {
+        "id": "addr-1793207167947",
+        "title": "Teslimat Adresim",
+        "recipientName": "Kemal Test",
+        "phone": "+90 546 875 8671",
+        "city": "Bursa",
+        "district": "Nilüfer",
+        "fullAddress": "Nilüfer/Bursa",
+        "isDefault": true
+      }
+    ]
   }
 ]

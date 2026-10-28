@@ -5,7 +5,7 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     "id": "all",
     "titleLine1": "Katalog",
     "titleLine2": "Tüm Ürünler",
-    "bgGradient": "bg-slate-900 text-white",
+    "bgGradient": "bg-gradient-to-tr from-slate-950 via-slate-900 to-zinc-800 text-white border border-slate-700/50",
     "cardImageUrl": "/products/IMG_1141.jpeg",
     "subtitle": "Tüm Sticker Koleksiyonu"
   },
@@ -13,7 +13,7 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     "id": "discount",
     "titleLine1": "İndirimli",
     "titleLine2": "Fırsatlar",
-    "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white",
+    "bgGradient": "bg-gradient-to-tr from-rose-600 via-red-500 to-orange-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.4)]",
     "cardImageUrl": "/products/IMG_1147.webp",
     "subtitle": "Avantajlı Paketler & İndirimler"
   },
@@ -22,8 +22,8 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     "titleLine1": "Atatürk",
     "titleLine2": "Stickerları",
     "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-    "imageUrl": "/products/IMG_1278.jpeg",
-    "cardImageUrl": "/products/IMG_1278.jpeg",
+    "imageUrl": "/uploads/prod_1793119381009_5a6f21.jpg",
+    "cardImageUrl": "/uploads/prod_1793119376532_13649f.jpg",
     "subtitle": "İmza, Portre & Özel Tasarımlar"
   },
   {
@@ -46,7 +46,7 @@ export const INITIAL_CATEGORY_CIRCLES: CategoryCircleItem[] = [
     "id": "custom",
     "titleLine1": "Kişiye Özel",
     "titleLine2": "Stickerlar",
-    "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white",
+    "bgGradient": "bg-gradient-to-tr from-purple-700 via-indigo-600 to-violet-600 text-white shadow-[0_0_14px_rgba(147,51,234,0.4)]",
     "cardImageUrl": "/products/phonto.jpeg",
     "subtitle": "Kendi Yazını & Fontunu Tasarla"
   },
@@ -125,7 +125,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "id": "all",
       "titleLine1": "Katalog",
       "titleLine2": "Tüm Ürünler",
-      "bgGradient": "bg-slate-900 text-white",
+      "bgGradient": "bg-gradient-to-tr from-slate-950 via-slate-900 to-zinc-800 text-white border border-slate-700/50",
       "cardImageUrl": "/products/IMG_1141.jpeg",
       "subtitle": "Tüm Sticker Koleksiyonu"
     },
@@ -133,7 +133,7 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "id": "discount",
       "titleLine1": "İndirimli",
       "titleLine2": "Fırsatlar",
-      "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white",
+      "bgGradient": "bg-gradient-to-tr from-rose-600 via-red-500 to-orange-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.4)]",
       "cardImageUrl": "/products/IMG_1147.webp",
       "subtitle": "Avantajlı Paketler & İndirimler"
     },
@@ -142,8 +142,8 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-      "imageUrl": "/products/IMG_1278.jpeg",
-      "cardImageUrl": "/products/IMG_1278.jpeg",
+      "imageUrl": "/uploads/prod_1792267264910_d3639f.jpg",
+      "cardImageUrl": "/uploads/prod_1792267252889_745185.jpg",
       "subtitle": "İmza, Portre & Özel Tasarımlar"
     },
     {
@@ -159,14 +159,14 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "titleLine1": "Motosiklet",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-800 text-orange-400",
-      "cardImageUrl": "/products/IMG_1143.webp",
+      "cardImageUrl": "/products/IMG_1141.jpeg",
       "subtitle": "Kask, Depo, Maşa & Jant Çıkartmaları"
     },
     {
       "id": "custom",
       "titleLine1": "Kişiye Özel",
       "titleLine2": "Stickerlar",
-      "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white",
+      "bgGradient": "bg-gradient-to-tr from-purple-700 via-indigo-600 to-violet-600 text-white shadow-[0_0_14px_rgba(147,51,234,0.4)]",
       "cardImageUrl": "/products/phonto.jpeg",
       "subtitle": "Kendi Yazını & Fontunu Tasarla"
     },
@@ -224,7 +224,13 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
   },
   "shippingFee": 39.9,
   "freeShippingThreshold": 150,
-  "googleClientId": "947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com"
+  "googleClientId": "947652767285-huldifd2fqu7gcdqqcq6emoufcom9h46.apps.googleusercontent.com",
+  "reviewSettings": {
+    "enabled": true,
+    "autoApprove": false,
+    "onlyPurchased": false,
+    "maskNames": true
+  }
 };
 
 // Global varsayılan renk paleti (Stokta var/yok & desteklenen folyo seçenekleri ile)
@@ -363,6 +369,9 @@ export const getStoredSiteSettings = (): SiteSettings => {
     }
     if (parsed.freeShippingThreshold !== undefined && !isNaN(Number(parsed.freeShippingThreshold))) {
       parsed.freeShippingThreshold = Number(parsed.freeShippingThreshold);
+    }
+    if (!parsed.reviewSettings) {
+      parsed.reviewSettings = INITIAL_SITE_SETTINGS.reviewSettings;
     }
     return parsed;
   } catch {

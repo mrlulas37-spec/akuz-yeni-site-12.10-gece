@@ -32,7 +32,7 @@
       "id": "all",
       "titleLine1": "Katalog",
       "titleLine2": "Tüm Ürünler",
-      "bgGradient": "bg-slate-900 text-white",
+      "bgGradient": "bg-gradient-to-tr from-slate-950 via-slate-900 to-zinc-800 text-white border border-slate-700/50",
       "cardImageUrl": "/products/IMG_1141.jpeg",
       "subtitle": "Tüm Sticker Koleksiyonu"
     },
@@ -40,7 +40,7 @@
       "id": "discount",
       "titleLine1": "İndirimli",
       "titleLine2": "Fırsatlar",
-      "bgGradient": "bg-gradient-to-tr from-rose-500 to-red-500 text-white",
+      "bgGradient": "bg-gradient-to-tr from-rose-600 via-red-500 to-orange-500 text-white shadow-[0_0_14px_rgba(239,68,68,0.4)]",
       "cardImageUrl": "/products/IMG_1147.webp",
       "subtitle": "Avantajlı Paketler & İndirimler"
     },
@@ -49,8 +49,8 @@
       "titleLine1": "Atatürk",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-950 overflow-hidden ring-1 ring-amber-400/40",
-      "imageUrl": "/products/IMG_1278.jpeg",
-      "cardImageUrl": "/products/IMG_1278.jpeg",
+      "imageUrl": "/uploads/prod_1792267264910_d3639f.jpg",
+      "cardImageUrl": "/uploads/prod_1792267252889_745185.jpg",
       "subtitle": "İmza, Portre & Özel Tasarımlar"
     },
     {
@@ -66,14 +66,14 @@
       "titleLine1": "Motosiklet",
       "titleLine2": "Stickerları",
       "bgGradient": "bg-slate-800 text-orange-400",
-      "cardImageUrl": "/products/IMG_1143.webp",
+      "cardImageUrl": "/products/IMG_1141.jpeg",
       "subtitle": "Kask, Depo, Maşa & Jant Çıkartmaları"
     },
     {
       "id": "custom",
       "titleLine1": "Kişiye Özel",
       "titleLine2": "Stickerlar",
-      "bgGradient": "bg-gradient-to-tr from-purple-600 to-indigo-600 text-white",
+      "bgGradient": "bg-gradient-to-tr from-purple-700 via-indigo-600 to-violet-600 text-white shadow-[0_0_14px_rgba(147,51,234,0.4)]",
       "cardImageUrl": "/products/phonto.jpeg",
       "subtitle": "Kendi Yazını & Fontunu Tasarla"
     },

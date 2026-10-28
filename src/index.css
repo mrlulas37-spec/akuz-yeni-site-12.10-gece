@@ -902,3 +902,117 @@ a:active p,
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* ========================================================================= */
+/* KİŞİYE ÖZEL KATEGORİSİ: 2 SATIRLI YAVAŞ & ULTRA KALİTELİ EL YAZISI      */
+/* 1. Satır: "Kişiye" yavaşça yazılır -> 2. Satır: "Özel" yazılır           */
+/* 3.0s ekranda kalır -> 0.7s solarak silinir -> Baştan başlar             */
+/* ========================================================================= */
+@keyframes writeLineOne {
+  0% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 1;
+  }
+  28% {
+    clip-path: polygon(0 0, 115% 0, 105% 100%, 0 100%);
+    opacity: 1;
+  }
+  88% {
+    clip-path: polygon(0 0, 115% 0, 105% 100%, 0 100%);
+    opacity: 1;
+  }
+  96% {
+    clip-path: polygon(0 0, 115% 0, 105% 100%, 0 100%);
+    opacity: 0;
+  }
+  98% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 0;
+  }
+  100% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 1;
+  }
+}
+
+@keyframes writeLineTwo {
+  0%, 28% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 0;
+  }
+  29% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 1;
+  }
+  50% {
+    clip-path: polygon(0 0, 115% 0, 105% 100%, 0 100%);
+    opacity: 1;
+  }
+  88% {
+    clip-path: polygon(0 0, 115% 0, 105% 100%, 0 100%);
+    opacity: 1;
+  }
+  96% {
+    clip-path: polygon(0 0, 115% 0, 105% 100%, 0 100%);
+    opacity: 0;
+  }
+  98% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 0;
+  }
+  100% {
+    clip-path: polygon(0 0, 0 0, -8px 100%, 0 100%);
+    opacity: 0;
+  }
+}
+
+.animate-write-line-1 {
+  animation: writeLineOne 7.2s cubic-bezier(0.35, 0, 0.25, 1) infinite;
+  will-change: clip-path, opacity;
+}
+
+.animate-write-line-2 {
+  animation: writeLineTwo 7.2s cubic-bezier(0.35, 0, 0.25, 1) infinite;
+  will-change: clip-path, opacity;
+}
+
+/* ========================================================
+   AKTİF ALAN IŞILDAMA / YANMA EFEKTLERİ (NEON GLOW AURA)
+   Favoriler kendi gül/kırmızı renginde, Hesap kendi safir mavi renginde yanar
+   ======================================================== */
+@keyframes favoritesNeonGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.5), 0 0 24px rgba(244, 63, 94, 0.3), inset 0 0 6px rgba(244, 63, 94, 0.15);
+    border-color: rgba(244, 63, 94, 0.8);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(244, 63, 94, 0.9), 0 0 42px rgba(244, 63, 94, 0.5), inset 0 0 12px rgba(244, 63, 94, 0.3);
+    border-color: rgba(225, 29, 72, 1);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes accountNeonGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(37, 99, 235, 0.5), 0 0 24px rgba(37, 99, 235, 0.3), inset 0 0 6px rgba(37, 99, 235, 0.15);
+    border-color: rgba(37, 99, 235, 0.8);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(37, 99, 235, 0.9), 0 0 42px rgba(37, 99, 235, 0.5), inset 0 0 12px rgba(37, 99, 235, 0.3);
+    border-color: rgba(29, 78, 216, 1);
+    transform: scale(1.05);
+  }
+}
+
+.animate-glow-favorites {
+  animation: favoritesNeonGlow 2.2s ease-in-out infinite;
+}
+
+.animate-glow-account {
+  animation: accountNeonGlow 2.2s ease-in-out infinite;
+}
+
+
+

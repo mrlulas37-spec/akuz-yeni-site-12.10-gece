@@ -1,0 +1,44 @@
+[
+  {
+    "id": "sec-1793087560577-d498a",
+    "timestamp": "2026-10-27T07:52:40.577Z",
+    "type": "IP_UNBLOCKED",
+    "ip": "198.51.100.99",
+    "severity": "low",
+    "details": "IP adresi engeli yönetici tarafından kaldırıldı: 198.51.100.99"
+  },
+  {
+    "id": "sec-1793087549650-fd7fm",
+    "timestamp": "2026-10-27T07:52:29.650Z",
+    "type": "IP_BLOCKED",
+    "ip": "198.51.100.99",
+    "severity": "critical",
+    "details": "IP adresi yönetici tarafından kara listeye alındı: 198.51.100.99"
+  },
+  {
+    "id": "sec-1793087541913-xltuq",
+    "timestamp": "2026-10-27T07:52:21.913Z",
+    "type": "PRICE_TAMPERING_BLOCKED",
+    "ip": "198.51.100.88",
+    "severity": "high",
+    "details": "SİMÜLASYON TESTİ: 350.00 TL tutarındaki sipariş için istemci 1.00 TL ödeme denemesi yaptı. Güvenlik kalkanı otomatik olarak gerçek katalog fiyatı olan 350.00 TL tutarını uyguladı.",
+    "orderId": "SIM-1793087541913"
+  },
+  {
+    "id": "sec-1793087534227-w9lti",
+    "timestamp": "2026-10-27T07:52:14.227Z",
+    "type": "PATH_TRAVERSAL_BLOCKED",
+    "ip": "127.0.0.1",
+    "severity": "critical",
+    "details": "Hassas sistem dosyasına yetkisiz erişim denemesi engellendi: /.env",
+    "userAgent": "curl/7.88.1"
+  },
+  {
+    "id": "sec-init-1793087522023",
+    "timestamp": "2026-10-27T07:52:02.023Z",
+    "type": "SECURITY_SHIELD_ONLINE",
+    "ip": "127.0.0.1",
+    "severity": "low",
+    "details": "AKUZ E-Ticaret Güvenlik Sistemi ve Anti-Dolandırıcılık Kalkanı aktif edildi."
+  }
+]
